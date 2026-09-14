@@ -355,6 +355,7 @@ POST   /v1/reservations/{id}/complete
 GET    /v1/reservations/active
 
 GET    /v1/ws                                             -> WebSocket upgrade
+GET    /v1/version
 GET    /healthz
 GET    /readyz
 ```
@@ -363,7 +364,50 @@ GET    /readyz
 usable database connection. That distinction is what lets Kubernetes restart a
 wedged pod without taking a healthy one out of rotation during a database blip.
 
-### 5.1 WebSocket protocol
+### 5.2 One error shape, always
+
+Every failure uses the same envelope:
+
+```json
+{
+  "error": {
+    "code": "not_found",
+    "message": "that resource was not found",
+    "fields": { "bbox": "must be four comma-separated numbers" },
+    "request_id": "0b59a123116ab65cda725857"
+  }
+}
+```
+
+`code` is stable and machine-readable, so clients branch on it and it is part
+of the contract; `message` is for humans and may be reworded freely. The
+`request_id` is also echoed in the `X-Request-Id` response header, so a user
+reporting a failure hands over something greppable.
+
+This covers the responses `net/http` generates on its own. ServeMux answers an
+unrouted path with plain-text "404 page not found" and a method mismatch with
+"405 method not allowed"; the `NormalizeErrors` middleware rewrites those into
+the envelope while preserving meaningful headers such as `Allow`. Without it a
+client would have to parse two formats and guess which one it received.
+
+### 5.3 Middleware order
+
+The chain is, from the outside in:
+
+1. `RequestID` — assigns the correlation id everything else logs.
+2. `Logger` — one access-log line per request, and the request-scoped logger.
+3. `Recover` — inside `Logger`, so a panic still produces an access-log line.
+4. `CORS` — answers preflight before any work is done.
+5. `NormalizeErrors` — close to the mux, to catch what the mux itself writes.
+6. `RateLimiter` — exempt for `/healthz` and `/readyz`, because throttling a
+   liveness probe gets the pod killed during exactly the traffic spike the
+   limiter exists to survive.
+
+The access-log wrapper implements `Unwrap`, `Hijack` and `Flush`. A
+`ResponseWriter` wrapper that hides `http.Hijacker` silently breaks the
+WebSocket upgrade, and that failure only appears in Phase 7.
+
+### 5.4 WebSocket protocol
 
 Client to server:
 

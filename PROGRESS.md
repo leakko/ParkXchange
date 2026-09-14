@@ -12,18 +12,18 @@ tracks only status.
 
 ## Current state
 
-- **Phase in progress:** Phase 3 — Go API skeleton
+- **Phase in progress:** Phase 4 — Authentication
 - **Last updated:** 2026-09-14
-- **Phases complete:** 2 of 12
+- **Phases complete:** 3 of 12
 - **Blockers:** none open (4 environment blockers found and resolved, see below)
 
 ---
 
 ## Next immediate step
 
-Build the API skeleton: extend `internal/config` with the server settings, add
-`log/slog` structured logging, the `ServeMux` router with its middleware chain,
-the `pgx` pool and graceful shutdown, then `/healthz` and `/readyz`.
+Implement authentication: JWT access tokens, rotating refresh tokens stored
+in `refresh_tokens`, the register/login/refresh handlers and the session
+middleware. The argon2id hasher already exists in `internal/auth`.
 
 ---
 
@@ -76,14 +76,26 @@ observed to pass. "It should work" is not a completion criterion.
 
 ### Phase 3 — Go API skeleton
 
-- [ ] Environment-driven configuration extended with server settings
-- [ ] Structured logging with `log/slog`
-- [ ] `ServeMux` routing using Go 1.22+ method and wildcard patterns
-- [ ] Middleware: request id, logging, panic recovery, CORS, rate limiting
-- [ ] Uniform JSON error envelope
-- [ ] `pgx/v5` pool and graceful shutdown
-- [ ] **Demo:** `task api:run`, `/healthz` and `/readyz` respond, integration
-      test green
+- [x] Environment-driven configuration, validating everything at once and
+      reporting every problem in one go
+- [x] Structured logging with `log/slog` (text in development, JSON elsewhere)
+- [x] `ServeMux` routing with Go 1.22+ method patterns, so the mux answers 405
+      itself and no handler contains a method switch
+- [x] Middleware: request id, access logging, panic recovery, CORS, per-client
+      token-bucket rate limiting with idle eviction
+- [x] Uniform JSON error envelope, including for the plain-text 404 and 405
+      that `net/http` generates on its own
+- [x] `pgx/v5` pool with explicit sizing and a startup ping
+- [x] Graceful shutdown on SIGINT/SIGTERM
+- [x] `GET /v1/version` reporting the VCS stamp the toolchain embeds
+- [x] **Demo passed:** `task api:run` serves on :8080. `/healthz` returns
+      `{"status":"ok"}` without touching the database, `/readyz` returns
+      `{"status":"ok","database":"reachable"}` and flips to 503
+      `"unreachable"` when the pool is closed. An unrouted path returns the
+      JSON envelope with `not_found` and a `request_id`; `POST /v1/version`
+      returns the envelope with `method_not_allowed` while keeping
+      `Allow: GET, HEAD`. A client-supplied `X-Request-Id` is echoed back.
+      27 Go tests green across four packages.
 
 ### Phase 4 — Authentication
 
@@ -234,6 +246,47 @@ does not relitigate it.
     rows can be edited is not a ledger. `TRUNCATE` is used by the seeder
     precisely because it does not fire row triggers.
 
+### 2026-09-14 — Phase 3
+
+16. **Handlers return `error` instead of writing failures themselves.**
+    `web.Handler` is a `func(w, r) error`, and the wrapper serialises whatever
+    comes back. Without it every handler grows four copies of "log, set status,
+    encode envelope, return". Anything that is not a `*web.Error` becomes a
+    bare 500, which is what stops a driver error message from reaching a
+    client by accident.
+17. **`NormalizeErrors` rewrites net/http's own plain-text errors.** ServeMux
+    answers an unrouted path with "404 page not found" as `text/plain`. A
+    mobile client parsing JSON would choke on it, so the middleware converts
+    any plain-text 4xx/5xx into the envelope while preserving headers such as
+    `Allow`.
+18. **A catch-all `/` route was rejected as the 404 mechanism.** Registering
+    `mux.Handle("/", ...)` would match method-mismatched requests too and turn
+    every 405 into a 404, losing the `Allow` header. Intercepting the response
+    keeps ServeMux's method semantics intact.
+19. **The access-log wrapper implements `Unwrap`, `Hijack` and `Flush`.** A
+    `ResponseWriter` wrapper that hides `http.Hijacker` silently breaks the
+    WebSocket upgrade, and that failure would only surface in Phase 7. A test
+    asserts the interfaces now.
+20. **`WriteTimeout` is deliberately left unset on the server.** It is an
+    absolute deadline on a whole response and would sever WebSocket
+    connections at a fixed interval. `ReadHeaderTimeout` gives the Slowloris
+    protection without that cost; per-route deadlines use
+    `http.ResponseController`.
+21. **Rate limiting exempts `/healthz` and `/readyz`.** Throttling a liveness
+    probe gets the pod killed during exactly the traffic spike the limiter
+    exists to survive. The exemption is declared at the call site through
+    `web.Skip` rather than hidden inside the limiter.
+22. **The limiter evicts idle buckets.** A map keyed by client IP with no
+    eviction grows once per distinct address seen since boot, which a scanner
+    can turn into a memory leak on demand.
+23. **A 429 does not block; it replies immediately with `Retry-After`.**
+    Holding the request open would let a hammering client consume server
+    goroutines, which is the thing rate limiting is meant to prevent.
+24. **Rate limiting is keyed on IP and is explicitly not a security control.**
+    The address is spoofable by a direct caller and shared behind NAT. It
+    guards against accidental hammering and scraping; identity-based limits
+    arrive with authentication.
+
 ---
 
 ## Blockers
@@ -340,3 +393,26 @@ space.
 - A statement that fails on purpose aborts the surrounding transaction. Tests
   that expect a constraint violation must run each attempt inside its own
   savepoint (`tx.Begin` on an existing `pgx.Tx`).
+
+### 2026-09-14 — Phase 3
+
+- Extended `internal/config` to cover the server, CORS and rate-limit
+  settings, with validation that reports every problem at once.
+- Added `internal/logging`, `internal/store` (pgx pool with explicit sizing and
+  a startup ping), `internal/web` (error envelope, handler wrapper, middleware
+  chain, rate limiter, error normalisation) and `internal/api`.
+- Wrote `cmd/api` with signal-driven graceful shutdown.
+- Found while testing the live server that unrouted paths returned
+  `net/http`'s plain-text 404 rather than the documented envelope, and added
+  `web.NormalizeErrors` to fix it.
+- Phase 3 demo executed and passing. Closed Phase 3.
+
+**Gotchas worth remembering:**
+
+- `go run` leaves the process holding port 8080 after the shell that launched
+  it returns; a stale binary will happily keep serving old behaviour and make
+  a fix look like it did not work. Check with
+  `netstat -ano | grep :8080` and `taskkill //F //PID <pid>`.
+- Graceful shutdown is implemented but has not been exercised end to end on
+  Windows, where sending a real SIGTERM from Git Bash is awkward. Phase 12
+  verifies it under `docker compose`.
