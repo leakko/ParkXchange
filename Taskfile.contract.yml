@@ -1,0 +1,14 @@
+version: "3"
+
+silent: true
+
+tasks:
+  generate:
+    desc: Regenerate Go and TypeScript types from packages/api-contract/openapi.yaml
+    cmds:
+      - pnpm --filter @parkxchange/api-contract generate
+
+  check:
+    desc: Fail if generated types have drifted from the OpenAPI spec
+    cmds:
+      - pnpm --filter @parkxchange/api-contract check

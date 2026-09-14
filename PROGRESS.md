@@ -21,18 +21,17 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** Phase 8 — Typed contract (not started)
+- **Phase in progress:** Phase 9 — Mobile shell
 - **Last updated:** 2026-09-14
-- **Phases complete:** 7 of 12
+- **Phases complete:** 8 of 12
 - **Blockers:** none open (4 environment blockers found and resolved, see below)
 
 ---
 
 ## Next immediate step
 
-Phase 8: typed contract. `packages/api-contract/openapi.yaml`, Go types via
-`oapi-codegen -generate types`, TypeScript via `openapi-typescript`. The demo
-is `task contract:check` failing when generated types drift from the spec.
+Phase 9: Expo SDK 57 app in `apps/mobile` with expo-router, MapLibre v11
+config plugin, Android prebuild and a `<Map>` rendering demotiles.
 
 ---
 
@@ -184,11 +183,12 @@ decisions 39–48 and ARCHITECTURE.md §3.13.
 
 ### Phase 8 — Typed contract
 
-- [ ] `packages/api-contract/openapi.yaml` (OpenAPI 3.1)
-- [ ] Go types via `oapi-codegen -generate types`
-- [ ] TypeScript types via `openapi-typescript`
-- [ ] **Demo:** `task contract:check` fails when generated types drift from the
-      spec
+- [x] `packages/api-contract/openapi.yaml` (OpenAPI 3.1)
+- [x] Go types via `oapi-codegen -generate types` into `internal/contract`
+- [x] TypeScript types via `openapi-typescript`
+- [x] **Demo:** `task contract:check` fails when generated types drift from the
+      spec (observed 2026-09-14: mutating HealthResponse made both generated
+      files fail the check; restoring the spec made it pass)
 
 ### Phase 9 — Mobile shell
 
@@ -487,6 +487,14 @@ does not relitigate it.
     while the listener still holds a connection. `DB.Close` cancels the listen
     context and closes that socket so the pool can drain.
 
+### 2026-09-14 — Phase 8
+
+51. **Generated Go types live in `internal/contract`, not in the HTTP adapter.**
+    Handlers stay handwritten. The generated package may import
+    `github.com/oapi-codegen/runtime` for UUID and email formats; it must not
+    import adapters or use cases. `oapi-codegen` v2.8.0 is the first release
+    that accepts OpenAPI 3.1, which is why it is pinned as a Go tool.
+
 ---
 
 ## Blockers
@@ -696,5 +704,19 @@ a free spot (price 0) must skip the hold rather than insert a zero-amount row.
 **Gotcha worth remembering:** `WaitForNotification` may ignore a cancelled
 context until the socket is closed. `DB.Close` has to tear the listener down
 or pool shutdown hangs, which is what `TestHealthz` does on purpose.
+
+### 2026-09-14 — Phase 8
+
+- Added `packages/api-contract/openapi.yaml` covering auth, spots (including
+  the time window), reservations, WS tickets and the error envelope.
+- TypeScript types via `openapi-typescript`; Go types via `oapi-codegen` v2.8.0
+  into `internal/contract`. `task contract:check` regenerates into a temp dir
+  and diffs, so a dirty tree is not rewritten just to detect drift.
+- Demo executed and passing: mutating the spec made the check fail; restoring
+  it made the check pass. Closed Phase 8.
+
+**Gotcha worth remembering:** `oapi-codegen` v2.5 still prints "specify a path
+to a OpenAPI 3.0 spec file" when the spec argument is missing. That message is
+about the missing path, not about 3.1. v2.8 is what actually parses 3.1.
 
 

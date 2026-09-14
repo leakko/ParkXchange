@@ -11,6 +11,8 @@ includes:
     taskfile: ./Taskfile.go.yml
   mobile:
     taskfile: ./Taskfile.mobile.yml
+  contract:
+    taskfile: ./Taskfile.contract.yml
 
 vars:
   GO_MODULES: ./services/api ./libs/go/geo

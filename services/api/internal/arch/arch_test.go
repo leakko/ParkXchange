@@ -37,6 +37,7 @@ const (
 	pkgPostgres     = "internal/postgres"
 	pkgAPI          = "internal/api"
 	pkgRealtime     = "internal/realtime"
+	pkgContract     = "internal/contract"
 	pkgConfig       = "internal/config"
 	pkgLogging      = "internal/logging"
 	pkgSeed         = "internal/seed"
@@ -135,6 +136,12 @@ var rules = map[string]rule{
 		why: "realtime is the fan-out adapter: it matches events to viewports " +
 			"and must not talk to the database or to HTTP",
 		packages: []string{pkgDomain, geoModule},
+	},
+
+	pkgContract: {
+		why: "contract holds types generated from the OpenAPI document; it " +
+			"must not import adapters, use cases or HTTP",
+		thirdParty: []string{"github.com/oapi-codegen/runtime"},
 	},
 
 	pkgConfig: {

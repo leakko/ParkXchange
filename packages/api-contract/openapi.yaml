@@ -1,0 +1,818 @@
+openapi: 3.1.0
+info:
+  title: ParkXchange API
+  version: 0.1.0
+  description: |
+    HTTP and WebSocket surface of the ParkXchange parking marketplace.
+    This document is the source of truth for request and response types.
+    Handlers stay handwritten on net/http; only these types are generated.
+servers:
+  - url: http://127.0.0.1:8080
+    description: Local development
+tags:
+  - name: health
+  - name: auth
+  - name: spots
+  - name: reservations
+  - name: realtime
+
+security:
+  - bearerAuth: []
+
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      operationId: getHealthz
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: Process can serve HTTP
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /readyz:
+    get:
+      tags: [health]
+      operationId: getReadyz
+      summary: Readiness probe
+      security: []
+      responses:
+        "200":
+          description: Database is reachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+        "503":
+          description: Database is unreachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+
+  /v1/version:
+    get:
+      tags: [health]
+      operationId: getVersion
+      summary: Build identity of this binary
+      security: []
+      responses:
+        "200":
+          description: Version metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+
+  /v1/auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      summary: Create an account and open a session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Session issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Authenticate with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Session issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /v1/auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refresh
+      summary: Rotate a refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: New session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /v1/auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Revoke a refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "204":
+          description: Token revoked
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /v1/me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      summary: Current user profile
+      responses:
+        "200":
+          description: Profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /v1/spots:
+    get:
+      tags: [spots]
+      operationId: listSpots
+      summary: Spots visible in a viewport, as GeoJSON
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/BBox"
+        - $ref: "#/components/parameters/Zoom"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+      responses:
+        "200":
+          description: FeatureCollection of spots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpotFeatureCollection"
+        "400":
+          $ref: "#/components/responses/Error"
+    post:
+      tags: [spots]
+      operationId: createSpot
+      summary: Announce a parking spot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSpotRequest"
+      responses:
+        "201":
+          description: Created offer as a GeoJSON feature
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpotFeature"
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/spots/mine:
+    get:
+      tags: [spots]
+      operationId: listMySpots
+      summary: The caller's own offers
+      responses:
+        "200":
+          description: FeatureCollection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpotFeatureCollection"
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /v1/spots/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SpotID"
+    get:
+      tags: [spots]
+      operationId: getSpot
+      summary: One spot as a GeoJSON feature
+      security: []
+      responses:
+        "200":
+          description: Feature
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpotFeature"
+        "404":
+          $ref: "#/components/responses/Error"
+    delete:
+      tags: [spots]
+      operationId: deleteSpot
+      summary: Withdraw an offer
+      responses:
+        "204":
+          description: Withdrawn
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /v1/spots/{id}/reservations:
+    post:
+      tags: [reservations]
+      operationId: claimSpot
+      summary: Atomically claim a spot
+      parameters:
+        - $ref: "#/components/parameters/SpotID"
+      responses:
+        "201":
+          description: Reservation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /v1/reservations/active:
+    get:
+      tags: [reservations]
+      operationId: listActiveReservations
+      summary: The caller's active reservations
+      responses:
+        "200":
+          description: Active reservations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReservationResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /v1/reservations/{id}:
+    get:
+      tags: [reservations]
+      operationId: getReservation
+      summary: One reservation
+      parameters:
+        - $ref: "#/components/parameters/ReservationID"
+      responses:
+        "200":
+          description: Reservation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /v1/reservations/{id}/reconfirm:
+    post:
+      tags: [reservations]
+      operationId: reconfirmReservation
+      summary: Confirm the driver still intends to take the spot
+      parameters:
+        - $ref: "#/components/parameters/ReservationID"
+      responses:
+        "204":
+          description: Reconfirmed
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /v1/reservations/{id}/cancel:
+    post:
+      tags: [reservations]
+      operationId: cancelReservation
+      summary: Cancel a reservation
+      parameters:
+        - $ref: "#/components/parameters/ReservationID"
+      responses:
+        "204":
+          description: Cancelled
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /v1/reservations/{id}/complete:
+    post:
+      tags: [reservations]
+      operationId: completeReservation
+      summary: Confirm handover
+      parameters:
+        - $ref: "#/components/parameters/ReservationID"
+      responses:
+        "204":
+          description: Completed
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /v1/ws/tickets:
+    post:
+      tags: [realtime]
+      operationId: issueSocketTicket
+      summary: Short-lived ticket for the WebSocket handshake
+      responses:
+        "201":
+          description: Ticket issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /v1/ws:
+    get:
+      tags: [realtime]
+      operationId: openWebSocket
+      summary: Viewport-subscribed event stream
+      security: []
+      parameters:
+        - name: ticket
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Ticket from POST /v1/ws/tickets; not an access token
+      responses:
+        "101":
+          description: Protocol switched to WebSocket
+        "401":
+          $ref: "#/components/responses/Error"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    SpotID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ReservationID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    BBox:
+      name: bbox
+      in: query
+      required: true
+      description: minLon,minLat,maxLon,maxLat
+      schema:
+        type: string
+        example: "2.15,41.38,2.18,41.40"
+    Zoom:
+      name: zoom
+      in: query
+      required: false
+      schema:
+        type: integer
+    From:
+      name: from
+      in: query
+      required: false
+      description: Inclusive start of the time window (RFC3339)
+      schema:
+        type: string
+        format: date-time
+    To:
+      name: to
+      in: query
+      required: false
+      description: Exclusive end of the time window (RFC3339)
+      schema:
+        type: string
+        format: date-time
+
+  responses:
+    Error:
+      description: Uniform error envelope
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+
+    ReadyResponse:
+      type: object
+      required: [status, database]
+      properties:
+        status:
+          type: string
+        database:
+          type: string
+
+    VersionResponse:
+      type: object
+      required: [version, revision, build_time, go_version]
+      properties:
+        version:
+          type: string
+        revision:
+          type: string
+        build_time:
+          type: string
+        go_version:
+          type: string
+
+    RegisterRequest:
+      type: object
+      required: [email, password, display_name]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        display_name:
+          type: string
+          minLength: 2
+          maxLength: 60
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    SessionResponse:
+      type: object
+      required: [access_token, refresh_token, token_type, expires_in, user]
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Seconds remaining on the access token
+        user:
+          $ref: "#/components/schemas/UserResponse"
+
+    UserResponse:
+      type: object
+      required: [id, email, display_name, rating_count, balance_cents]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        rating:
+          type: number
+          format: double
+          nullable: true
+        rating_count:
+          type: integer
+        balance_cents:
+          type: integer
+          format: int64
+
+    CreateSpotRequest:
+      type: object
+      required: [lon, lat, size_class, price_cents, duration_minutes]
+      properties:
+        lon:
+          type: number
+          format: double
+        lat:
+          type: number
+          format: double
+        size_class:
+          type: string
+        price_cents:
+          type: integer
+        address_hint:
+          type: string
+        notes:
+          type: string
+        duration_minutes:
+          type: integer
+          minimum: 1
+        available_in_minutes:
+          type: integer
+          minimum: 0
+          description: Delay until the offer starts. Zero means immediately. Capped at 24 hours.
+
+    SpotProperties:
+      type: object
+      required:
+        - owner_id
+        - owner_name
+        - size_class
+        - status
+        - price_cents
+        - available_from
+        - expires_at
+        - exact_location
+        - is_mine
+      properties:
+        owner_id:
+          type: string
+          format: uuid
+        owner_name:
+          type: string
+        owner_rating:
+          type: number
+          format: double
+          nullable: true
+        size_class:
+          type: string
+        status:
+          type: string
+        price_cents:
+          type: integer
+        address_hint:
+          type: string
+        notes:
+          type: string
+        available_from:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        exact_location:
+          type: boolean
+        is_mine:
+          type: boolean
+
+    GeoJSONPoint:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type:
+          type: string
+          enum: [Point]
+        coordinates:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: number
+            format: double
+          description: "[longitude, latitude]"
+
+    SpotFeature:
+      type: object
+      required: [type, geometry, properties]
+      properties:
+        type:
+          type: string
+          enum: [Feature]
+        id:
+          type: string
+        geometry:
+          $ref: "#/components/schemas/GeoJSONPoint"
+        properties:
+          $ref: "#/components/schemas/SpotProperties"
+
+    SpotFeatureCollection:
+      type: object
+      required: [type, features]
+      properties:
+        type:
+          type: string
+          enum: [FeatureCollection]
+        features:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpotFeature"
+
+    ReservationResponse:
+      type: object
+      required:
+        - id
+        - spot_id
+        - driver_id
+        - owner_id
+        - status
+        - price_cents
+        - starts_at
+        - ends_at
+        - reconfirm_by
+        - created_at
+        - expires_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        spot_id:
+          type: string
+          format: uuid
+        driver_id:
+          type: string
+          format: uuid
+        owner_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        price_cents:
+          type: integer
+        starts_at:
+          type: string
+          format: date-time
+        ends_at:
+          type: string
+          format: date-time
+        reconfirm_by:
+          type: string
+          format: date-time
+        reconfirmed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    TicketResponse:
+      type: object
+      required: [ticket, expires_in]
+      properties:
+        ticket:
+          type: string
+        expires_in:
+          type: integer
+
+    ViewportMessage:
+      type: object
+      required: [type, bbox]
+      description: Client to server WebSocket message
+      properties:
+        type:
+          type: string
+          enum: [viewport]
+        bbox:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            type: number
+            format: double
+          description: "[west, south, east, north]"
+        zoom:
+          type: integer
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+
+    SnapshotMessage:
+      type: object
+      required: [type, features]
+      description: Server to client WebSocket snapshot after a viewport
+      properties:
+        type:
+          type: string
+          enum: [snapshot]
+        features:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpotFeature"
+
+    SpotEventMessage:
+      type: object
+      required: [type, id, lon, lat, exact_location]
+      description: Server to client incremental event
+      properties:
+        type:
+          type: string
+          enum: [spot.added, spot.updated, spot.removed, reservation.updated]
+        id:
+          type: string
+          format: uuid
+        lon:
+          type: number
+          format: double
+        lat:
+          type: number
+          format: double
+        status:
+          type: string
+        price_cents:
+          type: integer
+        exact_location:
+          type: boolean
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+        request_id:
+          type: string

@@ -6,3 +6,5 @@ pnpm-lock.yaml
 apps/mobile/android
 apps/mobile/ios
 packages/api-contract/generated
+packages/api-contract/src/schema.ts
+services/api/internal/contract/types.gen.go

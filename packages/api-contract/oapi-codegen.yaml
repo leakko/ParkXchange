@@ -1,0 +1,7 @@
+# Generates request/response types only. Handlers stay handwritten on ServeMux.
+package: contract
+generate:
+  models: true
+output: ../../services/api/internal/contract/types.gen.go
+output-options:
+  skip-prune: true
