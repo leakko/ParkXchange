@@ -2,6 +2,14 @@ packages:
   - apps/*
   - packages/*
 
+# Flat node_modules (npm-style). React Native's CMake/Ninja build on Windows
+# resolves package realpaths for object files; the isolated .pnpm layout puts
+# those past the 250-character limit and the build dies with "build.ninja
+# still dirty". pnpm 11 reads this from the workspace file, not only .npmrc.
+nodeLinker: hoisted
+packageImportMethod: copy
+shamefullyHoist: true
+
 # Single source of truth for versions shared across workspace packages.
 # Members reference these with "catalog:" instead of a literal range, which
 # makes version drift between the mobile app and the shared packages impossible.

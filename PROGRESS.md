@@ -21,17 +21,19 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** Phase 9 — Mobile shell
+- **Phase in progress:** Phase 10 — Map discovery
 - **Last updated:** 2026-09-14
-- **Phases complete:** 8 of 12
-- **Blockers:** none open (4 environment blockers found and resolved, see below)
+- **Phases complete:** 9 of 12
+- **Blockers:** none open (Android emulator outbound Internet is broken on
+  this host; demotiles are served through `task mobile:map-proxy` via
+  `10.0.2.2` — see decision 49)
 
 ---
 
 ## Next immediate step
 
-Phase 9: Expo SDK 57 app in `apps/mobile` with expo-router, MapLibre v11
-config plugin, Android prebuild and a `<Map>` rendering demotiles.
+Phase 10: viewport→bbox debounce, clustered GeoJSON, WS client with
+reconnect, TanStack Query snapshot, bottom sheet; time range on viewport.
 
 ---
 
@@ -192,12 +194,14 @@ decisions 39–48 and ARCHITECTURE.md §3.13.
 
 ### Phase 9 — Mobile shell
 
-- [ ] Expo SDK 57 app in `apps/mobile` with expo-router and strict TypeScript
-- [ ] `@maplibre/maplibre-react-native` config plugin in `app.config.ts`
-- [ ] `expo prebuild` for Android, dev client build
-- [ ] Location permissions via `expo-location`
-- [ ] **Demo:** `task mobile:android` renders a `<Map>` with demo tiles on the
-      emulator
+- [x] Expo SDK 57 app in `apps/mobile` with expo-router and strict TypeScript
+- [x] `@maplibre/maplibre-react-native` config plugin in `app.config.ts`
+- [x] `expo prebuild` for Android, dev client build
+- [x] Location permissions via `expo-location`
+- [x] **Demo passed:** `pnpm --filter @parkxchange/mobile exec expo run:android`
+      installed the dev client on `Pixel_8_Pro_API_34`; with Metro and
+      `task mobile:map-proxy`, a `<Map>` rendered MapLibre demotiles
+      (countries, geolines, MapLibre logo) on the emulator
 
 ### Phase 10 — Map discovery
 
@@ -495,6 +499,22 @@ does not relitigate it.
     import adapters or use cases. `oapi-codegen` v2.8.0 is the first release
     that accepts OpenAPI 3.1, which is why it is pinned as a Go tool.
 
+### 2026-09-14 — Phase 9
+
+52. **pnpm `nodeLinker: hoisted` for React Native on Windows.** The isolated
+    `.pnpm` layout produces CMake object paths past Windows' ~250-character
+    limit and the Android build dies with `build.ninja still dirty`. Declared
+    in `pnpm-workspace.yaml` (pnpm 11) and mirrored in `.npmrc`.
+53. **Mobile Taskfile uses `pnpm --filter @parkxchange/mobile exec`.** With a
+    hoisted layout there is no `apps/mobile/node_modules/.bin`; filter keeps
+    Expo's project root correct while resolving binaries from the workspace.
+54. **Demotiles for the emulator go through `tools/map_style_proxy.py`.** The
+    Pixel emulator on this host reaches `10.0.2.2` but has no outbound
+    Internet (ICMP and HTTPS both fail). The proxy rewrites style/tile URLs
+    so MapLibre fetches via the host. Physical devices keep the public
+    demotiles URL. Demotiles themselves only go to zoom 6 — city zoom comes
+    with a street style in Phase 10 / 12.
+
 ---
 
 ## Blockers
@@ -718,5 +738,22 @@ or pool shutdown hangs, which is what `TestHealthz` does on purpose.
 **Gotcha worth remembering:** `oapi-codegen` v2.5 still prints "specify a path
 to a OpenAPI 3.0 spec file" when the spec argument is missing. That message is
 about the missing path, not about 3.1. v2.8 is what actually parses 3.1.
+
+### 2026-09-14 — Phase 9
+
+- Scaffolded `apps/mobile` on Expo SDK 57 with expo-router, MapLibre v11
+  (`<Map>` / `<Camera>`), `expo-location`, and the `withMapQueries` config
+  plugin for Android navigation deep links later.
+- Hit and resolved the Windows CMake path-length failure by switching pnpm to
+  a hoisted `node_modules` (decision 52). Android `assembleDebug` then
+  succeeded in ~3 minutes.
+- Emulator had no outbound Internet; added `task mobile:map-proxy` so demotiles
+  load via `10.0.2.2:8090`. Demo screenshot shows countries, geolines and the
+  MapLibre logo. Closed Phase 9.
+
+**Gotcha worth remembering:** `pnpm expo` from `apps/mobile` fails under a
+hoisted layout because there is no local `.bin`. Always
+`pnpm --filter @parkxchange/mobile exec expo …`, which is what
+`Taskfile.mobile.yml` now does.
 
 

@@ -1,0 +1,67 @@
+import type { ExpoConfig } from "expo/config";
+
+const locationPermission =
+  "ParkXchange uses your location to show nearby parking spots and to announce the one you are leaving.";
+
+const config: ExpoConfig = {
+  name: "ParkXchange",
+  slug: "parkxchange",
+  scheme: "parkxchange",
+  version: "0.1.0",
+  orientation: "portrait",
+  icon: "./assets/images/icon.png",
+  userInterfaceStyle: "automatic",
+  newArchEnabled: true,
+  ios: {
+    bundleIdentifier: "com.parkxchange.mobile",
+    infoPlist: {
+      NSLocationWhenInUseUsageDescription: locationPermission,
+      LSApplicationQueriesSchemes: ["comgooglemaps", "waze", "maps"],
+    },
+  },
+  android: {
+    package: "com.parkxchange.mobile",
+    adaptiveIcon: {
+      backgroundColor: "#0B1F33",
+      foregroundImage: "./assets/images/android-icon-foreground.png",
+      backgroundImage: "./assets/images/android-icon-background.png",
+      monochromeImage: "./assets/images/android-icon-monochrome.png",
+    },
+    predictiveBackGestureEnabled: false,
+  },
+  plugins: [
+    "expo-router",
+    "@maplibre/maplibre-react-native",
+    [
+      "expo-location",
+      {
+        locationWhenInUsePermission: locationPermission,
+      },
+    ],
+    "expo-secure-store",
+    [
+      "expo-notifications",
+      {
+        defaultChannel: "reconfirm",
+      },
+    ],
+    [
+      "expo-splash-screen",
+      {
+        backgroundColor: "#0B1F33",
+        image: "./assets/images/splash-icon.png",
+        imageWidth: 76,
+      },
+    ],
+    "./plugins/withMapQueries",
+  ],
+  experiments: {
+    typedRoutes: true,
+  },
+  extra: {
+    mapStyleUrl: process.env.EXPO_PUBLIC_MAP_STYLE_URL,
+    apiUrl: process.env.EXPO_PUBLIC_API_URL,
+  },
+};
+
+export default config;
