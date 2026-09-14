@@ -12,17 +12,18 @@ tracks only status.
 
 ## Current state
 
-- **Phase in progress:** Phase 2 — PostGIS and schema
+- **Phase in progress:** Phase 3 — Go API skeleton
 - **Last updated:** 2026-09-14
-- **Phases complete:** 1 of 12
-- **Blockers:** none open (3 environment blockers found and resolved, see below)
+- **Phases complete:** 2 of 12
+- **Blockers:** none open (4 environment blockers found and resolved, see below)
 
 ---
 
 ## Next immediate step
 
-Write `docker-compose.yml` with the PostGIS service published on host port 5433,
-then the `goose` migrations and the `cmd/migrate` CLI.
+Build the API skeleton: extend `internal/config` with the server settings, add
+`log/slog` structured logging, the `ServeMux` router with its middleware chain,
+the `pgx` pool and graceful shutdown, then `/healthz` and `/readyz`.
 
 ---
 
@@ -36,7 +37,8 @@ observed to pass. "It should work" is not a completion criterion.
 - [x] Install Task (3.53.1 via scoop)
 - [x] Upgrade Node to an LTS satisfying Expo SDK 57 (24.19.0)
 - [x] Repair the npm installation broken by the Node upgrade (see blocker B2)
-- [x] Root config: `.gitignore`, `.editorconfig`, `.prettierrc.json`, `.env.example`
+- [x] Root config: `.gitignore`, `.gitattributes`, `.editorconfig`,
+      `.prettierrc.json`, `.env.example`
 - [x] JS workspace: `package.json`, `pnpm-workspace.yaml` (with catalog), `turbo.json`
 - [x] Taskfiles: root, `db`, `go` (as `api`), `mobile`
 - [x] `tools/doctor.sh` toolchain gate
@@ -45,25 +47,36 @@ observed to pass. "It should work" is not a completion criterion.
 - [x] `infra/pulumi/README.md` scoping deployment out of the MVP
 - [x] `ARCHITECTURE.md`
 - [x] `PROGRESS.md`
-- [x] **Demo passed:** `task doctor` reports the full toolchain green (1 warning
-      for the stopped Docker daemon), `task setup` created `.env` and `go.work`
-      and installed the workspace, and `task --list` exposes all 38 tasks
+- [x] **Demo passed:** `task doctor` reports the full toolchain green,
+      `task setup` created `.env` and `go.work` and installed the workspace, and
+      `task --list` exposes all 39 tasks
 
 ### Phase 2 — PostGIS and schema
 
-- [ ] `docker-compose.yml` with the PostGIS image, published on host port 5433
-- [ ] `goose` migrations embedded via `embed.FS`, plus the `cmd/migrate` CLI
-- [ ] Tables: `users`, `spots`, `reservations`, `ledger_entries`, `refresh_tokens`
-- [ ] GiST index on `spots.geom`, partial index on `(status, expires_at)`,
-      partial unique index for one active reservation per spot
-- [ ] Seed data (Barcelona)
-- [ ] **Demo:** `task db:up && task db:migrate && task db:seed`, a bounding box
-      query returning the seeded spots, and an `EXPLAIN ANALYZE` proving the
-      GiST index is used
+- [x] `docker-compose.yml` with the PostGIS image, published on host port 5433
+- [x] `goose` migrations embedded via `embed.FS`, plus the `cmd/migrate` CLI
+      (up, up-by-one, down, redo, reset, status, version, create, seed)
+- [x] Tables: `users`, `spots`, `reservations`, `ledger_entries`, `refresh_tokens`
+- [x] Partial GiST index on `spots.geom`, partial index on expiry for the
+      sweeper, partial unique indexes enforcing one active reservation per spot
+      and per driver
+- [x] argon2id password hashing, because the seeder needs real hashes and a
+      placeholder hash would have to be ripped out in Phase 4
+- [x] Seed data: 60 users and 5008 Barcelona spots, deterministic
+- [x] `internal/testdb` harness: one rolled-back transaction per test against
+      real PostGIS
+- [x] `internal/schema` test suite asserting the guarantees the docs claim
+- [x] **Demo passed:** `task db:up`, `task db:migrate` and `task db:seed` all
+      succeed. The viewport query over central Barcelona returns 221 of 5008
+      spots, and `EXPLAIN ANALYZE` shows
+      `Bitmap Index Scan on spots_available_geom_gist` feeding a bitmap heap
+      scan with `Filter: (expires_at > now())` applied afterwards, executing in
+      0.3 ms. `task db:migrate:reset` followed by `task db:migrate` proves the
+      Down migrations work. Full Go suite green.
 
 ### Phase 3 — Go API skeleton
 
-- [ ] Environment-driven configuration
+- [ ] Environment-driven configuration extended with server settings
 - [ ] Structured logging with `log/slog`
 - [ ] `ServeMux` routing using Go 1.22+ method and wildcard patterns
 - [ ] Middleware: request id, logging, panic recovery, CORS, rate limiting
@@ -74,7 +87,7 @@ observed to pass. "It should work" is not a completion criterion.
 
 ### Phase 4 — Authentication
 
-- [ ] argon2id password hashing
+- [x] argon2id password hashing (landed early in Phase 2)
 - [ ] Short-lived access JWTs
 - [ ] Rotating refresh tokens persisted and revocable
 - [ ] Session middleware
@@ -161,7 +174,7 @@ observed to pass. "It should work" is not a completion criterion.
 Append-only. Each entry records what was decided and why, so a future session
 does not relitigate it.
 
-### 2026-09-14
+### 2026-09-14 — Phase 1
 
 1. **Go module path is `github.com/marco/parkxchange`.** Taken from the plan's
    proposal. If the repository ends up hosted elsewhere, every import must be
@@ -181,6 +194,45 @@ does not relitigate it.
 6. **`golangci-lint` is optional, `go vet` is the fallback.** `task api:lint`
    uses `golangci-lint` when present and degrades to `go vet` otherwise, so a
    fresh clone can lint without an extra install. CI installs the real linter.
+7. **`.gitattributes` forces LF.** `core.autocrlf` is enabled on this machine,
+   which would otherwise rewrite `tools/doctor.sh` with CRLF endings on checkout
+   and make bash fail on the carriage returns.
+
+### 2026-09-14 — Phase 2
+
+8. **PostGIS image is `postgis/postgis:18-3.6`, volume mounted at
+   `/var/lib/postgresql`.** PostgreSQL 18+ images store data in a
+   major-version subdirectory, so the pre-18 `/var/lib/postgresql/data` mount
+   point makes the entrypoint refuse to start (blocker B4).
+9. **The spatial index is partial: `USING GIST (geom) WHERE status =
+   'available'`.** Practically every map query asks only for available spots, so
+   a partial index stays a fraction of the table's size and the planner reaches
+   the rows without rechecking status. `expires_at > now()` cannot join the
+   predicate because `now()` is not immutable, so it stays a filter applied to
+   the rows the index returns.
+10. **Seed data is deliberately large (5008 spots) and deterministic.** With a
+    handful of rows a sequential scan is genuinely cheaper, so a small dataset
+    would make "is the GiST index being used?" unanswerable locally, and the
+    index test would assert the opposite of what we want. `setseed` fixes the
+    PRNG so the generated map is identical on every run.
+11. **The seeder writes only self-consistent states.** Spots are seeded
+    `available` or `expired`, never `reserved`, because a reserved spot with no
+    matching reservation row is data the application could never have produced.
+12. **`updated_at` uses `now()` (transaction time), not `clock_timestamp()`.**
+    Every row touched by one request should carry one timestamp. The
+    consequence, which caught a test out: a row inserted and updated inside a
+    single transaction legitimately keeps the same `updated_at`, so the test
+    asserts the trigger *replaced a forged value* rather than that time moved.
+13. **argon2id hashing landed in Phase 2 rather than Phase 4.** The seeder needs
+    real password hashes for the demo accounts, and a fake hash would be a
+    placeholder to rip out later. Phase 4 now builds JWTs on top of an already
+    tested hasher.
+14. **A driver may hold only one active reservation, enforced by a partial
+    unique index.** Without it, claiming several spots to keep options open is
+    free, and every spare spot in a neighbourhood gets hoarded.
+15. **`ledger_entries` is append-only, enforced by a trigger.** A ledger whose
+    rows can be edited is not a ledger. `TRUNCATE` is used by the seeder
+    precisely because it does not fire row triggers.
 
 ---
 
@@ -224,13 +276,28 @@ session must verify encoding after creating files** (`file -b <path>` should
 report ASCII or UTF-8, never `data`) and convert with
 `iconv -f UTF-16LE -t UTF-8` when needed.
 
+A second-order effect: after conversion the editor tool still holds the old
+UTF-16 bytes for that path, so targeted string replacements silently fail to
+match and reads report the file as one line. Rewriting the whole file works.
+
+**B4 — The PostGIS 18 container refused to start with the conventional volume
+mount.**
+`docker-compose.yml` initially mounted the data volume at
+`/var/lib/postgresql/data`, which is correct for PostgreSQL 17 and earlier. The
+18+ images keep data in a major-version subdirectory and abort with "there
+appears to be PostgreSQL data in /var/lib/postgresql/data (unused
+mount/volume)". Resolved by mounting the volume at `/var/lib/postgresql`
+instead; the container then became ready in about a second.
+
 ---
 
 ## Open questions for the product owner
 
 1. **Repository host.** The Go module path currently assumes
-   `github.com/marco/parkxchange`. Confirm or correct before Phase 3.
-2. **Seed city.** Barcelona is assumed for development data.
+   `github.com/marco/parkxchange`. Confirm or correct before the module graph
+   grows further.
+2. **Seed city.** Barcelona is assumed for development data, clustered around
+   ten real districts plus eight landmark spots.
 
 ---
 
@@ -251,3 +318,25 @@ report ASCII or UTF-8, never `data`) and convert with
 `": "` is parsed by YAML as a mapping and fails with `invalid keys in command`.
 Single-quote the whole command string when it contains a colon followed by a
 space.
+
+### 2026-09-14 — Phase 2
+
+- Wrote `docker-compose.yml` (PostgreSQL 18 / PostGIS 3.6), four goose
+  migrations, the `cmd/migrate` CLI, `internal/config`, `internal/auth`
+  (argon2id, with tests) and `internal/seed`.
+- Hit and resolved blocker B4 (PostgreSQL 18 volume layout).
+- Added `internal/testdb` (a rolled-back transaction per test against real
+  PostGIS) and the `internal/schema` suite: the spatial index plan, index
+  partiality, both reservation uniqueness rules, spot reclaim after
+  cancellation, the append-only ledger, seven spot CHECK constraints,
+  case-insensitive email uniqueness and the `updated_at` trigger. All green.
+- Phase 2 demo executed and passing. Closed Phase 2.
+
+**Gotchas worth remembering:**
+
+- `now()` is transaction-scoped in PostgreSQL, so `updated_at` does not advance
+  within a single transaction. Assert that the trigger *replaced* a forged value
+  rather than that the timestamp moved forward.
+- A statement that fails on purpose aborts the surrounding transaction. Tests
+  that expect a constraint violation must run each attempt inside its own
+  savepoint (`tx.Begin` on an existing `pgx.Tx`).

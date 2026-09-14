@@ -1,0 +1,42 @@
+# Local development stack. Compose reads the variables below from .env, which
+# `task env:init` creates from .env.example.
+services:
+  postgres:
+    image: postgis/postgis:18-3.6
+    container_name: parkxchange-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-parkxchange}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-parkxchange}
+      POSTGRES_DB: ${POSTGRES_DB:-parkxchange}
+    ports:
+      # Published on 5433 so it cannot collide with a PostgreSQL already
+      # installed on the host.
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      # PostgreSQL 18+ images store data in a major-version subdirectory, so the
+      # mount belongs at /var/lib/postgresql rather than the /data path used by
+      # 17 and earlier. Mounting /data makes the entrypoint refuse to start.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-parkxchange} -d ${POSTGRES_DB:-parkxchange}",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    command:
+      - postgres
+      # Surface slow queries during development; the discovery query should
+      # never show up here.
+      - -c
+      - log_min_duration_statement=200
+      # EXPLAIN output is part of the test suite, so keep the planner honest.
+      - -c
+      - track_io_timing=on
+
+volumes:
+  postgres-data:

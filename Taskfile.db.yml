@@ -57,6 +57,12 @@ tasks:
     cmds:
       - go run ./cmd/migrate down
 
+  migrate:reset:
+    desc: Roll every migration back, which exercises the Down direction
+    dir: services/api
+    cmds:
+      - go run ./cmd/migrate reset
+
   migrate:status:
     desc: Show which migrations have been applied
     dir: services/api
