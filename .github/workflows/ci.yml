@@ -1,0 +1,112 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOWORK: "off"
+  # Shared by the Go jobs that talk to the PostGIS service container.
+  DATABASE_URL: postgres://parkxchange:parkxchange@localhost:5432/parkxchange?sslmode=disable
+  JWT_SECRET: ci-only-insecure-secret-change-me-32b
+  API_ENV: development
+
+jobs:
+  go:
+    name: Go (test + lint)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:18-3.6
+        env:
+          POSTGRES_USER: parkxchange
+          POSTGRES_PASSWORD: parkxchange
+          POSTGRES_DB: parkxchange
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U parkxchange -d parkxchange"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/api/go.mod
+          cache-dependency-path: |
+            services/api/go.sum
+
+      - name: Migrate schema
+        working-directory: services/api
+        run: go run ./cmd/migrate up
+
+      - name: Test API
+        working-directory: services/api
+        run: go test ./...
+
+      - name: Test geo
+        working-directory: libs/go/geo
+        run: go test ./...
+
+      - name: golangci-lint (api)
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.1.6
+          working-directory: services/api
+          args: ./...
+
+      - name: golangci-lint (geo)
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.1.6
+          working-directory: libs/go/geo
+          args: ./...
+          # geo has no go.sum; do not fail the action on that alone.
+          skip-cache: true
+
+  js:
+    name: JS (lint + typecheck + contract)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.1.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/api/go.mod
+          cache-dependency-path: services/api/go.sum
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm turbo run lint
+
+      - name: Typecheck
+        run: pnpm turbo run typecheck
+
+      - name: Contract drift check
+        run: pnpm --filter @parkxchange/api-contract check
+
+  docker:
+    name: API image build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build distroless API image
+        run: docker build -f services/api/Dockerfile -t parkxchange-api:ci .

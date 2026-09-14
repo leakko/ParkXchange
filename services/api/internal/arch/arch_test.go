@@ -43,7 +43,8 @@ const (
 	pkgSeed         = "internal/seed"
 	pkgTestDB       = "internal/testdb"
 	pkgArch         = "internal/arch"
-	pkgMigrate      = "migrations"
+	pkgSQL          = "migrations"
+	pkgMigrate      = "internal/migrate"
 )
 
 // rule is what one package is permitted to depend on.
@@ -164,8 +165,15 @@ var rules = map[string]rule{
 		thirdParty: []string{"github.com/jackc/pgx"},
 	},
 
-	pkgMigrate: {
+	pkgSQL: {
 		why: "the migrations package only embeds SQL files",
+	},
+
+	pkgMigrate: {
+		why: "migrate applies the embedded SQL via goose; it is an adapter " +
+			"used by cmd/api and cmd/migrate, not by use cases",
+		packages:   []string{pkgSQL},
+		thirdParty: []string{"github.com/pressly/goose"},
 	},
 
 	pkgArch: {

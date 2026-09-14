@@ -14,7 +14,6 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/marco/parkxchange/services/api/internal/auth"
-	"github.com/marco/parkxchange/services/api/internal/domain"
 )
 
 // DevPassword is the password shared by every seeded account. It exists only
@@ -58,8 +57,10 @@ func Load(ctx context.Context, conn *pgx.Conn) (Result, error) {
 	result.Users = tag.RowsAffected()
 
 	// Seeded accounts bypass CreateUser, so they miss the signup grant unless
-	// we credit it here. Without it every claim fails with insufficient_balance.
-	if _, err := conn.Exec(ctx, creditSignupGrantsSQL, domain.SignupGrantCents); err != nil {
+	// we credit it here. Keep the amount in lock-step with
+	// domain.SignupGrantCents (500) without importing the domain package —
+	// seed is tooling, not a use case.
+	if _, err := conn.Exec(ctx, creditSignupGrantsSQL, int64(500)); err != nil {
 		return result, fmt.Errorf("credit signup grants: %w", err)
 	}
 

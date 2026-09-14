@@ -1,0 +1,22 @@
+# Keep the build context small. The Go module graph only needs the API and the
+# geo library; everything else (mobile, node_modules, android builds) is noise.
+.git
+.github
+.tmp
+.turbo
+.task
+**/.env
+**/.env.*
+!**/.env.example
+apps
+packages
+infra
+node_modules
+**/node_modules
+**/android
+**/bin
+**/coverage.out
+**/*.png
+docs
+*.md
+!services/api/**/*.md

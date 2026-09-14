@@ -38,5 +38,30 @@ services:
       - -c
       - track_io_timing=on
 
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    image: parkxchange-api:local
+    container_name: parkxchange-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8080}:8080"
+    environment:
+      # Inside the compose network the database is reached by service name on
+      # the container port, not via the host-published 5433.
+      DATABASE_URL: postgres://${POSTGRES_USER:-parkxchange}:${POSTGRES_PASSWORD:-parkxchange}@postgres:5432/${POSTGRES_DB:-parkxchange}?sslmode=disable
+      API_HOST: 0.0.0.0
+      API_PORT: "8080"
+      API_ENV: ${API_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env via task auth:secret}
+      ACCESS_TOKEN_TTL: ${ACCESS_TOKEN_TTL:-15m}
+      REFRESH_TOKEN_TTL: ${REFRESH_TOKEN_TTL:-720h}
+      SWEEP_INTERVAL: ${SWEEP_INTERVAL:-15s}
+
 volumes:
   postgres-data:

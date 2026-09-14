@@ -19,6 +19,7 @@ import (
 	"github.com/pressly/goose/v3"
 
 	"github.com/marco/parkxchange/services/api/internal/config"
+	"github.com/marco/parkxchange/services/api/internal/migrate"
 	"github.com/marco/parkxchange/services/api/internal/seed"
 	"github.com/marco/parkxchange/services/api/migrations"
 )
@@ -85,25 +86,44 @@ func run(args []string) error {
 		return fmt.Errorf("connect to database (is 'task db:up' running?): %w", err)
 	}
 
-	goose.SetBaseFS(migrations.FS)
-	if err := goose.SetDialect("postgres"); err != nil {
-		return fmt.Errorf("set dialect: %w", err)
-	}
-
 	switch command {
 	case "up":
-		return goose.UpContext(ctx, db, migrationsDir)
+		return migrate.Up(ctx, db)
 	case "up-by-one":
+		goose.SetBaseFS(migrations.FS)
+		if err := goose.SetDialect("postgres"); err != nil {
+			return fmt.Errorf("set dialect: %w", err)
+		}
 		return goose.UpByOneContext(ctx, db, migrationsDir)
 	case "down":
+		goose.SetBaseFS(migrations.FS)
+		if err := goose.SetDialect("postgres"); err != nil {
+			return fmt.Errorf("set dialect: %w", err)
+		}
 		return goose.DownContext(ctx, db, migrationsDir)
 	case "redo":
+		goose.SetBaseFS(migrations.FS)
+		if err := goose.SetDialect("postgres"); err != nil {
+			return fmt.Errorf("set dialect: %w", err)
+		}
 		return goose.RedoContext(ctx, db, migrationsDir)
 	case "status":
+		goose.SetBaseFS(migrations.FS)
+		if err := goose.SetDialect("postgres"); err != nil {
+			return fmt.Errorf("set dialect: %w", err)
+		}
 		return goose.StatusContext(ctx, db, migrationsDir)
 	case "version":
+		goose.SetBaseFS(migrations.FS)
+		if err := goose.SetDialect("postgres"); err != nil {
+			return fmt.Errorf("set dialect: %w", err)
+		}
 		return goose.VersionContext(ctx, db, migrationsDir)
 	case "reset":
+		goose.SetBaseFS(migrations.FS)
+		if err := goose.SetDialect("postgres"); err != nil {
+			return fmt.Errorf("set dialect: %w", err)
+		}
 		return goose.DownToContext(ctx, db, migrationsDir, 0)
 	default:
 		usage()

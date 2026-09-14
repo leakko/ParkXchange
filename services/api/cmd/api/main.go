@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,11 +14,14 @@ import (
 	"syscall"
 	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
+
 	"github.com/marco/parkxchange/services/api/internal/accounts"
 	"github.com/marco/parkxchange/services/api/internal/api"
 	"github.com/marco/parkxchange/services/api/internal/auth"
 	"github.com/marco/parkxchange/services/api/internal/config"
 	"github.com/marco/parkxchange/services/api/internal/logging"
+	"github.com/marco/parkxchange/services/api/internal/migrate"
 	"github.com/marco/parkxchange/services/api/internal/postgres"
 	"github.com/marco/parkxchange/services/api/internal/realtime"
 	"github.com/marco/parkxchange/services/api/internal/reservations"
@@ -46,6 +50,13 @@ func run() error {
 	// stop signal into an orderly shutdown rather than severed connections.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Apply pending migrations before opening the app pool. The same embedded
+	// FS backs `cmd/migrate`, so a compose or Fargate boot never drifts from
+	// what developers apply with `task db:migrate`.
+	if err := migrateUp(ctx, cfg.DatabaseURL); err != nil {
+		return err
+	}
 
 	db, err := postgres.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
@@ -175,5 +186,21 @@ func run() error {
 	}
 
 	log.Info("shutdown complete")
+	return nil
+}
+
+func migrateUp(ctx context.Context, databaseURL string) error {
+	sqlDB, err := sql.Open("pgx/v5", databaseURL)
+	if err != nil {
+		return fmt.Errorf("open database for migrations: %w", err)
+	}
+	defer sqlDB.Close()
+
+	if err := sqlDB.PingContext(ctx); err != nil {
+		return fmt.Errorf("connect for migrations: %w", err)
+	}
+	if err := migrate.Up(ctx, sqlDB); err != nil {
+		return err
+	}
 	return nil
 }

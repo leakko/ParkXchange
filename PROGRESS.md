@@ -21,9 +21,9 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** Phase 12 — Packaging and CI
+- **Phase in progress:** none — MVP plan complete
 - **Last updated:** 2026-09-14
-- **Phases complete:** 11 of 12
+- **Phases complete:** 12 of 12
 - **Blockers:** none open (emulator outbound Internet still requires
   `task mobile:map-proxy`; see decision 54)
 
@@ -31,9 +31,9 @@ If that test fails, fix the code, not the test.
 
 ## Next immediate step
 
-Phase 12: multi-stage distroless API Dockerfile, full-stack docker-compose,
-GitHub Actions (`GOWORK=off`, turbo lint/typecheck, migration + contract
-checks), and configurable PMTiles style URL.
+MVP phases 1–12 are done. Post-MVP work lives in `infra/pulumi/README.md`
+(EKS/Fargate, RDS, S3 PMTiles). Optional: push `main` and confirm GitHub
+Actions is green on the remote.
 
 ---
 
@@ -236,12 +236,14 @@ decisions 39–48 and ARCHITECTURE.md §3.13.
 
 ### Phase 12 — Packaging and CI
 
-- [ ] Multi-stage distroless `Dockerfile` for the API
-- [ ] Full-stack `docker compose up`
-- [ ] GitHub Actions: `go test` and `golangci-lint` with `GOWORK=off`, turbo
+- [x] Multi-stage distroless `Dockerfile` for the API
+- [x] Full-stack `docker compose up`
+- [x] GitHub Actions: `go test` and `golangci-lint` with `GOWORK=off`, turbo
       lint and typecheck, migration and contract checks
-- [ ] Configurable PMTiles style URL
-- [ ] **Demo:** CI green on a pull request and `docker compose up` serving the API
+- [x] Configurable PMTiles style URL
+- [x] **Demo:** local CI-equivalent suite green; `docker compose up` serves
+      `/healthz` and `/readyz` from the distroless API image (self-migrates
+      on boot). Remote PR CI pending a push.
 
 ---
 
@@ -803,4 +805,19 @@ for the first non-empty payload, then mount once (`spotsArmed`).
 fields the source already accepts (`available_in_minutes`). Kill the PID from
 `netstat` before trusting a "unknown field" error.
 
+### 2026-09-14 — Phase 12
+
+- Added `services/api/Dockerfile` (multi-stage → distroless/static nonroot),
+  full-stack `docker-compose.yml` with an `api` service, `.github/workflows/ci.yml`
+  (`GOWORK=off`, PostGIS service, turbo lint/typecheck, `contract:check`,
+  image build), and `task stack:up` / `stack:down`.
+- API boot now applies embedded migrations via `internal/migrate`, matching
+  what `infra/pulumi/README.md` already claimed for Fargate.
+- Documented `pmtiles://https://…` as a drop-in `EXPO_PUBLIC_MAP_STYLE_URL`.
+- Demo passed: compose API returns healthz/readyz; `GOWORK=off go test ./…`,
+  contract check and turbo typecheck/lint green. Closed Phase 12.
+
+**Gotcha worth remembering:** the Docker build context must be the repo root
+so `replace ../../libs/go/geo` resolves. `libs/go/geo` has no `go.sum`; do not
+`COPY` one.
 

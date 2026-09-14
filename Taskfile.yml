@@ -81,6 +81,29 @@ tasks:
     cmds:
       - pnpm turbo run typecheck
 
+  stack:up:
+    desc: Build and start PostGIS + API via docker compose
+    cmds:
+      - docker compose up -d --build
+      - |
+        printf 'Waiting for API'
+        for _ in $(seq 1 60); do
+          if curl -sf http://127.0.0.1:${API_PORT:-8080}/healthz >/dev/null 2>&1; then
+            printf ' ready\n'
+            exit 0
+          fi
+          printf '.'
+          sleep 2
+        done
+        printf ' timed out\n'
+        docker compose logs api --tail 80
+        exit 1
+
+  stack:down:
+    desc: Stop the full docker compose stack
+    cmds:
+      - docker compose down
+
   fmt:
     desc: Format all sources
     cmds:
