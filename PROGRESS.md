@@ -21,9 +21,9 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** Phase 11 — User flows
+- **Phase in progress:** Phase 12 — Packaging and CI
 - **Last updated:** 2026-09-14
-- **Phases complete:** 10 of 12
+- **Phases complete:** 11 of 12
 - **Blockers:** none open (emulator outbound Internet still requires
   `task mobile:map-proxy`; see decision 54)
 
@@ -31,8 +31,9 @@ If that test fails, fix the code, not the test.
 
 ## Next immediate step
 
-Phase 11: announce / claim / reconfirm (push via expo-notifications),
-handover complete, deep-link navigation to Google Maps / Waze / Apple Maps.
+Phase 12: multi-stage distroless API Dockerfile, full-stack docker-compose,
+GitHub Actions (`GOWORK=off`, turbo lint/typecheck, migration + contract
+checks), and configurable PMTiles style URL.
 
 ---
 
@@ -222,16 +223,16 @@ decisions 39–48 and ARCHITECTURE.md §3.13.
 
 ### Phase 11 — User flows
 
-- [ ] Announce a spot (current location or long-press on the map), for now or
+- [x] Announce a spot (current location or long-press on the map), for now or
       for a future moment
-- [ ] Claim a spot, including a spot whose window has not started
-- [ ] Reconfirm a claim, and **push notifications via `expo-notifications`**.
+- [x] Claim a spot, including a spot whose window has not started
+- [x] Reconfirm a claim, and **push notifications via `expo-notifications`**.
       Added on 2026-09-14: a reconfirmation the user cannot be told about is a
       reconfirmation that always fails, so this is not optional (decision 44)
-- [ ] Confirm handover
-- [ ] Deep-link navigation to Google Maps, Waze and Apple Maps with
+- [x] Confirm handover
+- [x] Deep-link navigation to Google Maps, Waze and Apple Maps with
       `canOpenURL`, Android manifest `queries`, and web fallback
-- [ ] **Demo:** complete owner and driver journey end to end
+- [x] **Demo:** complete owner and driver journey end to end
 
 ### Phase 12 — Packaging and CI
 
@@ -784,5 +785,22 @@ hoisted layout because there is no local `.bin`. Always
 **Gotcha worth remembering:** do not mount `GeoJSONSource` with an empty
 FeatureCollection and fill it later — on Android the layers stay blank. Wait
 for the first non-empty payload, then mount once (`spotsArmed`).
+
+### 2026-09-14 — Phase 11
+
+- Wired announce (GPS FAB with now / in-1-hour, long-press on the map), claim,
+  reconfirm, complete, cancel, and Navigate in the bottom sheet. Local
+  reconfirm reminders use `expo-notifications` time-interval triggers.
+  Deep links prefer Google Maps / Waze / Apple Maps via `canOpenURL`, with the
+  Android `queries` plugin from Phase 9 and a web fallback.
+- Seeded accounts now receive the signup grant in `internal/seed`, matching
+  `CreateUser`. Without it every claim failed with `insufficient_balance`.
+- Demo passed: owner announces → driver claims (immediate confirms; advance
+  booking stays `pending` and accepts reconfirm) → complete returns 204; app
+  shows the `+ Announce` FAB over live Barcelona spots. Closed Phase 11.
+
+**Gotcha worth remembering:** a stale `api:run` binary on :8080 will reject
+fields the source already accepts (`available_in_minutes`). Kill the PID from
+`netstat` before trusting a "unknown field" error.
 
 

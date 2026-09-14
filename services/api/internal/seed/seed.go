@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/marco/parkxchange/services/api/internal/auth"
+	"github.com/marco/parkxchange/services/api/internal/domain"
 )
 
 // DevPassword is the password shared by every seeded account. It exists only
@@ -56,6 +57,12 @@ func Load(ctx context.Context, conn *pgx.Conn) (Result, error) {
 	}
 	result.Users = tag.RowsAffected()
 
+	// Seeded accounts bypass CreateUser, so they miss the signup grant unless
+	// we credit it here. Without it every claim fails with insufficient_balance.
+	if _, err := conn.Exec(ctx, creditSignupGrantsSQL, domain.SignupGrantCents); err != nil {
+		return result, fmt.Errorf("credit signup grants: %w", err)
+	}
+
 	// Fix the PRNG so the generated map is identical on every run. Debugging a
 	// spatial query against a dataset that moves between runs is miserable.
 	if _, err := conn.Exec(ctx, "SELECT setseed(0.4242)"); err != nil {
@@ -79,6 +86,12 @@ func Load(ctx context.Context, conn *pgx.Conn) (Result, error) {
 
 const truncateSQL = `
 TRUNCATE ledger_entries, reservations, spots, refresh_tokens, users RESTART IDENTITY CASCADE
+`
+
+const creditSignupGrantsSQL = `
+INSERT INTO ledger_entries (user_id, kind, amount_cents, memo)
+SELECT id, 'credit', $1::bigint, 'signup grant'
+  FROM users
 `
 
 // Two named accounts for manual testing, plus $2 generated ones so spots have

@@ -7,6 +7,8 @@ export type SpotFeatureCollection = components["schemas"]["SpotFeatureCollection
 export type SpotFeature = components["schemas"]["SpotFeature"];
 export type SessionResponse = components["schemas"]["SessionResponse"];
 export type TicketResponse = components["schemas"]["TicketResponse"];
+export type ReservationResponse = components["schemas"]["ReservationResponse"];
+export type CreateSpotRequest = components["schemas"]["CreateSpotRequest"];
 
 export class ApiError extends Error {
   constructor(
@@ -92,3 +94,41 @@ export async function fetchSpots(opts: {
   }
   return (await res.json()) as SpotFeatureCollection;
 }
+
+export async function createSpot(body: CreateSpotRequest): Promise<SpotFeature> {
+  const res = await apiFetch("/v1/spots", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as SpotFeature;
+}
+
+export async function claimSpot(spotId: string): Promise<ReservationResponse> {
+  const res = await apiFetch(`/v1/spots/${spotId}/reservations`, { method: "POST" });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as ReservationResponse;
+}
+
+export async function fetchActiveReservations(): Promise<ReservationResponse[]> {
+  const res = await apiFetch("/v1/reservations/active");
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as ReservationResponse[];
+}
+
+async function postReservationAction(id: string, action: string): Promise<void> {
+  const res = await apiFetch(`/v1/reservations/${id}/${action}`, { method: "POST" });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+}
+
+export const reconfirmReservation = (id: string) => postReservationAction(id, "reconfirm");
+export const cancelReservation = (id: string) => postReservationAction(id, "cancel");
+export const completeReservation = (id: string) => postReservationAction(id, "complete");
