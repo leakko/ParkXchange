@@ -1,0 +1,8 @@
+node_modules
+dist
+.turbo
+.task
+pnpm-lock.yaml
+apps/mobile/android
+apps/mobile/ios
+packages/api-contract/generated

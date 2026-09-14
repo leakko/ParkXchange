@@ -1,0 +1,48 @@
+# --- Secrets & local config -------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- Go ---------------------------------------------------------------------
+# go.work is a local development overlay: CI builds each module in isolation
+# with GOWORK=off, so pinning it in git would hide missing requirements.
+go.work
+go.work.sum
+bin/
+*.exe
+*.test
+*.out
+coverage.out
+
+# --- Node / pnpm / Turborepo ------------------------------------------------
+node_modules/
+.turbo/
+dist/
+*.tsbuildinfo
+.pnpm-store/
+npm-debug.log*
+pnpm-debug.log*
+
+# --- Expo / React Native ----------------------------------------------------
+.expo/
+apps/mobile/android/
+apps/mobile/ios/
+*.jks
+*.keystore
+!debug.keystore
+*.orig.*
+web-build/
+
+# --- Task -------------------------------------------------------------------
+.task/
+
+# --- Pulumi -----------------------------------------------------------------
+Pulumi.*.yaml
+!Pulumi.yaml
+
+# --- Editors / OS -----------------------------------------------------------
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db

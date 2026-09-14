@@ -1,0 +1,81 @@
+version: "3"
+
+silent: true
+
+env:
+  CGO_ENABLED: "0"
+
+vars:
+  API_DIR: services/api
+
+tasks:
+  run:
+    desc: Run the API against the local PostGIS instance
+    dir: "{{.API_DIR}}"
+    cmds:
+      - go run ./cmd/api
+
+  build:
+    desc: Compile the API binary into services/api/bin
+    dir: "{{.API_DIR}}"
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - bin/api{{exeExt}}
+    cmds:
+      - go build -trimpath -o bin/api{{exeExt}} ./cmd/api
+
+  test:
+    desc: Run the Go test suites
+    cmds:
+      - go test ./... {{.CLI_ARGS}}
+    dir: "{{.API_DIR}}"
+
+  test:geo:
+    desc: Run the geo library test suite
+    dir: libs/go/geo
+    cmds:
+      - go test ./... {{.CLI_ARGS}}
+
+  test:all:
+    desc: Run the tests of every Go module
+    cmds:
+      - task: test
+      - task: test:geo
+
+  cover:
+    desc: Run the Go tests with a coverage report
+    dir: "{{.API_DIR}}"
+    cmds:
+      - go test -coverprofile=coverage.out ./...
+      - go tool cover -func=coverage.out | tail -n 1
+
+  lint:
+    desc: Vet every Go module (golangci-lint if available, go vet otherwise)
+    cmds:
+      - |
+        if command -v golangci-lint >/dev/null 2>&1; then
+          for module in ./services/api ./libs/go/geo; do
+            (cd "$module" && golangci-lint run ./...)
+          done
+        else
+          echo "golangci-lint not installed, falling back to go vet"
+          for module in ./services/api ./libs/go/geo; do
+            (cd "$module" && go vet ./...)
+          done
+        fi
+
+  fmt:
+    desc: Format every Go module
+    cmds:
+      - gofmt -l -w ./services/api ./libs/go/geo
+
+  tidy:
+    desc: Tidy the dependencies of every Go module
+    cmds:
+      - for: { var: MODULES }
+        cmd: cd {{.ITEM}} && go mod tidy
+    vars:
+      MODULES: ./services/api ./libs/go/geo

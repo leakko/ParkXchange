@@ -1,0 +1,56 @@
+version: "3"
+
+silent: true
+
+vars:
+  APP_DIR: apps/mobile
+
+tasks:
+  start:
+    desc: Start the Metro bundler for the dev client
+    dir: "{{.APP_DIR}}"
+    interactive: true
+    cmds:
+      - pnpm expo start --dev-client
+
+  prebuild:
+    desc: Generate the native android project from app.config.ts
+    dir: "{{.APP_DIR}}"
+    cmds:
+      - pnpm expo prebuild --platform android
+
+  android:
+    desc: Build and install the dev client on the connected device or emulator
+    dir: "{{.APP_DIR}}"
+    interactive: true
+    cmds:
+      - pnpm expo run:android
+
+  clean:
+    desc: Drop the generated native project and Metro cache
+    dir: "{{.APP_DIR}}"
+    cmds:
+      - rm -rf android .expo
+      - echo "Removed generated native project; run task mobile:prebuild to recreate it"
+
+  devices:
+    desc: List attached Android devices and running emulators
+    cmds:
+      - "$ANDROID_HOME/platform-tools/adb devices -l"
+
+  emulator:
+    desc: 'Boot an Android emulator, e.g. task mobile:emulator -- Pixel_7_API_35'
+    cmds:
+      - |
+        if [ -n "{{.CLI_ARGS}}" ]; then
+          "$ANDROID_HOME/emulator/emulator" -avd "{{.CLI_ARGS}}" &
+        else
+          echo "Available AVDs:"
+          "$ANDROID_HOME/emulator/emulator" -list-avds
+        fi
+
+  typecheck:
+    desc: Typecheck the mobile app
+    dir: "{{.APP_DIR}}"
+    cmds:
+      - pnpm tsc --noEmit

@@ -1,0 +1,85 @@
+version: "3"
+
+silent: true
+
+vars:
+  COMPOSE_SERVICE: postgres
+
+tasks:
+  up:
+    desc: Start the PostGIS container and wait until it accepts connections
+    cmds:
+      - docker compose up -d {{.COMPOSE_SERVICE}}
+      - task: wait
+
+  down:
+    desc: Stop the PostGIS container, keeping the data volume
+    cmds:
+      - docker compose stop {{.COMPOSE_SERVICE}}
+
+  wait:
+    desc: Block until PostGIS is accepting connections
+    cmds:
+      - |
+        printf 'Waiting for PostGIS'
+        for _ in $(seq 1 60); do
+          if docker compose exec -T {{.COMPOSE_SERVICE}} \
+              pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; then
+            printf ' ready\n'
+            exit 0
+          fi
+          printf '.'
+          sleep 1
+        done
+        printf ' timed out after 60s\n'
+        exit 1
+
+  psql:
+    desc: Open an interactive psql shell inside the container
+    interactive: true
+    cmds:
+      - docker compose exec {{.COMPOSE_SERVICE}} psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+
+  query:
+    desc: 'Run a single SQL statement, e.g. task db:query -- "select 1"'
+    cmds:
+      - docker compose exec -T {{.COMPOSE_SERVICE}} psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c '{{.CLI_ARGS}}'
+
+  migrate:
+    desc: Apply every pending migration
+    dir: services/api
+    cmds:
+      - go run ./cmd/migrate up
+
+  migrate:down:
+    desc: Roll back the most recent migration
+    dir: services/api
+    cmds:
+      - go run ./cmd/migrate down
+
+  migrate:status:
+    desc: Show which migrations have been applied
+    dir: services/api
+    cmds:
+      - go run ./cmd/migrate status
+
+  migrate:new:
+    desc: 'Scaffold a new migration, e.g. task db:migrate:new -- add_ratings'
+    dir: services/api
+    cmds:
+      - go run ./cmd/migrate create {{.CLI_ARGS}}
+
+  seed:
+    desc: Load development seed data
+    dir: services/api
+    cmds:
+      - go run ./cmd/migrate seed
+
+  reset:
+    desc: Destroy the data volume and rebuild the database from scratch
+    prompt: This deletes the local database volume. Continue?
+    cmds:
+      - docker compose down -v
+      - task: up
+      - task: migrate
+      - task: seed

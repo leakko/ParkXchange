@@ -1,0 +1,88 @@
+version: "3"
+
+silent: true
+
+dotenv: [".env"]
+
+includes:
+  db:
+    taskfile: ./Taskfile.db.yml
+  api:
+    taskfile: ./Taskfile.go.yml
+  mobile:
+    taskfile: ./Taskfile.mobile.yml
+
+vars:
+  GO_MODULES: ./services/api ./libs/go/geo
+
+tasks:
+  default:
+    desc: List every available task
+    cmds:
+      - task --list
+
+  doctor:
+    desc: Verify the local toolchain meets the minimum versions
+    cmds:
+      - bash tools/doctor.sh
+
+  setup:
+    desc: Bootstrap the repo (env file, go.work, node modules)
+    cmds:
+      - task: doctor
+      - task: env:init
+      - task: go:init
+      - pnpm install
+      - 'echo "Setup complete. Next step: task db:up"'
+
+  env:init:
+    desc: Create .env from .env.example if it does not exist yet
+    status:
+      - test -f .env
+    cmds:
+      - cp .env.example .env
+      - echo "Created .env from .env.example"
+
+  go:init:
+    desc: Create the local go.work overlay (gitignored, local-only)
+    status:
+      - test -f go.work
+    cmds:
+      - go work init {{.GO_MODULES}}
+      - echo "Created go.work"
+
+  go:sync:
+    desc: Re-sync the go.work overlay with the module requirements
+    deps: [go:init]
+    cmds:
+      - go work sync
+
+  test:
+    desc: Run every test suite in the repo
+    cmds:
+      - task: api:test
+      - pnpm turbo run test
+
+  lint:
+    desc: Lint every project in the repo
+    cmds:
+      - task: api:lint
+      - pnpm turbo run lint
+
+  typecheck:
+    desc: Typecheck every TypeScript project
+    cmds:
+      - pnpm turbo run typecheck
+
+  fmt:
+    desc: Format all sources
+    cmds:
+      - task: api:fmt
+      - pnpm prettier --write .
+
+  clean:
+    desc: Remove build artefacts and caches
+    cmds:
+      - rm -rf .task .turbo
+      - rm -rf services/api/bin
+      - echo "Cleaned build artefacts (node_modules and volumes untouched)"

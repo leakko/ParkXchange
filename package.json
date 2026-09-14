@@ -1,0 +1,24 @@
+{
+  "name": "parkxchange",
+  "version": "0.0.0",
+  "private": true,
+  "description": "P2P real-time street parking marketplace",
+  "packageManager": "pnpm@11.1.2",
+  "engines": {
+    "node": ">=22.13.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "catalog:",
+    "turbo": "2.10.12",
+    "typescript": "catalog:"
+  }
+}
