@@ -427,9 +427,28 @@ handshake is not portable in React Native.
 ## 6. Security posture
 
 - Passwords are hashed with **argon2id**, never with a general-purpose hash.
-- Access tokens are short-lived JWTs; refresh tokens are opaque, stored
-  server-side, rotated on use, and revocable. Rotation is what makes a stolen
-  refresh token detectable.
+  The parameters travel with the digest in PHC format, so the cost can be
+  raised later without invalidating existing hashes.
+- **Refresh tokens are hashed with SHA-256, not argon2id.** Argon2 exists to
+  make guessing a low-entropy human password expensive; a refresh token is 256
+  bits of cryptographic randomness, so there is nothing to guess. A slow hash
+  here would only make every refresh cost 64 MiB, and per-token salting would
+  make lookup by hash impossible.
+- Access tokens are short-lived HS256 JWTs. The parser **pins the algorithm**,
+  which is what closes the `alg: none` family of attacks: without pinning, the
+  token itself gets to choose how it is verified.
+- Access tokens are deliberately not revocable, which is why they are short:
+  their lifetime is the window during which a stolen one is useful. Session
+  control lives in the refresh token, which is stored, rotated and revocable.
+- **Refresh token reuse revokes the whole family.** A legitimate client uses
+  each refresh token exactly once. If one is presented twice, either the
+  attacker or the victim is replaying it and there is no way to tell which, so
+  every live token for that user is revoked and both are forced to sign in
+  again.
+- **Login is constant-work.** An unknown address is still verified against a
+  dummy hash computed at startup. Skipping the hash would make those responses
+  measurably faster and turn login into an account-enumeration oracle.
+  Registration cannot hide that an address is taken, and does not try to.
 - All input is validated at the HTTP boundary: bounding boxes (§3.9), price
   ceilings, availability windows, and identifier ownership.
 - Rate limiting is applied per client on write and authentication endpoints.

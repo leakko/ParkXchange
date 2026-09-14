@@ -12,18 +12,18 @@ tracks only status.
 
 ## Current state
 
-- **Phase in progress:** Phase 4 — Authentication
+- **Phase in progress:** Phase 5 — Spots over HTTP
 - **Last updated:** 2026-09-14
-- **Phases complete:** 3 of 12
+- **Phases complete:** 4 of 12
 - **Blockers:** none open (4 environment blockers found and resolved, see below)
 
 ---
 
 ## Next immediate step
 
-Implement authentication: JWT access tokens, rotating refresh tokens stored
-in `refresh_tokens`, the register/login/refresh handlers and the session
-middleware. The argon2id hasher already exists in `internal/auth`.
+Implement the spots domain over HTTP: `libs/go/geo` for bounding box parsing,
+validation and coordinate fuzzing, then `GET /v1/spots?bbox` returning a GeoJSON
+FeatureCollection, plus `POST /v1/spots` and `DELETE /v1/spots/{id}`.
 
 ---
 
@@ -100,11 +100,23 @@ observed to pass. "It should work" is not a completion criterion.
 ### Phase 4 — Authentication
 
 - [x] argon2id password hashing (landed early in Phase 2)
-- [ ] Short-lived access JWTs
-- [ ] Rotating refresh tokens persisted and revocable
-- [ ] Session middleware
-- [ ] **Demo:** full register/login/refresh flow over curl, plus tests for
-      expired and revoked tokens
+- [x] Short-lived HS256 access tokens with the algorithm pinned at parse time
+- [x] Rotating refresh tokens, stored as SHA-256 hashes, revocable, with reuse
+      detection that revokes the entire token family
+- [x] Session middleware distinguishing an expired token from an invalid one
+- [x] `register`, `login`, `refresh`, `logout` and `GET /v1/me`
+- [x] Constant-work login against a startup dummy hash, so response timing does
+      not reveal whether an account exists
+- [x] `task auth:secret` to generate a signing key
+- [x] **Demo passed:** the full curl flow works. Register returns 201 with a
+      token pair; `GET /v1/me` with the token returns the profile and without
+      it returns the `unauthorized` envelope; login succeeds with the email in
+      a different case and fails with the same generic message for a wrong
+      password as for an unknown account; refresh returns a different refresh
+      token; replaying the consumed token returns 401 `token_reused` and kills
+      the live token too. 24 auth-related tests green, including alg=none
+      rejection, a token signed with another key, and expiry reported as
+      `token_expired`.
 
 ### Phase 5 — Spots over HTTP
 
@@ -287,6 +299,32 @@ does not relitigate it.
     guards against accidental hammering and scraping; identity-based limits
     arrive with authentication.
 
+### 2026-09-14 — Phase 4
+
+25. **Refresh tokens are hashed with SHA-256, not argon2id.** They are 256 bits
+    of randomness, so there is nothing to slow an attacker down over. Argon2
+    would cost 64 MiB per refresh and, because each hash is salted separately,
+    would make lookup-by-hash impossible.
+26. **Refresh token reuse revokes the whole family, not just the replayed
+    token.** When a token is presented twice we cannot tell whether the
+    attacker or the victim replayed it, so both are signed out.
+27. **`FOR UPDATE` on the token row during rotation.** Two concurrent refreshes
+    with the same token must not both succeed; the lock makes one of them
+    observe the revoked row and be correctly reported as a reuse.
+28. **The JWT parser pins HS256.** Without `WithValidMethods`, a token can
+    nominate `alg: none` or trick the verifier into using a public key as an
+    HMAC secret. A test asserts an `alg: none` token is rejected.
+29. **Login always performs a password verification.** An unknown address is
+    checked against a dummy hash computed once at startup. Computing it per
+    request instead would hand an attacker a free CPU-exhaustion knob.
+30. **Registration admits that an address is taken; login does not.**
+    Registration cannot avoid it without silently discarding the request, and a
+    user who mistypes deserves to be told. Login, where enumeration actually
+    matters, returns one generic message.
+31. **`JWT_SECRET` length is enforced only outside development.** A fresh clone
+    has to work from `.env.example`, but a real deployment must not ship a toy
+    key.
+
 ---
 
 ## Blockers
@@ -416,3 +454,15 @@ space.
 - Graceful shutdown is implemented but has not been exercised end to end on
   Windows, where sending a real SIGTERM from Git Bash is awkward. Phase 12
   verifies it under `docker compose`.
+
+### 2026-09-14 — Phase 4
+
+- Added `internal/auth/tokens.go` (HS256 access tokens, opaque refresh tokens),
+  `internal/store/users.go` (accounts and transactional refresh rotation with
+  reuse detection), `internal/api/auth.go` and the session middleware.
+- Extended `internal/config` with `JWT_SECRET`, `ACCESS_TOKEN_TTL` and
+  `REFRESH_TOKEN_TTL`, and added `task auth:secret`.
+- Phase 4 demo executed and passing. Closed Phase 4.
+
+**Gotcha worth remembering:** Windows Python does not understand Git Bash's
+`/tmp/...` paths. Pipe file contents in on stdin instead of passing the path.

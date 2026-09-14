@@ -51,6 +51,19 @@ type Config struct {
 	// RateLimitRPS and RateLimitBurst configure the per-client token bucket.
 	RateLimitRPS   float64
 	RateLimitBurst int
+
+	// JWTSecret signs access tokens. It is raw bytes rather than a string
+	// because that is what the HMAC takes, and keeping it typed as a secret
+	// makes it harder to log by accident.
+	JWTSecret []byte
+
+	// AccessTokenTTL is how long an access token stays valid. Access tokens
+	// cannot be revoked, so this is the window a stolen one is useful for.
+	AccessTokenTTL time.Duration
+
+	// RefreshTokenTTL is how long a refresh token stays valid. These are
+	// stored, rotated and revocable, so the lifetime can be long.
+	RefreshTokenTTL time.Duration
 }
 
 // Defaults applied when a variable is absent.
@@ -64,6 +77,12 @@ const (
 	defaultShutdownTimeout   = 15 * time.Second
 	defaultRateLimitRPS      = 20
 	defaultRateLimitBurst    = 40
+	defaultAccessTokenTTL    = 15 * time.Minute
+	defaultRefreshTokenTTL   = 30 * 24 * time.Hour
+
+	// minJWTSecretBytes matches the HS256 output size: a shorter key adds no
+	// security over one that long.
+	minJWTSecretBytes = 32
 )
 
 var validEnvs = []string{"development", "staging", "production"}
@@ -114,6 +133,21 @@ func Load() (Config, error) {
 	cfg.RateLimitBurst = intVar("RATE_LIMIT_BURST", defaultRateLimitBurst, &problems)
 	if cfg.RateLimitBurst < 1 {
 		problems = append(problems, "RATE_LIMIT_BURST must be at least 1")
+	}
+
+	cfg.AccessTokenTTL = durationVar("ACCESS_TOKEN_TTL", defaultAccessTokenTTL, &problems)
+	cfg.RefreshTokenTTL = durationVar("REFRESH_TOKEN_TTL", defaultRefreshTokenTTL, &problems)
+
+	cfg.JWTSecret = []byte(os.Getenv("JWT_SECRET"))
+	switch {
+	case len(cfg.JWTSecret) == 0:
+		problems = append(problems, "JWT_SECRET is required")
+	case len(cfg.JWTSecret) < minJWTSecretBytes && cfg.Env != defaultEnv:
+		// Enforced only outside development so a fresh clone works from
+		// .env.example, while a real deployment cannot ship a toy key.
+		problems = append(problems, fmt.Sprintf(
+			"JWT_SECRET must be at least %d bytes outside development "+
+				"(generate one with 'task auth:secret')", minJWTSecretBytes))
 	}
 
 	// In development an empty allowlist means "anything", which is convenient

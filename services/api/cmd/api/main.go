@@ -47,7 +47,10 @@ func run() error {
 	}
 	defer db.Close()
 
-	apiHandler := api.New(cfg, log, db)
+	apiHandler, err := api.New(cfg, log, db)
+	if err != nil {
+		return err
+	}
 	defer apiHandler.Close()
 
 	server := &http.Server{

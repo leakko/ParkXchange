@@ -57,6 +57,11 @@ tasks:
     cmds:
       - go work sync
 
+  auth:secret:
+    desc: Print a fresh 32-byte secret suitable for JWT_SECRET
+    cmds:
+      - node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+
   test:
     desc: Run every test suite in the repo
     cmds:

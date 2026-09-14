@@ -2,9 +2,11 @@
 package api
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 
+	"github.com/marco/parkxchange/services/api/internal/auth"
 	"github.com/marco/parkxchange/services/api/internal/config"
 	"github.com/marco/parkxchange/services/api/internal/store"
 	"github.com/marco/parkxchange/services/api/internal/web"
@@ -18,21 +20,42 @@ const (
 
 // API holds the dependencies every handler needs.
 type API struct {
-	cfg   config.Config
-	log   *slog.Logger
-	db    *store.DB
-	limit *web.RateLimiter
+	cfg    config.Config
+	log    *slog.Logger
+	db     *store.DB
+	limit  *web.RateLimiter
+	tokens *auth.TokenIssuer
+
+	// dummyHash is verified against when a login names an account that does
+	// not exist, so the response takes the same time either way. Without it
+	// the endpoint tells an attacker which addresses are registered simply by
+	// answering faster.
+	dummyHash string
 }
 
 // New builds the API. Call Close when finished, to stop the rate limiter's
 // eviction goroutine.
-func New(cfg config.Config, log *slog.Logger, db *store.DB) *API {
-	return &API{
-		cfg:   cfg,
-		log:   log,
-		db:    db,
-		limit: web.NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst),
+func New(cfg config.Config, log *slog.Logger, db *store.DB) (*API, error) {
+	tokens, err := auth.NewTokenIssuer(cfg.JWTSecret, cfg.AccessTokenTTL)
+	if err != nil {
+		return nil, err
 	}
+
+	// Computed once at startup: the cost has to match a real verification,
+	// but paying it per failed login would be a free denial-of-service knob.
+	dummyHash, err := auth.HashPassword("there is no account with this address")
+	if err != nil {
+		return nil, fmt.Errorf("api: build timing-equalisation hash: %w", err)
+	}
+
+	return &API{
+		cfg:       cfg,
+		log:       log,
+		db:        db,
+		limit:     web.NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst),
+		tokens:    tokens,
+		dummyHash: dummyHash,
+	}, nil
 }
 
 // Close releases resources owned by the API.
@@ -53,9 +76,14 @@ func (a *API) Handler() http.Handler {
 
 	mux.Handle("GET /v1/version", web.Handler(a.handleVersion))
 
+	mux.Handle("POST /v1/auth/register", web.Handler(a.handleRegister))
+	mux.Handle("POST /v1/auth/login", web.Handler(a.handleLogin))
+	mux.Handle("POST /v1/auth/refresh", web.Handler(a.handleRefresh))
+	mux.Handle("POST /v1/auth/logout", web.Handler(a.handleLogout))
+
+	mux.Handle("GET /v1/me", a.authenticated(a.handleMe))
+
 	// Order matters and reads top to bottom as the request travels inwards.
-	// Recover sits inside Logger so a panic still produces an access log line,
-	// and inside RequestID so the panic log carries the correlation id.
 	return web.Chain(mux,
 		web.RequestID,
 		web.Logger(a.log),
@@ -70,4 +98,9 @@ func (a *API) Handler() http.Handler {
 		// the traffic spike the limiter is there to survive.
 		web.Skip(a.limit.Middleware, pathHealthz, pathReadyz),
 	)
+}
+
+// authenticated adapts a handler that requires a signed-in caller.
+func (a *API) authenticated(h web.Handler) http.Handler {
+	return a.requireAuth(h)
 }

@@ -28,13 +28,31 @@ func testConfig() config.Config {
 		CORSAllowedOrigins: []string{"*"},
 		RateLimitRPS:       1000,
 		RateLimitBurst:     1000,
+		JWTSecret:          []byte("test-secret-that-is-long-enough-for-hs256"),
+		AccessTokenTTL:     15 * time.Minute,
+		RefreshTokenTTL:    30 * 24 * time.Hour,
 	}
+}
+
+// newServerWithConfig starts the API with a caller-supplied configuration, for
+// tests that need to vary a setting such as the token lifetime.
+func newServerWithConfig(t *testing.T, cfg config.Config) *httptest.Server {
+	t.Helper()
+
+	server, _ := newServerFrom(t, cfg)
+	return server
 }
 
 // newServer starts the full middleware chain in front of a real database, so
 // these tests exercise what production actually runs rather than a handler in
 // isolation.
 func newServer(t *testing.T) (*httptest.Server, *store.DB) {
+	t.Helper()
+
+	return newServerFrom(t, testConfig())
+}
+
+func newServerFrom(t *testing.T, cfg config.Config) (*httptest.Server, *store.DB) {
 	t.Helper()
 
 	url := os.Getenv("DATABASE_URL")
@@ -52,7 +70,10 @@ func newServer(t *testing.T) (*httptest.Server, *store.DB) {
 	t.Cleanup(db.Close)
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	a := api.New(testConfig(), log, db)
+	a, err := api.New(cfg, log, db)
+	if err != nil {
+		t.Fatalf("build api: %v", err)
+	}
 	t.Cleanup(a.Close)
 
 	server := httptest.NewServer(a.Handler())
