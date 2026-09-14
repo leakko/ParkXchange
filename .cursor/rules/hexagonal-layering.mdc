@@ -11,13 +11,13 @@ this and fails the build otherwise; its failure messages name the fix. Never
 weaken a rule to make a change fit.
 
 ```
-domain  <-  accounts, spots, reservations  <-  postgres, api, web, auth  <-  cmd/api wires them
+domain  <-  accounts, spots, reservations  <-  postgres, api, realtime, web, auth  <-  cmd/api wires them
 ```
 
 - `internal/domain` — entities and rules. Imports `libs/go/geo` and nothing else.
 - `internal/accounts`, `internal/spots`, `internal/reservations` — use cases. Import only the domain.
   They declare the `Store` interfaces they need (ports).
-- `internal/postgres`, `internal/api`, `internal/web`, `internal/auth` —
+- `internal/postgres`, `internal/api`, `internal/realtime`, `internal/web`, `internal/auth` —
   adapters. They implement ports; they never import each other.
 - `cmd/api` — the only place that connects an interface to an implementation.
 

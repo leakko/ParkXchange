@@ -41,10 +41,21 @@ const (
 // means sign in again.
 var ErrTokenInvalid = errors.New("auth: token is invalid")
 
+// SocketTicketTTL is how long a WebSocket ticket stays valid. It exists so
+// the credential that travels in a query string is useless a few seconds
+// later if a log or a Referer header captures it.
+const SocketTicketTTL = 30 * time.Second
+
+// socketUse is the JWT "use" claim that distinguishes a handshake ticket
+// from an access token. Without it, a ticket pasted into Authorization would
+// look like a session.
+const socketUse = "ws"
+
 // TokenIssuer mints and verifies the credentials that represent a session.
 type TokenIssuer struct {
 	secret    []byte
 	accessTTL time.Duration
+	socketTTL time.Duration
 }
 
 // NewTokenIssuer validates the signing key and returns an issuer.
@@ -55,7 +66,11 @@ func NewTokenIssuer(secret []byte, accessTTL time.Duration) (*TokenIssuer, error
 	if accessTTL <= 0 {
 		return nil, errors.New("auth: access token TTL must be positive")
 	}
-	return &TokenIssuer{secret: secret, accessTTL: accessTTL}, nil
+	return &TokenIssuer{
+		secret:    secret,
+		accessTTL: accessTTL,
+		socketTTL: SocketTicketTTL,
+	}, nil
 }
 
 // IssueAccess returns a signed access token and the instant it expires.
@@ -110,8 +125,71 @@ func (ti *TokenIssuer) ParseAccess(raw string) (domain.Claims, error) {
 		return domain.Claims{}, ErrTokenInvalid
 	}
 
+	if use, _ := mapClaims["use"].(string); use != "" {
+		return domain.Claims{}, ErrTokenInvalid
+	}
+
 	email, _ := mapClaims["email"].(string)
 
+	return domain.Claims{UserID: subject, Email: email}, nil
+}
+
+// IssueSocketTicket returns a short-lived credential that upgrades a WebSocket.
+//
+// React Native cannot set headers on the handshake, so the ticket travels as
+// a query parameter. That is why the lifetime is seconds, not minutes.
+func (ti *TokenIssuer) IssueSocketTicket(userID, email string) (string, time.Time, error) {
+	now := time.Now()
+	expiresAt := now.Add(ti.socketTTL)
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"iss":   Issuer,
+		"sub":   userID,
+		"email": email,
+		"use":   socketUse,
+		"iat":   now.Unix(),
+		"nbf":   now.Unix(),
+		"exp":   expiresAt.Unix(),
+	})
+
+	signed, err := token.SignedString(ti.secret)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("auth: sign socket ticket: %w", err)
+	}
+	return signed, expiresAt, nil
+}
+
+// ParseSocketTicket verifies a handshake ticket.
+func (ti *TokenIssuer) ParseSocketTicket(raw string) (domain.Claims, error) {
+	parsed, err := jwt.Parse(
+		raw,
+		func(*jwt.Token) (any, error) { return ti.secret, nil },
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithIssuer(Issuer),
+		jwt.WithExpirationRequired(),
+	)
+	if err != nil {
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			return domain.Claims{}, domain.ErrTokenExpired
+		}
+		return domain.Claims{}, fmt.Errorf("%w: %v", ErrTokenInvalid, err)
+	}
+
+	mapClaims, ok := parsed.Claims.(jwt.MapClaims)
+	if !ok {
+		return domain.Claims{}, ErrTokenInvalid
+	}
+
+	if use, _ := mapClaims["use"].(string); use != socketUse {
+		return domain.Claims{}, ErrTokenInvalid
+	}
+
+	subject, err := mapClaims.GetSubject()
+	if err != nil || subject == "" {
+		return domain.Claims{}, ErrTokenInvalid
+	}
+
+	email, _ := mapClaims["email"].(string)
 	return domain.Claims{UserID: subject, Email: email}, nil
 }
 

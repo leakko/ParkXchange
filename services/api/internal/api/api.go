@@ -13,6 +13,7 @@ import (
 
 	"github.com/marco/parkxchange/services/api/internal/accounts"
 	"github.com/marco/parkxchange/services/api/internal/config"
+	"github.com/marco/parkxchange/services/api/internal/realtime"
 	"github.com/marco/parkxchange/services/api/internal/reservations"
 	"github.com/marco/parkxchange/services/api/internal/spots"
 	"github.com/marco/parkxchange/services/api/internal/web"
@@ -42,6 +43,7 @@ type API struct {
 
 	health Pinger
 	limit  *web.RateLimiter
+	hub    *realtime.Hub
 }
 
 // Deps is what New requires. A struct rather than a growing parameter list, so
@@ -53,11 +55,17 @@ type Deps struct {
 	Spots        *spots.Service
 	Reservations *reservations.Service
 	Health       Pinger
+	Hub          *realtime.Hub
 }
 
 // New builds the API. Call Close when finished, to stop the rate limiter's
 // eviction goroutine.
 func New(deps Deps) (*API, error) {
+	hub := deps.Hub
+	if hub == nil {
+		hub = realtime.NewHub(realtime.DefaultSendBuffer)
+	}
+
 	return &API{
 		cfg:      deps.Config,
 		log:      deps.Logger,
@@ -66,6 +74,7 @@ func New(deps Deps) (*API, error) {
 		reserves: deps.Reservations,
 		health:   deps.Health,
 		limit:    web.NewRateLimiter(deps.Config.RateLimitRPS, deps.Config.RateLimitBurst),
+		hub:      hub,
 	}, nil
 }
 
@@ -110,6 +119,8 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("POST /v1/reservations/{id}/reconfirm", a.requireAuth(a.handleReconfirm))
 	mux.Handle("POST /v1/reservations/{id}/cancel", a.requireAuth(a.handleCancelReservation))
 	mux.Handle("POST /v1/reservations/{id}/complete", a.requireAuth(a.handleCompleteReservation))
+	mux.Handle("POST "+pathWSTickets, a.requireAuth(a.handleIssueTicket))
+	mux.HandleFunc("GET "+pathWS, a.handleWS)
 
 	// Order matters and reads top to bottom as the request travels inwards.
 	return web.Chain(mux,
@@ -123,7 +134,9 @@ func (a *API) Handler() http.Handler {
 		web.NormalizeErrors,
 
 		// Throttling a liveness probe would get the pod killed during exactly
-		// the traffic spike the limiter is there to survive.
-		web.Skip(a.limit.Middleware, pathHealthz, pathReadyz),
+		// the traffic spike the limiter is there to survive. The WebSocket
+		// upgrade is one request that then lives for minutes; counting it
+		// against the REST budget would 429 a reconnect storm.
+		web.Skip(a.limit.Middleware, pathHealthz, pathReadyz, pathWS),
 	)
 }

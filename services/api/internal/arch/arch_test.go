@@ -36,6 +36,7 @@ const (
 	pkgWeb          = "internal/web"
 	pkgPostgres     = "internal/postgres"
 	pkgAPI          = "internal/api"
+	pkgRealtime     = "internal/realtime"
 	pkgConfig       = "internal/config"
 	pkgLogging      = "internal/logging"
 	pkgSeed         = "internal/seed"
@@ -126,7 +127,14 @@ var rules = map[string]rule{
 		why: "api is the HTTP adapter: it decodes requests, calls use cases " +
 			"and serialises results, and must reach the database only " +
 			"through a port",
-		packages: []string{pkgDomain, pkgAccounts, pkgSpots, pkgReservations, pkgWeb, pkgConfig, geoModule},
+		packages:   []string{pkgDomain, pkgAccounts, pkgSpots, pkgReservations, pkgWeb, pkgConfig, pkgRealtime, geoModule},
+		thirdParty: []string{"github.com/coder/websocket"},
+	},
+
+	pkgRealtime: {
+		why: "realtime is the fan-out adapter: it matches events to viewports " +
+			"and must not talk to the database or to HTTP",
+		packages: []string{pkgDomain, geoModule},
 	},
 
 	pkgConfig: {
@@ -234,10 +242,16 @@ var forbidden = []struct {
 			"case, which reaches the database through its port",
 	},
 	{
-		importer: pkgAPI,
+		importer: pkgRealtime,
 		imported: pkgPostgres,
-		because: "the HTTP adapter must not name the database adapter. Only " +
-			"cmd/api may connect the two",
+		because: "the hub must not talk to the database. Listen in " +
+			"internal/postgres and Publish into the hub from cmd/api",
+	},
+	{
+		importer: pkgRealtime,
+		imported: "net/http",
+		because: "the hub is driven by events, not by requests. The HTTP " +
+			"upgrade lives in internal/api",
 	},
 	{
 		importer: pkgWeb,

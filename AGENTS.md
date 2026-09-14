@@ -18,7 +18,7 @@ what to do instead. Do not weaken a rule to make your change fit. If a package
 genuinely needs a new dependency, say so in your summary and explain why.
 
 ```
-domain  <-  accounts, spots, reservations (use cases)  <-  postgres, api, web, auth (adapters)
+domain  <-  accounts, spots, reservations (use cases)  <-  postgres, api, realtime, web, auth (adapters)
                                                            ^
                                                     cmd/api wires them
 ```
@@ -27,7 +27,7 @@ domain  <-  accounts, spots, reservations (use cases)  <-  postgres, api, web, a
 | --- | --- | --- | --- |
 | Domain | `internal/domain` | `libs/go/geo` only | pgx, `net/http`, anything else |
 | Use cases | `internal/accounts`, `internal/spots`, `internal/reservations` | `internal/domain` | any adapter, `net/http` |
-| Adapters | `internal/postgres`, `internal/api`, `internal/web`, `internal/auth` | the domain and the ports they implement | each other |
+| Adapters | `internal/postgres`, `internal/api`, `internal/realtime`, `internal/web`, `internal/auth` | the domain and the ports they implement | each other |
 | Wiring | `cmd/api` | anything | — |
 
 ## The five rules that matter

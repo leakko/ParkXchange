@@ -19,6 +19,7 @@ import (
 	"github.com/marco/parkxchange/services/api/internal/config"
 	"github.com/marco/parkxchange/services/api/internal/logging"
 	"github.com/marco/parkxchange/services/api/internal/postgres"
+	"github.com/marco/parkxchange/services/api/internal/realtime"
 	"github.com/marco/parkxchange/services/api/internal/reservations"
 	"github.com/marco/parkxchange/services/api/internal/spots"
 )
@@ -68,6 +69,17 @@ func run() error {
 	}
 
 	reservationsService := reservations.New(db)
+	hub := realtime.NewHub(realtime.DefaultSendBuffer)
+
+	events, err := db.ListenSpotEvents(ctx)
+	if err != nil {
+		return fmt.Errorf("listen for spot events: %w", err)
+	}
+	go func() {
+		for ev := range events {
+			hub.Publish(ev)
+		}
+	}()
 
 	apiHandler, err := api.New(api.Deps{
 		Config:       cfg,
@@ -76,6 +88,7 @@ func run() error {
 		Spots:        spots.New(db),
 		Reservations: reservationsService,
 		Health:       db,
+		Hub:          hub,
 	})
 	if err != nil {
 		return err

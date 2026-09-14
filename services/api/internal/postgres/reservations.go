@@ -73,11 +73,12 @@ func (db *DB) Claim(ctx context.Context, spotID, driverID string) (domain.Reserv
 	var spot domain.Spot
 	var status string
 	err = tx.QueryRow(ctx, `
-		SELECT owner_id, status, price_cents, available_from, expires_at
+		SELECT owner_id, status, price_cents, available_from, expires_at,
+		       ST_X(geom), ST_Y(geom)
 		  FROM spots
 		 WHERE id = $1
 		   FOR UPDATE
-	`, spotID).Scan(&spot.OwnerID, &status, &spot.PriceCents, &spot.AvailableFrom, &spot.ExpiresAt)
+	`, spotID).Scan(&spot.OwnerID, &status, &spot.PriceCents, &spot.AvailableFrom, &spot.ExpiresAt, &spot.Lon, &spot.Lat)
 	if err != nil {
 		return domain.Reservation{}, translate(err, "lock spot")
 	}
@@ -148,6 +149,19 @@ func (db *DB) Claim(ctx context.Context, spotID, driverID string) (domain.Reserv
 	`, id))
 	if err != nil {
 		return domain.Reservation{}, err
+	}
+
+	if err := notifySpot(ctx, tx, domain.SpotEvent{
+		Type:       domain.EventSpotRemoved,
+		SpotID:     spotID,
+		OwnerID:    spot.OwnerID,
+		Lon:        spot.Lon,
+		Lat:        spot.Lat,
+		Status:     domain.SpotReserved,
+		PriceCents: spot.PriceCents,
+		HolderID:   driverID,
+	}); err != nil {
+		return domain.Reservation{}, translate(err, "notify spot claimed")
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -229,15 +243,17 @@ func (db *DB) CancelByDriver(ctx context.Context, id, driverID string) error {
 		startsAt   time.Time
 		spotStatus string
 		spotExpiry time.Time
+		lon        float64
+		lat        float64
 	)
 	err = tx.QueryRow(ctx, `
 		SELECT r.spot_id, s.owner_id, r.status, r.price_cents, r.starts_at,
-		       s.status, s.expires_at
+		       s.status, s.expires_at, ST_X(s.geom), ST_Y(s.geom)
 		  FROM reservations r
 		  JOIN spots s ON s.id = r.spot_id
 		 WHERE r.id = $1 AND r.driver_id = $2
 		   FOR UPDATE OF r, s
-	`, id, driverID).Scan(&spotID, &ownerID, &status, &price, &startsAt, &spotStatus, &spotExpiry)
+	`, id, driverID).Scan(&spotID, &ownerID, &status, &price, &startsAt, &spotStatus, &spotExpiry, &lon, &lat)
 	if err != nil {
 		return translate(err, "lock reservation for cancel")
 	}
@@ -267,6 +283,22 @@ func (db *DB) CancelByDriver(ctx context.Context, id, driverID string) error {
 		}
 		if _, err := tx.Exec(ctx, `UPDATE spots SET status = $2 WHERE id = $1`, spotID, string(next)); err != nil {
 			return translate(err, "release spot after cancel")
+		}
+		eventType := domain.EventSpotAdded
+		spotNext := next
+		if next != domain.SpotAvailable {
+			eventType = domain.EventSpotRemoved
+		}
+		if err := notifySpot(ctx, tx, domain.SpotEvent{
+			Type:       eventType,
+			SpotID:     spotID,
+			OwnerID:    ownerID,
+			Lon:        lon,
+			Lat:        lat,
+			Status:     spotNext,
+			PriceCents: price,
+		}); err != nil {
+			return translate(err, "notify spot after cancel")
 		}
 	}
 
@@ -304,15 +336,18 @@ func (db *DB) Complete(ctx context.Context, id, actorID string) error {
 		ownerID string
 		status  string
 		price   int
+		lon     float64
+		lat     float64
 	)
 	err = tx.QueryRow(ctx, `
-		SELECT r.spot_id, s.owner_id, r.status, r.price_cents
+		SELECT r.spot_id, s.owner_id, r.status, r.price_cents,
+		       ST_X(s.geom), ST_Y(s.geom)
 		  FROM reservations r
 		  JOIN spots s ON s.id = r.spot_id
 		 WHERE r.id = $1
 		   AND (r.driver_id = $2 OR s.owner_id = $2)
 		   FOR UPDATE OF r, s
-	`, id, actorID).Scan(&spotID, &ownerID, &status, &price)
+	`, id, actorID).Scan(&spotID, &ownerID, &status, &price, &lon, &lat)
 	if err != nil {
 		return translate(err, "lock reservation for complete")
 	}
@@ -344,6 +379,18 @@ func (db *DB) Complete(ctx context.Context, id, actorID string) error {
 		}
 	}
 
+	if err := notifySpot(ctx, tx, domain.SpotEvent{
+		Type:       domain.EventSpotRemoved,
+		SpotID:     spotID,
+		OwnerID:    ownerID,
+		Lon:        lon,
+		Lat:        lat,
+		Status:     domain.SpotCompleted,
+		PriceCents: price,
+	}); err != nil {
+		return translate(err, "notify spot completed")
+	}
+
 	return translate(tx.Commit(ctx), "commit complete")
 }
 
@@ -357,16 +404,39 @@ func (db *DB) Sweep(ctx context.Context) (reservations.SweepResult, error) {
 
 	var result reservations.SweepResult
 
-	tag, err := tx.Exec(ctx, `
+	expiredRows, err := tx.Query(ctx, `
 		UPDATE spots
 		   SET status = 'expired'
 		 WHERE status = 'available'
 		   AND expires_at <= now()
+		 RETURNING id, owner_id, ST_X(geom), ST_Y(geom), price_cents
 	`)
 	if err != nil {
 		return reservations.SweepResult{}, translate(err, "expire spots")
 	}
-	result.ExpiredSpots = int(tag.RowsAffected())
+	var expiredSpots []domain.SpotEvent
+	for expiredRows.Next() {
+		var ev domain.SpotEvent
+		if err := expiredRows.Scan(&ev.SpotID, &ev.OwnerID, &ev.Lon, &ev.Lat, &ev.PriceCents); err != nil {
+			expiredRows.Close()
+			return reservations.SweepResult{}, translate(err, "scan expired spot")
+		}
+		ev.Type = domain.EventSpotRemoved
+		ev.Status = domain.SpotExpired
+		expiredSpots = append(expiredSpots, ev)
+	}
+	if err := expiredRows.Err(); err != nil {
+		expiredRows.Close()
+		return reservations.SweepResult{}, translate(err, "stream expired spots")
+	}
+	expiredRows.Close()
+
+	for _, ev := range expiredSpots {
+		if err := notifySpot(ctx, tx, ev); err != nil {
+			return reservations.SweepResult{}, translate(err, "notify expired spot")
+		}
+	}
+	result.ExpiredSpots = len(expiredSpots)
 
 	missed, err := expirePendingUnreconfirmed(ctx, tx)
 	if err != nil {

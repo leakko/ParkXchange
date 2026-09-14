@@ -151,13 +151,19 @@ func (db *DB) SpotsInBBox(ctx context.Context, boxes []geo.BBox, from, to time.T
 // every read path and the expiry sweeper already use removes the class of bug
 // entirely.
 func (db *DB) CreateSpot(ctx context.Context, draft domain.SpotDraft) (domain.Spot, error) {
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return domain.Spot{}, translate(err, "begin insert spot")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
 	var id string
 
 	// ST_MakePoint takes longitude first. Getting this backwards is the
 	// classic PostGIS bug: it silently stores a point in the wrong hemisphere
 	// rather than failing, and only the CHECK on latitude range catches the
 	// most extreme cases.
-	err := db.Pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO spots (
 			owner_id, geom, address_hint, size_class, status,
 			price_cents, notes, available_from, expires_at
@@ -176,6 +182,22 @@ func (db *DB) CreateSpot(ctx context.Context, draft domain.SpotDraft) (domain.Sp
 	).Scan(&id)
 	if err != nil {
 		return domain.Spot{}, translate(err, "insert spot")
+	}
+
+	if err := notifySpot(ctx, tx, domain.SpotEvent{
+		Type:       domain.EventSpotAdded,
+		SpotID:     id,
+		OwnerID:    draft.OwnerID,
+		Lon:        draft.Lon,
+		Lat:        draft.Lat,
+		Status:     domain.SpotAvailable,
+		PriceCents: draft.PriceCents,
+	}); err != nil {
+		return domain.Spot{}, translate(err, "notify spot added")
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Spot{}, translate(err, "commit insert spot")
 	}
 
 	// Read back through the same join every other path uses, so the created
@@ -235,12 +257,17 @@ func (db *DB) CancelSpot(ctx context.Context, spotID, ownerID string) error {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	var status string
+	var (
+		status string
+		lon    float64
+		lat    float64
+		price  int
+	)
 	err = tx.QueryRow(ctx, `
-		SELECT status FROM spots
+		SELECT status, ST_X(geom), ST_Y(geom), price_cents FROM spots
 		 WHERE id = $1 AND owner_id = $2
 		   FOR UPDATE
-	`, spotID, ownerID).Scan(&status)
+	`, spotID, ownerID).Scan(&status, &lon, &lat, &price)
 	if err != nil {
 		return translate(err, "lock spot for withdraw")
 	}
@@ -296,6 +323,18 @@ func (db *DB) CancelSpot(ctx context.Context, spotID, ownerID string) error {
 		UPDATE spots SET status = 'cancelled' WHERE id = $1
 	`, spotID); err != nil {
 		return translate(err, "cancel spot")
+	}
+
+	if err := notifySpot(ctx, tx, domain.SpotEvent{
+		Type:       domain.EventSpotRemoved,
+		SpotID:     spotID,
+		OwnerID:    ownerID,
+		Lon:        lon,
+		Lat:        lat,
+		Status:     domain.SpotCancelled,
+		PriceCents: price,
+	}); err != nil {
+		return translate(err, "notify spot removed")
 	}
 
 	return translate(tx.Commit(ctx), "commit withdraw")

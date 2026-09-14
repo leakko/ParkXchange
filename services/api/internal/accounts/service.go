@@ -236,6 +236,30 @@ func (s *Service) Profile(ctx context.Context, userID string) (domain.User, erro
 	return user, nil
 }
 
+// IssueSocketTicket mints the short-lived credential a client needs to
+// upgrade a WebSocket. The HTTP handler still extracts the query parameter;
+// this is the decision about whether the caller may have one.
+func (s *Service) IssueSocketTicket(viewer domain.Claims) (string, time.Time, error) {
+	if !viewer.Authenticated() {
+		return "", time.Time{}, domain.Unauthenticated("unauthorized", "an access token is required")
+	}
+	return s.tokens.IssueSocketTicket(viewer.UserID, viewer.Email)
+}
+
+// AuthenticateSocket verifies a handshake ticket.
+func (s *Service) AuthenticateSocket(rawToken string) (domain.Claims, error) {
+	claims, err := s.tokens.ParseSocketTicket(rawToken)
+	if err != nil {
+		if errors.Is(err, domain.ErrTokenExpired) {
+			return domain.Claims{}, domain.Unauthenticated(
+				"token_expired", "the socket ticket has expired, request another")
+		}
+		return domain.Claims{}, domain.Unauthenticated(
+			"unauthorized", "the socket ticket is not valid")
+	}
+	return claims, nil
+}
+
 // issue mints a token pair for a user and records the refresh token.
 func (s *Service) issue(ctx context.Context, user domain.User, userAgent string) (Session, error) {
 	accessToken, expiresAt, err := s.tokens.IssueAccess(user.ID, user.Email.String())

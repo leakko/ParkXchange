@@ -78,6 +78,7 @@ ParkXchange/
 │       │   ├── reservations/ # use cases + ports for claims, deposits, sweep
 │       │   ├── postgres/     # PostGIS adapter: the only SQL in the repo
 │       │   ├── api/          # HTTP adapter: handlers, routing, middleware
+│       │   ├── realtime/     # in-memory hub: viewport match, bounded send
 │       │   ├── web/          # HTTP plumbing: error envelope, status mapping
 │       │   ├── auth/         # crypto adapter: argon2id, JWT, refresh tokens
 │       │   └── arch/         # the test that enforces all of the above
@@ -136,7 +137,7 @@ Dependencies point inwards:
 | --- | --- | --- | --- |
 | Domain | `internal/domain` | `libs/go/geo` | `pgx`, `net/http`, adapters |
 | Use cases | `internal/accounts`, `internal/spots`, `internal/reservations` | `internal/domain` | any adapter, `net/http` |
-| Adapters | `internal/postgres`, `internal/api`, `internal/web`, `internal/auth` | the domain, and the ports they implement | each other |
+| Adapters | `internal/postgres`, `internal/api`, `internal/realtime`, `internal/web`, `internal/auth` | the domain, and the ports they implement | each other |
 | Composition root | `cmd/api` | everything | — |
 
 Four properties follow, and they are the reason for the arrangement:
@@ -570,6 +571,7 @@ POST   /v1/reservations/{id}/cancel
 POST   /v1/reservations/{id}/complete
 
 GET    /v1/ws                                             -> WebSocket upgrade
+POST   /v1/ws/tickets                                     -> short-lived handshake ticket
 GET    /v1/version
 GET    /healthz
 GET    /readyz
@@ -633,9 +635,11 @@ Client to server:
 Server to client: `snapshot`, `spot.added`, `spot.updated`, `spot.removed`,
 `reservation.updated`.
 
-The socket is authenticated with a short-lived ticket obtained from the REST API
-rather than an `Authorization` header, because setting headers on a WebSocket
-handshake is not portable in React Native.
+The socket is authenticated with a short-lived ticket obtained from
+`POST /v1/ws/tickets` rather than an `Authorization` header, because setting
+headers on a WebSocket handshake is not portable in React Native. The ticket is
+a JWT with `use=ws` and a 30-second lifetime, so a query-string leak is useless
+almost immediately, and it cannot be presented as an access token.
 
 ---
 

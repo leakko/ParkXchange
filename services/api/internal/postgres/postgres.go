@@ -17,6 +17,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -29,6 +30,9 @@ import (
 // DB wraps the connection pool.
 type DB struct {
 	Pool *pgxpool.Pool
+
+	mu         sync.Mutex
+	stopListen context.CancelFunc
 }
 
 // Pool sizing. The defaults pgx picks scale with the machine running the API,
@@ -89,8 +93,15 @@ func (db *DB) Ping(ctx context.Context) error {
 	return db.Pool.Ping(ctx)
 }
 
-// Close releases every connection.
+// Close releases every connection, including the dedicated LISTEN session.
 func (db *DB) Close() {
+	db.mu.Lock()
+	stop := db.stopListen
+	db.stopListen = nil
+	db.mu.Unlock()
+	if stop != nil {
+		stop()
+	}
 	db.Pool.Close()
 }
 

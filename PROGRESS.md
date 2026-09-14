@@ -21,22 +21,18 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** Phase 7 — Real time (not started)
+- **Phase in progress:** Phase 8 — Typed contract (not started)
 - **Last updated:** 2026-09-14
-- **Phases complete:** 6 of 12
+- **Phases complete:** 7 of 12
 - **Blockers:** none open (4 environment blockers found and resolved, see below)
 
 ---
 
 ## Next immediate step
 
-Phase 7: real-time. WebSocket hub on `coder/websocket`, viewport subscriptions,
-`LISTEN/NOTIFY` as the bus, ping/pong and bounded send buffers. The demo is a
-spot published over REST appearing on a subscribed socket, plus a load client
-with 1000 connections.
-
-The hub calls the same use cases as HTTP. Do not put business rules in the
-socket handler.
+Phase 8: typed contract. `packages/api-contract/openapi.yaml`, Go types via
+`oapi-codegen -generate types`, TypeScript via `openapi-typescript`. The demo
+is `task contract:check` failing when generated types drift from the spec.
 
 ---
 
@@ -175,14 +171,16 @@ decisions 39–48 and ARCHITECTURE.md §3.13.
       to the map. A claimed spot vanished from the viewport; a future spot was
       visible and claimable as `pending`. `task api:test` green.
 
-### Phase 7 — Real time
+### Phase 7 — Real time — **complete**
 
-- [ ] WebSocket endpoint on `coder/websocket`
-- [ ] Hub with per-connection viewport subscriptions
-- [ ] `LISTEN/NOTIFY` bridge
-- [ ] Ping/pong keepalive, bounded send buffers, slow-client eviction
-- [ ] **Demo:** publishing a spot over REST pushes it to a subscribed socket;
-      load client with 1000 connections reports fan-out latency and memory
+- [x] WebSocket endpoint on `coder/websocket`
+- [x] Hub with per-connection viewport subscriptions
+- [x] `LISTEN/NOTIFY` bridge
+- [x] Ping/pong keepalive, bounded send buffers, slow-client eviction
+- [x] **Demo executed:** publishing a spot over REST appeared on a subscribed
+      socket as `spot.added`. A viewport that did not contain the point received
+      nothing. 1000 connections received the same event in 14ms.
+      `task api:test` green.
 
 ### Phase 8 — Typed contract
 
@@ -480,6 +478,14 @@ does not relitigate it.
     `release`. A forfeit credits the owner and leaves the hold. An owner who
     withdraws a claimed spot releases the driver and is themselves debited the
     same amount.
+49. **The WebSocket handshake uses a 30-second ticket, not the access token.**
+    React Native cannot set headers on the upgrade, so the credential travels
+    in the query string. A JWT with `use=ws` keeps that leak window tiny and
+    stops a ticket being presented as a session.
+50. **Closing the pool must cancel LISTEN.** `WaitForNotification` does not
+    reliably unblock on context cancel on Windows, and tests call `db.Close()`
+    while the listener still holds a connection. `DB.Close` cancels the listen
+    context and closes that socket so the pool can drain.
 
 ---
 
@@ -674,4 +680,21 @@ space.
 
 **Gotcha worth remembering:** `ledger_entries.amount_cents` cannot be zero, so
 a free spot (price 0) must skip the hold rather than insert a zero-amount row.
+
+### 2026-09-14 — Phase 7
+
+- Added `internal/realtime`: an in-memory hub that fans events only to
+  connections whose viewport contains the point, with a bounded send buffer
+  that disconnects a slow client instead of growing an unbounded queue.
+- Spots mutations publish a routing payload with `pg_notify` in the same
+  transaction. Each replica listens and calls `Hub.Publish`.
+- `GET /v1/ws?ticket=` upgrades with `coder/websocket`. The ticket comes from
+  `POST /v1/ws/tickets` and is not an access token.
+- Phase 7 demo executed and passing: a REST publish appeared on a subscribed
+  socket; 1000 connections received it in 14ms. Closed Phase 7.
+
+**Gotcha worth remembering:** `WaitForNotification` may ignore a cancelled
+context until the socket is closed. `DB.Close` has to tear the listener down
+or pool shutdown hangs, which is what `TestHealthz` does on purpose.
+
 

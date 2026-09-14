@@ -79,6 +79,13 @@ type Tokens interface {
 	// HashRefreshToken derives the stored form of a token presented by a
 	// client, so it can be looked up.
 	HashRefreshToken(plaintext string) []byte
+
+	// IssueSocketTicket returns a short-lived credential for the WebSocket
+	// handshake. It is not an access token and cannot be used as one.
+	IssueSocketTicket(userID, email string) (ticket string, expiresAt time.Time, err error)
+
+	// ParseSocketTicket verifies a handshake ticket.
+	ParseSocketTicket(raw string) (domain.Claims, error)
 }
 
 // The conditions an implementation of Store must report with the plumbing
