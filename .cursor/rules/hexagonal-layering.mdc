@@ -1,0 +1,59 @@
+---
+description: Ports-and-adapters layering rules for the ParkXchange Go service
+globs: services/api/**/*.go
+alwaysApply: true
+---
+
+# Layering in the Go service
+
+Dependencies point inwards. `services/api/internal/arch/arch_test.go` enforces
+this and fails the build otherwise; its failure messages name the fix. Never
+weaken a rule to make a change fit.
+
+```
+domain  <-  accounts, spots  <-  postgres, api, web, auth  <-  cmd/api wires them
+```
+
+- `internal/domain` — entities and rules. Imports `libs/go/geo` and nothing else.
+- `internal/accounts`, `internal/spots` — use cases. Import only the domain.
+  They declare the `Store` interfaces they need (ports).
+- `internal/postgres`, `internal/api`, `internal/web`, `internal/auth` —
+  adapters. They implement ports; they never import each other.
+- `cmd/api` — the only place that connects an interface to an implementation.
+
+## Rules
+
+1. Business logic goes in a use case, never in a handler. A handler decodes,
+   calls the use case, serialises. The WebSocket hub and the expiry sweeper run
+   the same rules with no `*http.Request`.
+2. A new persistence need is a new method on the consumer's `Store` interface,
+   implemented in `internal/postgres`.
+3. Ports are shaped like use cases, not tables. No `Save`, no `FindAll`.
+4. Use cases return `domain.Invalid` / `NotFound` / `Conflict` / etc. Only
+   `internal/web` maps a `domain.Kind` to an HTTP status.
+5. Do not abstract PostGIS away. The spatial index, the conditional `UPDATE`
+   that claims a spot and the partial unique indexes are the guarantees; an
+   in-memory store cannot honour them and must not be written.
+
+```go
+// BAD: rule inside the HTTP adapter, database reached directly
+func (a *API) handleDelete(w http.ResponseWriter, r *http.Request) error {
+	spot, _ := a.db.SpotByID(r.Context(), r.PathValue("id"))
+	if spot.OwnerID != claimsFrom(r.Context()).UserID {
+		return web.Forbidden("not yours")
+	}
+	// ...
+}
+
+// GOOD: the adapter delegates; the rule and the error kind live in the use case
+func (a *API) handleDeleteSpot(w http.ResponseWriter, r *http.Request) error {
+	if err := a.spots.Withdraw(r.Context(), r.PathValue("id"), claimsFrom(r.Context())); err != nil {
+		return err
+	}
+	return web.NoContent(w)
+}
+```
+
+Tests: pure rules in `internal/domain`; use-case decisions in the service
+package with a fake store; anything the database guarantees (index usage,
+constraints, concurrency) as an integration test against real PostGIS.

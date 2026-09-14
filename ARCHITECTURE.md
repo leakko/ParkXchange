@@ -20,6 +20,10 @@ Every decision below is in service of one of those three.
 
 ---
 
+> **Before writing code in `services/api`, read §2.2.** The layering is
+> enforced by `services/api/internal/arch/arch_test.go`, which fails the build
+> when a dependency points the wrong way. `AGENTS.md` is the short version.
+
 ## 1. Stack
 
 | Concern | Choice | Version pinned at bootstrap |
@@ -65,9 +69,17 @@ ParkXchange/
 ├── PROGRESS.md               # cross-session state; see §10
 ├── services/
 │   └── api/                  # Go module: the whole backend
-│       ├── cmd/api/          # HTTP + WebSocket server entrypoint
+│       ├── cmd/api/          # composition root: wires ports to adapters
 │       ├── cmd/migrate/      # migration and seed CLI
-│       ├── internal/         # non-importable implementation packages
+│       ├── internal/         # non-importable; layered, see §2.2
+│       │   ├── domain/       # entities, state machines, rules, error kinds
+│       │   ├── accounts/     # use cases + ports for identity
+│       │   ├── spots/        # use cases + ports for parking spots
+│       │   ├── postgres/     # PostGIS adapter: the only SQL in the repo
+│       │   ├── api/          # HTTP adapter: handlers, routing, middleware
+│       │   ├── web/          # HTTP plumbing: error envelope, status mapping
+│       │   ├── auth/         # crypto adapter: argon2id, JWT, refresh tokens
+│       │   └── arch/         # the test that enforces all of the above
 │       └── migrations/       # SQL migrations, embedded into the binary
 ├── libs/
 │   └── go/geo/               # Go module: bbox, GeoJSON, coordinate fuzzing
@@ -95,6 +107,113 @@ pnpm already knows. A Go-only CI lane installs Go and nothing else — no Node
 runtime warm-up for a job that only runs `go test`.
 
 ---
+
+### 2.2 Layering inside the Go service: pragmatic ports and adapters
+
+**This is enforced by a test.** `services/api/internal/arch/arch_test.go` reads
+every import in the service and fails the build if a dependency points the wrong
+way. Its failure messages name the rule that was broken and what to do instead.
+The rules map in that file is the specification; this section explains why it
+says what it says. A package with no rule declared fails too, so a new package
+cannot quietly land outside the architecture.
+
+Dependencies point inwards:
+
+```
+        libs/go/geo  (pure: bbox, GeoJSON, coordinate fuzzing)
+              |
+           domain          entities, state machines, validation, error kinds
+              |
+    accounts, spots        use cases; each declares the ports it needs
+              |
+  postgres, api, web, auth adapters; they implement ports
+              |
+           cmd/api         the only place that connects the two
+```
+
+| Layer | Packages | May depend on | Never depends on |
+| --- | --- | --- | --- |
+| Domain | `internal/domain` | `libs/go/geo` | `pgx`, `net/http`, adapters |
+| Use cases | `internal/accounts`, `internal/spots` | `internal/domain` | any adapter, `net/http` |
+| Adapters | `internal/postgres`, `internal/api`, `internal/web`, `internal/auth` | the domain, and the ports they implement | each other |
+| Composition root | `cmd/api` | everything | — |
+
+Four properties follow, and they are the reason for the arrangement:
+
+- **Business rules are reachable without HTTP.** Phase 6 adds a goroutine that
+  sweeps expired reservations, and Phase 7 adds a WebSocket hub. Both must apply
+  the same rules as the REST handlers. With the rules inside `net/http`
+  handlers, the only options would have been duplicating them or having a
+  background worker call HTTP-shaped code.
+- **Rules are tested in milliseconds.** `internal/domain` and the service
+  packages have no I/O, so the bulk of the coverage runs without Docker.
+- **Ports are shaped like use cases, not like tables.** There is no `Save` and
+  no `FindAll`. `CancelSpot(ctx, spotID, ownerID)` exists as a single method
+  because the operation has to be one conditional write; a generic `Save` would
+  let an implementation satisfy the signature while losing the atomicity, which
+  is the entire guarantee.
+- **Ports are declared by the consumer.** `accounts.Store` and `spots.Store`
+  live in the packages that call them, not in `internal/postgres`. The adapter
+  imports the use case packages to assert it still satisfies them
+  (`postgres/ports.go`), so a signature change fails against the method that is
+  wrong rather than against the wiring in `cmd/api`.
+
+### 2.3 Why this is not strict hexagonal, deliberately
+
+Full ports-and-adapters would put a repository interface in front of everything,
+with an in-memory implementation for tests. That was considered and rejected,
+because **the guarantees this product depends on are database guarantees, not Go
+guarantees**:
+
+- the viewport search is `geom && ST_MakeEnvelope(...)` answered by a partial
+  GiST index (§3.2);
+- claiming a spot is one conditional `UPDATE ... WHERE status='available'`
+  (§3.6);
+- "at most one active reservation per spot" is a partial unique index;
+- the ledger is append-only by trigger;
+- real-time delivery is `LISTEN/NOTIFY` (§3.4).
+
+An in-memory `spots.Store` cannot honour any of those without reimplementing a
+database. It would be a port with exactly one possible implementation whose
+semantics leak SQL anyway, and worse, tests against the double would pass while
+production broke, because the double cannot reproduce concurrency. Strict
+hexagonal would also have forced either optimistic locking with a `version`
+column and retry loops, or a Unit of Work port whose parameter is a bundle of
+other ports, to get the atomicity that one `UPDATE` already provides.
+
+So the boundary is drawn where it pays and not where it does not:
+
+- **Abstracted**, because a second implementation is real or the seam makes
+  tests possible: the `Store` ports, `accounts.Hasher` (argon2id costs 64 MiB
+  per call, so tests substitute a cheap one), and — when Phase 7 lands — the
+  event bus, which `ARCHITECTURE.md` §3.4 already documents as moving off
+  `LISTEN/NOTIFY` when fan-out outgrows it.
+- **Concrete**, because there is no plausible alternative and pretending
+  otherwise costs correctness: PostGIS itself. `internal/postgres` is named
+  after its technology on purpose.
+
+The honest summary: the domain here is thin (a state machine and a price) and
+the persistence is where the difficulty lives. Hexagonal architecture pays when
+that relationship is inverted. Optimising for replacing PostgreSQL would have
+bought insurance against something that is not going to happen, while the real
+risks — concurrency, spatial query performance, WebSocket fan-out — are ones no
+port protects against.
+
+### 2.4 Error handling across the boundary
+
+A use case never returns an HTTP status. It returns a `*domain.Error` carrying a
+`domain.Kind`, plus a stable machine-readable `Code`, a human `Message` and
+optional per-field `Fields`. `internal/web` owns the single mapping from kind to
+status (`web/errors.go`), so a handler can return a service error unchanged and
+still produce the uniform envelope of §5.2.
+
+`KindInternal` is the zero value on purpose: an error nobody classified is a bug,
+and defaulting to 500 means it gets alerted on instead of being reported to the
+user as their own mistake. Adapters report plumbing conditions with the sentinels
+in `domain` — `ErrNoRows`, `ErrDuplicate`, `ErrConflict`, `ErrTokenReused`,
+`ErrTokenExpired` — and the use case decides what each one means, because whether
+a missing row is a 404 or a deliberately vague 401 is a product decision that an
+adapter has no business making.
 
 ## 3. Design decisions
 
@@ -477,6 +596,16 @@ PostgreSQL instance already installed on the host.
 
 ## 8. Testing strategy
 
+- **The layering itself is tested.** `internal/arch` parses every import in the
+  service and fails if a dependency points outwards, or if a new package has not
+  declared which layer it belongs to. Documentation gets skimmed and
+  contradicted; this does not.
+- **Three tiers, chosen by what is actually being proven.** A rule with no I/O
+  belongs in `internal/domain` (milliseconds, no Docker). A decision a use case
+  makes belongs in the service package with a fake store. A guarantee only the
+  database provides — index usage, a unique constraint, concurrent claims —
+  belongs in an integration test against real PostGIS, because a fake cannot
+  prove any of them.
 - **`libs/go/geo`** is pure and standard-library only, so bounding box maths,
   GeoJSON encoding and coordinate fuzzing are unit tested with no I/O.
 - **Spatial queries are tested against a real PostGIS instance**, never a mock.

@@ -8,22 +8,38 @@ are written down anyway.
 Architecture rationale lives in [ARCHITECTURE.md](ARCHITECTURE.md); this file
 tracks only status.
 
+**Before writing any Go code, read [AGENTS.md](AGENTS.md) and
+[ARCHITECTURE.md](ARCHITECTURE.md) §2.2.** The service uses a pragmatic
+ports-and-adapters layering: the domain and the use cases know nothing about
+HTTP or SQL, and the adapters depend on them rather than the reverse. This is
+not a convention open to interpretation — `services/api/internal/arch/arch_test.go`
+parses every import and fails the build when a dependency points the wrong way,
+including when a newly added package has not declared which layer it is in.
+If that test fails, fix the code, not the test.
+
 ---
 
 ## Current state
 
-- **Phase in progress:** Phase 5 — Spots over HTTP
+- **Phase in progress:** Phase 6 — Reservations and ledger (not started)
 - **Last updated:** 2026-09-14
-- **Phases complete:** 4 of 12
+- **Phases complete:** 5 of 12
 - **Blockers:** none open (4 environment blockers found and resolved, see below)
 
 ---
 
 ## Next immediate step
 
-Implement the spots domain over HTTP: `libs/go/geo` for bounding box parsing,
-validation and coordinate fuzzing, then `GET /v1/spots?bbox` returning a GeoJSON
-FeatureCollection, plus `POST /v1/spots` and `DELETE /v1/spots/{id}`.
+Phase 6: reservations. `POST /v1/spots/{id}/reservations` claiming a spot with a
+single conditional `UPDATE`, cancel and complete transitions, the append-only
+balance ledger, and a background sweeper for expired spots and reservations. The
+demo is a test firing a hundred concurrent goroutines at one spot and asserting
+exactly one winner.
+
+Respect the layering: the transitions belong in `internal/domain`, the use cases
+and their ports in a new `internal/reservations` package, and the SQL in
+`internal/postgres`. Adding `internal/reservations` means declaring its rule in
+`internal/arch/arch_test.go`, which will fail until you do.
 
 ---
 
@@ -118,14 +134,21 @@ observed to pass. "It should work" is not a completion criterion.
       rejection, a token signed with another key, and expiry reported as
       `token_expired`.
 
-### Phase 5 — Spots over HTTP
+### Phase 5 — Spots over HTTP — **complete**
 
-- [ ] `GET /v1/spots?bbox=...` returning a GeoJSON `FeatureCollection`
-- [ ] `POST /v1/spots`, `DELETE /v1/spots/{id}`
-- [ ] Bounding box, zoom, area and result-cap validation
-- [ ] Coordinate fuzzing for unreserved spots
-- [ ] **Demo:** curl returns a valid `FeatureCollection`; table-driven bbox
-      tests against real PostGIS including antimeridian and degenerate boxes
+- [x] Architecture refactored to pragmatic ports and adapters before the
+      feature landed (decisions 32–38), with `internal/arch` enforcing it
+- [x] `GET /v1/spots?bbox=...` returning a GeoJSON `FeatureCollection`
+- [x] `POST /v1/spots`, `GET /v1/spots/{id}`, `GET /v1/spots/mine`,
+      `DELETE /v1/spots/{id}`
+- [x] Bounding box, zoom, area and result-cap validation in `libs/go/geo`
+- [x] Coordinate fuzzing for unreserved spots, on a deterministic grid
+- [x] **Demo executed:** curl returned a valid `FeatureCollection`; an
+      anonymous caller saw fuzzed coordinates while the owner saw exact ones;
+      an oversized bbox was rejected; withdrawing twice returned `409`.
+      Table-driven bbox tests pass against real PostGIS, including the
+      antimeridian and degenerate boxes, and `internal/postgres` asserts the
+      discovery query can use the partial GiST index.
 
 ### Phase 6 — Reservations and ledger
 
@@ -325,6 +348,59 @@ does not relitigate it.
     has to work from `.env.example`, but a real deployment must not ship a toy
     key.
 
+### 2026-09-14 — Phase 5, and the architecture refactor that preceded it
+
+32. **Pragmatic ports and adapters, not strict hexagonal.** Phases 3 and 4 had
+    produced a layered API where handlers held business rules and reached the
+    store directly. That was about to become a real problem: the Phase 6 expiry
+    sweeper and the Phase 7 WebSocket hub have to apply the same rules with no
+    `*http.Request` in existence. So the rules moved into `internal/domain` and
+    use case packages (`internal/accounts`, `internal/spots`), and the handlers
+    became thin. Strict hexagonal was considered and rejected, because the
+    guarantees this product depends on are database guarantees — the GiST
+    index, the conditional `UPDATE`, the partial unique index, the append-only
+    trigger — and an in-memory double could not honour any of them while
+    still passing. Full reasoning in ARCHITECTURE.md §2.2 and §2.3.
+33. **The layering is enforced by a test, not by documentation.**
+    `internal/arch/arch_test.go` parses every import and fails when one points
+    outwards. Documentation gets skimmed and then contradicted in good faith; a
+    bad import compiles, passes every functional test and is invisible in
+    review. The test also fails when a new package has no declared rule, so a
+    future feature cannot land outside the architecture by omission. Its
+    failure messages name the fix rather than only the violation. It found a
+    genuine undeclared dependency on its first run (`internal/web` on
+    `golang.org/x/time/rate`), and was itself verified by injecting two
+    violations and confirming both were caught.
+34. **Ports are declared by the consumer and shaped like use cases.**
+    `accounts.Store` and `spots.Store` live beside the code that calls them.
+    There is no `Save` and no `FindAll`: `CancelSpot(ctx, spotID, ownerID)`
+    exists as its own method because the operation must be a single conditional
+    write, and a generic `Save` would let an implementation satisfy the
+    signature while quietly losing the atomicity.
+35. **`internal/store` was renamed `internal/postgres`.** A package named after
+    the abstraction implies a second implementation is coming. Naming it after
+    the technology is honest that one is not, and makes a stray import obvious
+    on sight.
+36. **Availability windows are stored as offsets from the database clock.** The
+    domain returns a `SpotDraft` carrying `AvailableIn` and `ExpiresIn` as
+    durations, and the adapter writes `now() + make_interval(secs => $n)`.
+    Absolute timestamps computed in Go meant a spot created "now" could be
+    invisible to a search a millisecond later, because the database clock was
+    fractionally behind. This surfaced as two intermittently failing tests, and
+    would have surfaced in production as spots that briefly do not exist.
+37. **Coordinate fuzzing derives its longitude grid from the already-snapped
+    latitude.** Using the true latitude made the longitude cell width vary with
+    sub-cell latitude changes, so an observer could recover the precision the
+    fuzzing existed to remove, and the function was not idempotent. Both are
+    now covered by tests.
+38. **Index usage is asserted in `internal/postgres`, not through the API.** An
+    API-level `EXPLAIN` test asserted the planner *chose* the GiST index, which
+    it legitimately declines to do on a table of five rows. The replacement
+    seeds a large table, sets `enable_seqscan = off` and asserts the predicate
+    *can* use the index. The distinction matters: the query being
+    index-compatible is the property worth protecting; the planner's cost
+    decision on tiny data is not.
+
 ---
 
 ## Blockers
@@ -466,3 +542,33 @@ space.
 
 **Gotcha worth remembering:** Windows Python does not understand Git Bash's
 `/tmp/...` paths. Pipe file contents in on stdin instead of passing the path.
+
+### 2026-09-14 — Phase 5
+
+- Refactored the service to pragmatic ports and adapters before building the
+  feature, because Phase 6 and Phase 7 need the rules callable without HTTP.
+  Added `internal/domain` (entities, state machine, validation, error kinds),
+  `internal/accounts` and `internal/spots` (use cases plus the ports they
+  declare), renamed `internal/store` to `internal/postgres`, and reduced
+  `internal/api` to decode-call-serialise.
+- Added `libs/go/geo`: bounding box parsing and validation, antimeridian
+  splitting, GeoJSON encoding, and coordinate fuzzing onto a deterministic grid.
+- Added the spots endpoints and their tests, unit-level for the rules and
+  integration-level against real PostGIS for everything the database guarantees.
+- Added `internal/arch/arch_test.go`, which enforces the layering, and wrote the
+  rules into ARCHITECTURE.md §2.2–2.4, AGENTS.md and
+  `.cursor/rules/hexagonal-layering.mdc` so a future session cannot miss them.
+- Phase 5 demo executed and passing. Closed Phase 5.
+
+**Gotchas worth remembering:**
+
+- Absolute timestamps computed in Go and written to PostgreSQL are a clock skew
+  bug waiting to happen. Send offsets and let the database anchor them with
+  `now() + make_interval(...)`.
+- Asserting that the query planner *chose* an index is a flaky test. On small
+  tables a sequential scan is genuinely cheaper. Assert that the predicate
+  *can* use the index: seed enough rows, `SET LOCAL enable_seqscan = off`, then
+  `EXPLAIN`.
+- A bash heredoc feeding a Python script is unreliable in this environment; it
+  silently swallowed the closing delimiter and the following command. Write the
+  script to a file and run it.
