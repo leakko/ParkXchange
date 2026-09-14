@@ -63,6 +63,11 @@ type ViewportQuery struct {
 	// Zoom is the client's current zoom level. Zero means unspecified.
 	Zoom int
 
+	// From and To bound the availability window the caller is interested in.
+	// Zero means "from now through the next 24 hours".
+	From time.Time
+	To   time.Time
+
 	Viewer domain.Claims
 }
 
@@ -78,9 +83,14 @@ func (s *Service) InViewport(ctx context.Context, q ViewportQuery) ([]VisibleSpo
 		}
 	}
 
+	from, to, err := windowOrDefault(q.From, q.To, s.now())
+	if err != nil {
+		return nil, err
+	}
+
 	// Splitting here, not in the adapter, keeps the antimeridian rule in one
 	// place and testable without a database.
-	found, err := s.store.SpotsInBBox(ctx, q.BBox.Split(), MaxResults)
+	found, err := s.store.SpotsInBBox(ctx, q.BBox.Split(), from, to, MaxResults)
 	if err != nil {
 		return nil, domain.Internal(err)
 	}
@@ -161,9 +171,9 @@ func (s *Service) Withdraw(ctx context.Context, spotID string, viewer domain.Cla
 		return domain.NotFound("spot_not_found", "that spot does not exist")
 	}
 
-	if spot.Status != domain.SpotAvailable {
+	if spot.Status != domain.SpotAvailable && spot.Status != domain.SpotReserved {
 		return domain.Conflict("spot_not_available",
-			"that spot can no longer be withdrawn, it has already been reserved")
+			"that spot can no longer be withdrawn")
 	}
 
 	// The checks above produce good error messages; this conditional write is
@@ -172,7 +182,7 @@ func (s *Service) Withdraw(ctx context.Context, spotID string, viewer domain.Cla
 	if err := s.store.CancelSpot(ctx, spotID, viewer.UserID); err != nil {
 		if errors.Is(err, domain.ErrConflict) {
 			return domain.Conflict("spot_not_available",
-				"that spot can no longer be withdrawn, it has already been reserved")
+				"that spot can no longer be withdrawn")
 		}
 		return domain.Internal(err)
 	}
@@ -191,7 +201,28 @@ func (s *Service) visibleOne(spot domain.Spot, viewer domain.Claims) VisibleSpot
 	// HoldsReservation stays false until reservations exist. Once they do,
 	// this is where the driver holding the booking starts getting the exact
 	// coordinates.
-	lon, lat, exact := spot.CoordinatesFor(domain.Viewer{UserID: viewer.UserID})
+	lon, lat, exact := spot.CoordinatesFor(domain.Viewer{
+		UserID:           viewer.UserID,
+		HoldsReservation: spot.HolderID != "" && spot.HolderID == viewer.UserID,
+	})
 
 	return VisibleSpot{Spot: spot, Lon: lon, Lat: lat, Exact: exact}
+}
+
+func windowOrDefault(from, to, now time.Time) (time.Time, time.Time, error) {
+	switch {
+	case from.IsZero() && to.IsZero():
+		return now, now.Add(domain.MaxLeadTime), nil
+	case from.IsZero() || to.IsZero():
+		return time.Time{}, time.Time{}, domain.Invalid("window_invalid",
+			"from and to must both be set, or both omitted")
+	case !to.After(from):
+		return time.Time{}, time.Time{}, domain.Invalid("window_invalid",
+			"to must be after from")
+	case to.Sub(from) > domain.MaxLeadTime:
+		return time.Time{}, time.Time{}, domain.Invalid("window_invalid",
+			"the search window cannot be longer than 24 hours")
+	default:
+		return from, to, nil
+	}
 }

@@ -181,4 +181,10 @@ var (
 	// entity had already moved on. It is how an adapter reports that somebody
 	// else won a race.
 	ErrConflict = errors.New("domain: conflicting state")
+
+	// ErrInsufficientFunds means a hold would take the balance below zero.
+	ErrInsufficientFunds = errors.New("domain: insufficient funds")
+
+	// ErrOwnResource means the caller tried to claim something they own.
+	ErrOwnResource = errors.New("domain: acting on own resource")
 )

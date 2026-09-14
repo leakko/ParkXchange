@@ -26,6 +26,8 @@ type fakeStore struct {
 	// gotBoxes and gotLimit capture the last SpotsInBBox call.
 	gotBoxes []geo.BBox
 	gotLimit int
+	gotFrom  time.Time
+	gotTo    time.Time
 
 	// cancelCalls counts attempted withdrawals, so a test can assert that the
 	// service did not even try when a rule already forbade it.
@@ -41,9 +43,11 @@ func newFakeStore() *fakeStore {
 	return &fakeStore{spots: make(map[string]domain.Spot)}
 }
 
-func (f *fakeStore) SpotsInBBox(_ context.Context, boxes []geo.BBox, limit int) ([]domain.Spot, error) {
+func (f *fakeStore) SpotsInBBox(_ context.Context, boxes []geo.BBox, from, to time.Time, limit int) ([]domain.Spot, error) {
 	f.gotBoxes = boxes
 	f.gotLimit = limit
+	f.gotFrom = from
+	f.gotTo = to
 	return f.inBBox, nil
 }
 
@@ -96,7 +100,10 @@ func (f *fakeStore) CancelSpot(_ context.Context, spotID, ownerID string) error 
 	}
 
 	spot, found := f.spots[spotID]
-	if !found || spot.OwnerID != ownerID || spot.Status != domain.SpotAvailable {
+	if !found || spot.OwnerID != ownerID {
+		return domain.ErrConflict
+	}
+	if spot.Status != domain.SpotAvailable && spot.Status != domain.SpotReserved {
 		return domain.ErrConflict
 	}
 
@@ -294,7 +301,7 @@ func TestWithdrawReportsSomebodyElsesSpotAsMissing(t *testing.T) {
 	}
 }
 
-func TestWithdrawRefusesAReservedSpot(t *testing.T) {
+func TestWithdrawOfAReservedSpotSucceeds(t *testing.T) {
 	t.Parallel()
 
 	store := newFakeStore()
@@ -304,9 +311,11 @@ func TestWithdrawRefusesAReservedSpot(t *testing.T) {
 
 	service := spots.New(store)
 
-	err := service.Withdraw(context.Background(), "spot-1", domain.Claims{UserID: "owner-1"})
-	if domain.KindOf(err) != domain.KindConflict {
-		t.Errorf("kind = %v, want KindConflict", domain.KindOf(err))
+	if err := service.Withdraw(context.Background(), "spot-1", domain.Claims{UserID: "owner-1"}); err != nil {
+		t.Fatalf("Withdraw: %v", err)
+	}
+	if store.spots["spot-1"].Status != domain.SpotCancelled {
+		t.Errorf("status = %q, want cancelled", store.spots["spot-1"].Status)
 	}
 }
 

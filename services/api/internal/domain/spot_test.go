@@ -207,10 +207,11 @@ func TestSpotExpiryAndClaimability(t *testing.T) {
 			wantExpired:   true,
 		},
 		{
-			name:          "not yet available",
+			name:          "announced for later, still claimable",
 			status:        domain.SpotAvailable,
 			availableFrom: now.Add(time.Hour),
 			expiresAt:     now.Add(2 * time.Hour),
+			wantClaimable: true,
 		},
 		{
 			name:          "already reserved",
@@ -325,6 +326,12 @@ func TestNewSpotValidation(t *testing.T) {
 		},
 		"expiry in the past": {
 			func(in *domain.NewSpotInput) { in.ExpiresAt = now.Add(-time.Hour) }, "expires_at",
+		},
+		"start more than a day away": {
+			func(in *domain.NewSpotInput) {
+				in.AvailableFrom = now.Add(25 * time.Hour)
+				in.ExpiresAt = now.Add(26 * time.Hour)
+			}, "available_from",
 		},
 		"missing expiry": {
 			func(in *domain.NewSpotInput) { in.ExpiresAt = time.Time{} }, "expires_at",

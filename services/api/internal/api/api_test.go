@@ -17,6 +17,7 @@ import (
 	"github.com/marco/parkxchange/services/api/internal/auth"
 	"github.com/marco/parkxchange/services/api/internal/config"
 	"github.com/marco/parkxchange/services/api/internal/postgres"
+	"github.com/marco/parkxchange/services/api/internal/reservations"
 	"github.com/marco/parkxchange/services/api/internal/spots"
 )
 
@@ -92,11 +93,12 @@ func newServerFrom(t *testing.T, cfg config.Config) (*httptest.Server, *postgres
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	a, err := api.New(api.Deps{
-		Config:   cfg,
-		Logger:   log,
-		Accounts: accountsService,
-		Spots:    spots.New(db),
-		Health:   db,
+		Config:       cfg,
+		Logger:       log,
+		Accounts:     accountsService,
+		Spots:        spots.New(db),
+		Reservations: reservations.New(db),
+		Health:       db,
 	})
 	if err != nil {
 		t.Fatalf("build api: %v", err)

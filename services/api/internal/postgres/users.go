@@ -33,17 +33,44 @@ func scanUser(row pgx.Row) (domain.User, error) {
 	return user, nil
 }
 
-// CreateUser registers a new account.
+// CreateUser registers a new account and credits the signup grant.
 func (db *DB) CreateUser(
 	ctx context.Context,
 	email domain.Email,
 	passwordHash, displayName string,
 ) (domain.User, error) {
-	return scanUser(db.Pool.QueryRow(ctx, `
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return domain.User{}, translate(err, "begin register")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	user, err := scanUser(tx.QueryRow(ctx, `
 		INSERT INTO users (email, password_hash, display_name)
 		VALUES ($1, $2, $3)
 		RETURNING `+userColumns,
 		email.String(), passwordHash, displayName))
+	if err != nil {
+		return domain.User{}, err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO ledger_entries (user_id, kind, amount_cents, memo)
+		VALUES ($1, $2, $3, $4)
+	`, user.ID, string(domain.LedgerCredit), domain.SignupGrantCents, "signup grant"); err != nil {
+		return domain.User{}, translate(err, "credit signup grant")
+	}
+
+	// Re-read so the returned user carries the balance the trigger just wrote.
+	user, err = scanUser(tx.QueryRow(ctx, `SELECT `+userColumns+` FROM users WHERE id = $1`, user.ID))
+	if err != nil {
+		return domain.User{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return domain.User{}, translate(err, "commit register")
+	}
+	return user, nil
 }
 
 // UserByEmail looks an account up for login.

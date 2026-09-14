@@ -75,6 +75,7 @@ ParkXchange/
 │       │   ├── domain/       # entities, state machines, rules, error kinds
 │       │   ├── accounts/     # use cases + ports for identity
 │       │   ├── spots/        # use cases + ports for parking spots
+│       │   ├── reservations/ # use cases + ports for claims, deposits, sweep
 │       │   ├── postgres/     # PostGIS adapter: the only SQL in the repo
 │       │   ├── api/          # HTTP adapter: handlers, routing, middleware
 │       │   ├── web/          # HTTP plumbing: error envelope, status mapping
@@ -124,7 +125,7 @@ Dependencies point inwards:
               |
            domain          entities, state machines, validation, error kinds
               |
-    accounts, spots        use cases; each declares the ports it needs
+    accounts, spots, reservations   use cases; each declares the ports it needs
               |
   postgres, api, web, auth adapters; they implement ports
               |
@@ -134,7 +135,7 @@ Dependencies point inwards:
 | Layer | Packages | May depend on | Never depends on |
 | --- | --- | --- | --- |
 | Domain | `internal/domain` | `libs/go/geo` | `pgx`, `net/http`, adapters |
-| Use cases | `internal/accounts`, `internal/spots` | `internal/domain` | any adapter, `net/http` |
+| Use cases | `internal/accounts`, `internal/spots`, `internal/reservations` | `internal/domain` | any adapter, `net/http` |
 | Adapters | `internal/postgres`, `internal/api`, `internal/web`, `internal/auth` | the domain, and the ports they implement | each other |
 | Composition root | `cmd/api` | everything | — |
 
@@ -411,6 +412,89 @@ trusts and has configured. ParkXchange hands off through deep links —
 falling back to a web URL. Android requires the target schemes to be declared in
 the manifest's `queries` element for `canOpenURL` to report the truth.
 
+### 3.13 Advance booking, and the two mechanisms that make it survivable
+
+A driver may announce that they are leaving at a specific future moment, up to
+24 hours ahead, and another driver may claim that spot before the moment
+arrives. A claimed spot leaves the map immediately, which is the point: it stops
+a third driver turning up for a space that is already promised.
+
+Those two properties together create the problem this section exists to solve.
+One click can remove a spot from the market for a day, and the two sides of the
+deal are not equally committed. The announcer is physically committed — they are
+in the space, and they wait to hand it over instead of leaving when it suits
+them. The claimer committed a tap. Without a counterweight, claiming early is a
+free option: if the plan changes, walking away costs nothing, the space returns
+to the map at a moment when nobody is looking, and the announcer waits for
+somebody who was never coming.
+
+Two mechanisms carry the weight, and each fixes a different half:
+
+- **A deposit.** Claiming writes a `hold` (negative) against the driver's
+  virtual balance. Completing the handover leaves that hold in place — it is
+  the payment — and writes a matching `credit` to the owner. A fair cancel
+  before `starts_at` writes a `release` that unwinds the hold. A forfeit
+  (missed reconfirm, or cancelling after the window opens) leaves the hold and
+  credits the owner. New accounts receive a `credit` of 500 cents on
+  registration, otherwise nobody could ever make their first claim. Hoarding is
+  self-limiting: every live claim ties up its own deposit.
+- **A reconfirmation.** A reservation made well before the handover starts as
+  `pending` and must be reconfirmed shortly before `starts_at` to become
+  `confirmed`. If the driver does not, the sweeper releases it and the spot
+  returns to the map with enough lead time for somebody else to use it. This
+  converts a promise made 24 hours out, which humans break routinely, into one
+  made 15 minutes out, which they mostly keep.
+
+Three details that are easy to get wrong:
+
+- **Reconfirmation is skipped when there is nothing to reconfirm.** A spot
+  available right now, claimed by a driver three minutes away, gains nothing
+  from a handshake; the reservation is born `confirmed`. The rule triggers only
+  when `starts_at` is further away than the reconfirmation window, so the
+  present-moment flow carries no added friction.
+- **The penalty is two-sided.** An owner who withdraws an already-claimed spot
+  releases the driver's deposit and is debited themselves. Charging only the
+  driver would hand the owner the same free option the deposit exists to remove.
+- **The statuses already existed.** `pending → confirmed → arrived →
+  completed`, defined in phase 2, maps exactly onto claim → reconfirm → arrive
+  → hand over. No new state was needed.
+
+Two structural consequences:
+
+- **"One active reservation per driver" was replaced, not removed.** That
+  partial unique index was correct while every claim was for the present
+  moment, but it forbids something legitimate once claims are dated: tonight at
+  18:30 and tomorrow at 09:00 do not conflict. Dropping it outright would bring
+  back the hoarding it prevented, so it became an exclusion constraint
+  forbidding *overlapping* claims per driver:
+  `EXCLUDE USING GIST (driver_id WITH =, tstzrange(starts_at, ends_at) WITH &&)`.
+  A driver cannot be in two places at once, and that is the only thing worth
+  forbidding structurally. It needs `btree_gist`, because core GiST has no
+  operator class for `uuid` equality.
+- **The reservation carries its own copy of the window.** `starts_at` and
+  `ends_at` are denormalised from the spot for the same reason `price_cents`
+  already was: the row is the record of what was agreed, and a later edit of
+  the spot must not rewrite history. It is also a precondition for the
+  constraint above, since a constraint cannot reach into another table.
+
+The spatial index is untouched by any of this. Its predicate is
+`WHERE status = 'available'`, purely status-based, so the discovery query's new
+time-range filter applies to rows the index has already returned. Advance
+booking costs the hot path nothing structural. If the time filter ever becomes
+the bottleneck, `btree_gist` is now available and
+`GIST (geom, tstzrange(available_from, expires_at))` is the answer — but
+building it before there is evidence would be guessing.
+
+**The lead-time cap is a `CHECK` against `created_at`, not `now()`.** A `CHECK`
+may only reference its own row, and `now()` is not immutable; comparing two
+columns is. It also puts the cap where it belongs, on the moment the promise was
+made rather than on every subsequent read of the row.
+
+**Reconfirmation implies push notifications.** A handshake the user cannot be
+told about is a handshake that always fails, so `expo-notifications` moves into
+scope with the reservation flows. This is the one place where the temporal scope
+genuinely enlarged the MVP rather than rearranging it.
+
 ---
 
 ## 4. Data model
@@ -427,14 +511,23 @@ erDiagram
 - **`users`** — credentials hashed with argon2id, display name, rating, virtual
   balance in cents.
 - **`spots`** — owner, `geom geometry(Point,4326)`, size class, status, price,
-  availability window. GiST index on `geom`, plus a partial index on
-  `(status, expires_at)` for the discovery query.
-- **`reservations`** — spot, driver, status, expiry. A partial unique index
-  forbids more than one active reservation per spot.
+  availability window. The window may start in the future, capped at 24 hours
+  ahead by a `CHECK` against `created_at` (§3.13). Partial GiST index on `geom`
+  where the status is `available`, plus a partial btree on
+  `(available_from, expires_at)` for the time-range filter and the sweeper.
+- **`reservations`** — spot, driver, status, the claimed window (`starts_at`,
+  `ends_at`, denormalised from the spot as the historical record), the
+  reconfirmation deadline and the price agreed at claim time. A partial unique
+  index forbids more than one active reservation per spot; an exclusion
+  constraint forbids a driver holding two claims that overlap in time.
 - **`ledger_entries`** — append-only virtual balance movements (`hold`,
-  `credit`, `debit`). The MVP settles no real money, so there is no payment
-  gateway; the ledger exists so that adding one later is an integration, not a
-  redesign.
+  `release`, `credit`, `debit`), made append-only by trigger rather than by
+  convention. A `hold` is the deposit behind a claim and a `release` returns it,
+  which is what makes advance booking cost something (§3.13). The MVP settles
+  no real money, so there is no payment gateway; the ledger exists so that
+  adding one later is an integration, not a redesign. `user_balances` is a view
+  summing the entries, so there is exactly one definition of a balance and no
+  denormalised column to drift from the rows that justify it.
 - **`refresh_tokens`** — rotating refresh tokens with revocation.
 
 The spot lifecycle is enforced in SQL through `CHECK` constraints and the
@@ -464,14 +557,17 @@ POST   /v1/auth/login
 POST   /v1/auth/refresh
 GET    /v1/me
 
-GET    /v1/spots?bbox=minLon,minLat,maxLon,maxLat&zoom=   -> FeatureCollection
+GET    /v1/spots?bbox=minLon,minLat,maxLon,maxLat&zoom=&from=&to=
+                                                          -> FeatureCollection
 POST   /v1/spots
 DELETE /v1/spots/{id}
 
 POST   /v1/spots/{id}/reservations                        -> atomic claim
+GET    /v1/reservations/active
+GET    /v1/reservations/{id}
+POST   /v1/reservations/{id}/reconfirm
 POST   /v1/reservations/{id}/cancel
 POST   /v1/reservations/{id}/complete
-GET    /v1/reservations/active
 
 GET    /v1/ws                                             -> WebSocket upgrade
 GET    /v1/version

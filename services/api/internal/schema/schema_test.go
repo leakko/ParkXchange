@@ -133,22 +133,69 @@ func TestSpotIsClaimableAfterReservationEnds(t *testing.T) {
 	}
 }
 
-// A driver holding several reservations at once could hoard every free spot in
-// a neighbourhood, so the schema forbids it.
-func TestOnlyOneActiveReservationPerDriver(t *testing.T) {
+// A driver may hold several reservations as long as their windows do not
+// overlap. Tonight at 18:30 and tomorrow at 09:00 are both fine; two claims
+// for the same hour are not.
+func TestDriverReservationsMayNotOverlap(t *testing.T) {
 	ctx, tx := testdb.Begin(t)
 
-	owner := testdb.InsertUser(t, ctx, tx, "owner-driver-race")
-	driver := testdb.InsertUser(t, ctx, tx, "driver-hoarder")
+	owner := testdb.InsertUser(t, ctx, tx, "owner-driver-overlap")
+	driver := testdb.InsertUser(t, ctx, tx, "driver-overlap")
 	spotA := testdb.InsertSpot(t, ctx, tx, owner, 2.16, 41.39)
 	spotB := testdb.InsertSpot(t, ctx, tx, owner, 2.17, 41.40)
 
-	insertReservation(t, ctx, tx, spotA, driver, "pending")
+	insertReservationWindow(t, ctx, tx, spotA, driver, "pending",
+		"now()", "now() + interval '30 minutes'")
 
-	if err := tryInsertReservation(ctx, tx, spotB, driver, "pending"); err == nil {
-		t.Fatal("a driver was allowed to hold two active reservations")
-	} else if !isUniqueViolation(err) {
-		t.Fatalf("want a unique violation, got: %v", err)
+	if err := tryInsertReservationWindow(ctx, tx, spotB, driver, "pending",
+		"now() + interval '10 minutes'", "now() + interval '40 minutes'"); err == nil {
+		t.Fatal("overlapping reservations for one driver were accepted")
+	} else if !isExclusionViolation(err) {
+		t.Fatalf("want an exclusion violation, got: %v", err)
+	}
+}
+
+func TestDriverMayHoldNonOverlappingReservations(t *testing.T) {
+	ctx, tx := testdb.Begin(t)
+
+	owner := testdb.InsertUser(t, ctx, tx, "owner-driver-serial")
+	driver := testdb.InsertUser(t, ctx, tx, "driver-serial")
+	spotA := testdb.InsertSpot(t, ctx, tx, owner, 2.16, 41.39)
+	spotB := testdb.InsertSpot(t, ctx, tx, owner, 2.17, 41.40)
+
+	insertReservationWindow(t, ctx, tx, spotA, driver, "pending",
+		"now()", "now() + interval '30 minutes'")
+
+	if err := tryInsertReservationWindow(ctx, tx, spotB, driver, "pending",
+		"now() + interval '2 hours'", "now() + interval '3 hours'"); err != nil {
+		t.Fatalf("non-overlapping reservations were rejected: %v", err)
+	}
+}
+
+// The denormalised balance column must follow the ledger, otherwise a claim
+// could read a stale number under a row lock.
+func TestLedgerInsertUpdatesTheCachedBalance(t *testing.T) {
+	ctx, tx := testdb.Begin(t)
+
+	user := testdb.InsertUser(t, ctx, tx, "balance-owner")
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO ledger_entries (user_id, kind, amount_cents)
+		VALUES ($1, 'credit', 500)
+	`, user); err != nil {
+		t.Fatalf("insert credit: %v", err)
+	}
+
+	var cached, fromView int64
+	if err := tx.QueryRow(ctx, `SELECT balance_cents FROM users WHERE id = $1`, user).Scan(&cached); err != nil {
+		t.Fatalf("read cached balance: %v", err)
+	}
+	if err := tx.QueryRow(ctx, `SELECT balance_cents FROM user_balances WHERE user_id = $1`, user).Scan(&fromView); err != nil {
+		t.Fatalf("read view balance: %v", err)
+	}
+
+	if cached != 500 || fromView != 500 {
+		t.Fatalf("cached=%d view=%d, want both 500", cached, fromView)
 	}
 }
 
@@ -220,6 +267,10 @@ func TestSpotConstraintsRejectInvalidRows(t *testing.T) {
 		"expiry before availability": {
 			columns: "owner_id, geom, size_class, price_cents, available_from, expires_at",
 			values:  "$1, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'medium', 200, now(), now() - interval '1 hour'",
+		},
+		"start more than a day away": {
+			columns: "owner_id, geom, size_class, price_cents, available_from, expires_at",
+			values:  "$1, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'medium', 200, now() + interval '25 hours', now() + interval '26 hours'",
 		},
 		"longitude off the planet": {
 			columns: "owner_id, geom, size_class, price_cents, expires_at",
@@ -362,11 +413,32 @@ func explain(t *testing.T, ctx context.Context, tx pgx.Tx, query string, args ..
 
 func insertReservation(t *testing.T, ctx context.Context, tx pgx.Tx, spotID, driverID, status string) string {
 	t.Helper()
+	return insertReservationWindow(t, ctx, tx, spotID, driverID, status,
+		"now()", "now() + interval '10 minutes'")
+}
+
+func tryInsertReservation(ctx context.Context, tx pgx.Tx, spotID, driverID, status string) error {
+	return tryInsertReservationWindow(ctx, tx, spotID, driverID, status,
+		"now()", "now() + interval '10 minutes'")
+}
+
+func insertReservationWindow(
+	t *testing.T, ctx context.Context, tx pgx.Tx,
+	spotID, driverID, status, starts, ends string,
+) string {
+	t.Helper()
 
 	var id string
 	err := tx.QueryRow(ctx, `
-		INSERT INTO reservations (spot_id, driver_id, status, price_cents, expires_at)
-		VALUES ($1, $2, $3, 200, now() + interval '10 minutes')
+		INSERT INTO reservations (
+			spot_id, driver_id, status, price_cents, expires_at,
+			starts_at, ends_at, reconfirm_by, reconfirmed_at
+		)
+		VALUES (
+			$1, $2, $3, 200, `+ends+`,
+			`+starts+`, `+ends+`, `+starts+`,
+			CASE WHEN $3 IN ('confirmed', 'arrived', 'completed') THEN now() END
+		)
 		RETURNING id
 	`, spotID, driverID, status).Scan(&id)
 	if err != nil {
@@ -375,10 +447,20 @@ func insertReservation(t *testing.T, ctx context.Context, tx pgx.Tx, spotID, dri
 	return id
 }
 
-func tryInsertReservation(ctx context.Context, tx pgx.Tx, spotID, driverID, status string) error {
+func tryInsertReservationWindow(
+	ctx context.Context, tx pgx.Tx,
+	spotID, driverID, status, starts, ends string,
+) error {
 	_, err := tx.Exec(ctx, `
-		INSERT INTO reservations (spot_id, driver_id, status, price_cents, expires_at)
-		VALUES ($1, $2, $3, 200, now() + interval '10 minutes')
+		INSERT INTO reservations (
+			spot_id, driver_id, status, price_cents, expires_at,
+			starts_at, ends_at, reconfirm_by, reconfirmed_at
+		)
+		VALUES (
+			$1, $2, $3, 200, `+ends+`,
+			`+starts+`, `+ends+`, `+starts+`,
+			CASE WHEN $3 IN ('confirmed', 'arrived', 'completed') THEN now() END
+		)
 	`, spotID, driverID, status)
 	return err
 }
@@ -404,4 +486,10 @@ func isUniqueViolation(err error) bool {
 	// keeps the test independent of the server's locale.
 	return strings.Contains(err.Error(), "23505") ||
 		strings.Contains(strings.ToLower(err.Error()), "duplicate key")
+}
+
+func isExclusionViolation(err error) bool {
+	// 23P01 is exclusion_violation, which is what EXCLUDE USING GIST raises.
+	return strings.Contains(err.Error(), "23P01") ||
+		strings.Contains(strings.ToLower(err.Error()), "exclusion")
 }

@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"github.com/marco/parkxchange/services/api/internal/accounts"
+	"github.com/marco/parkxchange/services/api/internal/reservations"
 	"github.com/marco/parkxchange/services/api/internal/spots"
 )
 
@@ -14,6 +15,7 @@ import (
 // surfaces in cmd/api, where the compiler reports it against the wiring rather
 // than against the method that is actually wrong.
 var (
-	_ accounts.Store = (*DB)(nil)
-	_ spots.Store    = (*DB)(nil)
+	_ accounts.Store     = (*DB)(nil)
+	_ spots.Store        = (*DB)(nil)
+	_ reservations.Store = (*DB)(nil)
 )

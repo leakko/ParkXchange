@@ -64,6 +64,11 @@ type Config struct {
 	// RefreshTokenTTL is how long a refresh token stays valid. These are
 	// stored, rotated and revocable, so the lifetime can be long.
 	RefreshTokenTTL time.Duration
+
+	// SweepInterval is how often the expiry worker runs. Short enough that a
+	// missed reconfirm returns the spot to the map before anyone has waited
+	// long, long enough that it is not a busy-loop against the database.
+	SweepInterval time.Duration
 }
 
 // Defaults applied when a variable is absent.
@@ -79,6 +84,7 @@ const (
 	defaultRateLimitBurst    = 40
 	defaultAccessTokenTTL    = 15 * time.Minute
 	defaultRefreshTokenTTL   = 30 * 24 * time.Hour
+	defaultSweepInterval     = 15 * time.Second
 
 	// minJWTSecretBytes matches the HS256 output size: a shorter key adds no
 	// security over one that long.
@@ -137,6 +143,7 @@ func Load() (Config, error) {
 
 	cfg.AccessTokenTTL = durationVar("ACCESS_TOKEN_TTL", defaultAccessTokenTTL, &problems)
 	cfg.RefreshTokenTTL = durationVar("REFRESH_TOKEN_TTL", defaultRefreshTokenTTL, &problems)
+	cfg.SweepInterval = durationVar("SWEEP_INTERVAL", defaultSweepInterval, &problems)
 
 	cfg.JWTSecret = []byte(os.Getenv("JWT_SECRET"))
 	switch {

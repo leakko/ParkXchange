@@ -3,6 +3,7 @@ package postgres
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/marco/parkxchange/services/api/internal/testdb"
 )
@@ -67,7 +68,7 @@ func TestDiscoveryQueryUsesThePartialSpatialIndex(t *testing.T) {
 
 	rows, err := tx.Query(ctx,
 		"EXPLAIN (COSTS OFF) "+discoveryQuery,
-		minLon, minLat, maxLon, maxLat, 500)
+		minLon, minLat, maxLon, maxLat, time.Now(), time.Now().Add(24*time.Hour), 500)
 	if err != nil {
 		t.Fatalf("explain: %v", err)
 	}

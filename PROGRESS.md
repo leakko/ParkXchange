@@ -21,25 +21,22 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** Phase 6 — Reservations and ledger (not started)
+- **Phase in progress:** Phase 7 — Real time (not started)
 - **Last updated:** 2026-09-14
-- **Phases complete:** 5 of 12
+- **Phases complete:** 6 of 12
 - **Blockers:** none open (4 environment blockers found and resolved, see below)
 
 ---
 
 ## Next immediate step
 
-Phase 6: reservations. `POST /v1/spots/{id}/reservations` claiming a spot with a
-single conditional `UPDATE`, cancel and complete transitions, the append-only
-balance ledger, and a background sweeper for expired spots and reservations. The
-demo is a test firing a hundred concurrent goroutines at one spot and asserting
-exactly one winner.
+Phase 7: real-time. WebSocket hub on `coder/websocket`, viewport subscriptions,
+`LISTEN/NOTIFY` as the bus, ping/pong and bounded send buffers. The demo is a
+spot published over REST appearing on a subscribed socket, plus a load client
+with 1000 connections.
 
-Respect the layering: the transitions belong in `internal/domain`, the use cases
-and their ports in a new `internal/reservations` package, and the SQL in
-`internal/postgres`. Adding `internal/reservations` means declaring its rule in
-`internal/arch/arch_test.go`, which will fail until you do.
+The hub calls the same use cases as HTTP. Do not put business rules in the
+socket handler.
 
 ---
 
@@ -150,14 +147,33 @@ observed to pass. "It should work" is not a completion criterion.
       antimeridian and degenerate boxes, and `internal/postgres` asserts the
       discovery query can use the partial GiST index.
 
-### Phase 6 — Reservations and ledger
+### Phase 6 — Reservations, deposits and advance booking — **complete**
 
-- [ ] Atomic claim via conditional `UPDATE`
-- [ ] Cancel and complete transitions
-- [ ] Virtual balance ledger entries
-- [ ] Background sweeper for expired spots and reservations
-- [ ] **Demo:** concurrency test firing 100 goroutines at one spot, asserting
-      exactly one winner and 99 conflicts
+Rescoped on 2026-09-14 after the product owner chose advance booking; see
+decisions 39–48 and ARCHITECTURE.md §3.13.
+
+- [x] Migration `00005_advance_booking.sql`: 24-hour lead-time cap, the claimed
+      window and reconfirmation deadline on `reservations`, the per-driver
+      overlap exclusion constraint replacing `one_active_per_driver`, the
+      `user_balances` view, and the trigger that keeps `users.balance_cents`
+      in lockstep with the ledger
+- [x] `POST /v1/spots` accepts `available_in_minutes`, so a spot can be
+      announced for a future moment
+- [x] Discovery filters on a time range (`from`, `to`) instead of `now()`, so
+      future spots are visible; omitted means the next 24 hours
+- [x] Atomic claim via conditional `UPDATE`, with the deposit `hold` written in
+      the same transaction
+- [x] Reconfirmation: `POST /v1/reservations/{id}/reconfirm`, required only
+      when `starts_at` is beyond the 15-minute reconfirmation window
+- [x] Cancel and complete transitions, with `release`/`credit`/`debit` entries,
+      and a two-sided penalty so an owner withdrawing a claimed spot also pays
+- [x] Background sweeper: expired spots, expired reservations, and reservations
+      nobody reconfirmed
+- [x] Signup grant of 500 cents on registration
+- [x] **Demo executed:** 100 goroutines claiming one spot produced exactly one
+      winner and 99 conflicts. An unreconfirmed reservation returned its spot
+      to the map. A claimed spot vanished from the viewport; a future spot was
+      visible and claimable as `pending`. `task api:test` green.
 
 ### Phase 7 — Real time
 
@@ -196,10 +212,18 @@ observed to pass. "It should work" is not a completion criterion.
 - [ ] **Demo:** a spot published over curl appears on the emulator without any
       user interaction
 
+> Phase 10 note added 2026-09-14: with advance booking, the map has a time
+> dimension. The viewport request carries a time range, and the WebSocket
+> subscription becomes `(bbox, from, to)` rather than `bbox` alone.
+
 ### Phase 11 — User flows
 
-- [ ] Announce a spot (current location or long-press on the map)
-- [ ] Claim a spot
+- [ ] Announce a spot (current location or long-press on the map), for now or
+      for a future moment
+- [ ] Claim a spot, including a spot whose window has not started
+- [ ] Reconfirm a claim, and **push notifications via `expo-notifications`**.
+      Added on 2026-09-14: a reconfirmation the user cannot be told about is a
+      reconfirmation that always fails, so this is not optional (decision 44)
 - [ ] Confirm handover
 - [ ] Deep-link navigation to Google Maps, Waze and Apple Maps with
       `canOpenURL`, Android manifest `queries`, and web fallback
@@ -401,6 +425,62 @@ does not relitigate it.
     index-compatible is the property worth protecting; the planner's cost
     decision on tiny data is not.
 
+### 2026-09-14 — Advance booking, decided before Phase 6 was built
+
+39. **A spot may be announced for a future moment, up to 24 hours ahead, and
+    claimed before that moment arrives.** The product owner asked for this
+    explicitly. The database and the domain already supported a future
+    `available_from`; what blocked it was `POST /v1/spots` hardcoding
+    `AvailableFrom: now` and the discovery query filtering
+    `available_from <= now()`.
+40. **A claimed spot leaves the map, which was already the behaviour.** The
+    discovery query filters `status = 'available'`, so claiming removes the
+    spot from everybody else's viewport, and `reserved → available` already
+    existed for the case where a claim falls through.
+41. **Claiming requires a deposit, and reconfirmation is required when the
+    handover is far off.** Advance booking plus an invisible claimed spot means
+    one tap can remove a spot from the market for a day, and the two sides are
+    not equally committed: the announcer is physically in the space, the
+    claimer tapped a button. The `hold`/`release` ledger kinds from phase 2
+    carry the deposit; the `pending → confirmed` statuses from phase 2 carry
+    the reconfirmation. Neither needed a new concept. Reconfirmation is skipped
+    when `starts_at` is inside the reconfirmation window, so claiming a spot
+    that is free right now carries no added friction.
+42. **The penalty is two-sided.** An owner who withdraws an already-claimed
+    spot releases the driver's deposit and is debited. Charging only the driver
+    would leave the owner holding exactly the free option the deposit exists to
+    remove.
+43. **"One active reservation per driver" became an overlap exclusion
+    constraint.** The unique index was right while all claims were for now, but
+    tonight at 18:30 and tomorrow at 09:00 do not conflict. Removing it would
+    restore the hoarding it prevented, so it is now
+    `EXCLUDE USING GIST (driver_id WITH =, tstzrange(starts_at, ends_at) WITH &&)`
+    over live statuses, which needs `btree_gist` and needs the reservation to
+    carry its own `starts_at`/`ends_at` — denormalised from the spot for the
+    same reason `price_cents` already was.
+44. **Reconfirmation drags push notifications into the MVP.** A handshake the
+    user is never told about is a handshake that always fails.
+    `expo-notifications` is now part of Phase 11. This is the only place where
+    the temporal scope genuinely enlarged the MVP instead of rearranging it.
+45. **The lead-time cap is a `CHECK` against `created_at`.** A `CHECK` may only
+    reference its own row and `now()` is not immutable, so the cap is written
+    `available_from <= created_at + interval '24 hours'`. It also judges the
+    promise at the moment it was made, which is the correct moment.
+46. **The spatial index was not touched.** Its predicate is
+    `WHERE status = 'available'`, so the new time-range filter applies to rows
+    the index already returned. A spatio-temporal
+    `GIST (geom, tstzrange(...))` is now possible thanks to `btree_gist`, but
+    building it without evidence of a bottleneck would be guessing.
+47. **New accounts receive a 500-cent credit.** Without it the first claim is
+    impossible: a hold against a zero balance never succeeds. 500 cents lets a
+    new driver take a cheap spot once; the ceiling is still 20 euros.
+48. **The hold is the payment.** Completing a handover does not release the
+    driver's hold and then debit them; the hold stays, and the owner is
+    credited. A fair cancel before `starts_at` is the only path that writes a
+    `release`. A forfeit credits the owner and leaves the hold. An owner who
+    withdraws a claimed spot releases the driver and is themselves debited the
+    same amount.
+
 ---
 
 ## Blockers
@@ -465,6 +545,11 @@ instead; the container then became ready in about a second.
    grows further.
 2. **Seed city.** Barcelona is assumed for development data, clustered around
    ten real districts plus eight landmark spots.
+3. **Starting virtual balance.** Resolved: a `credit` of 500 cents on
+   registration (`domain.SignupGrantCents`).
+4. **Penalty amounts.** Resolved: a forfeit equals the spot's price. An owner
+   who withdraws a claimed spot is debited the same amount, and the driver's
+   hold is released.
 
 ---
 
@@ -572,3 +657,21 @@ space.
 - A bash heredoc feeding a Python script is unreliable in this environment; it
   silently swallowed the closing delimiter and the following command. Write the
   script to a file and run it.
+
+### 2026-09-14 — Phase 6
+
+- Product owner confirmed advance booking: 24-hour horizon, claimed spots leave
+  the map immediately, deposit plus reconfirmation when the handover is not
+  imminent.
+- Added `internal/reservations` (use cases and ports), reservation state
+  machine and ledger helpers in `internal/domain`, and the Postgres adapter
+  that claims with one transaction: lock the driver, lock the spot, conditional
+  `UPDATE`, insert, hold.
+- Discovery now overlaps a time range; `POST /v1/spots` accepts
+  `available_in_minutes`. The sweeper runs from `cmd/api` on `SweepInterval`.
+- Phase 6 demo executed and passing: 100 concurrent claims, one winner;
+  unreconfirmed reservations return to the map. Closed Phase 6.
+
+**Gotcha worth remembering:** `ledger_entries.amount_cents` cannot be zero, so
+a free spot (price 0) must skip the hold rather than insert a zero-amount row.
+

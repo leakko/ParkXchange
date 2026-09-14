@@ -18,7 +18,7 @@ what to do instead. Do not weaken a rule to make your change fit. If a package
 genuinely needs a new dependency, say so in your summary and explain why.
 
 ```
-domain  <-  accounts, spots (use cases)  <-  postgres, api, web, auth (adapters)
+domain  <-  accounts, spots, reservations (use cases)  <-  postgres, api, web, auth (adapters)
                                                            ^
                                                     cmd/api wires them
 ```
@@ -26,7 +26,7 @@ domain  <-  accounts, spots (use cases)  <-  postgres, api, web, auth (adapters)
 | Layer | Package | May import | Never imports |
 | --- | --- | --- | --- |
 | Domain | `internal/domain` | `libs/go/geo` only | pgx, `net/http`, anything else |
-| Use cases | `internal/accounts`, `internal/spots` | `internal/domain` | any adapter, `net/http` |
+| Use cases | `internal/accounts`, `internal/spots`, `internal/reservations` | `internal/domain` | any adapter, `net/http` |
 | Adapters | `internal/postgres`, `internal/api`, `internal/web`, `internal/auth` | the domain and the ports they implement | each other |
 | Wiring | `cmd/api` | anything | — |
 
@@ -35,8 +35,9 @@ domain  <-  accounts, spots (use cases)  <-  postgres, api, web, auth (adapters)
 1. **Business rules live in a use case, never in an HTTP handler.** A handler
    decodes, calls a use case, serialises. If you find yourself writing an `if`
    about what a user is allowed to do inside `internal/api`, it belongs in
-   `internal/accounts` or `internal/spots`. The expiry sweeper and the WebSocket
-   hub run the same rules with no `*http.Request` in existence.
+   `internal/accounts` or `internal/spots` or `internal/reservations`. The expiry
+   sweeper and the WebSocket hub run the same rules with no `*http.Request` in
+   existence.
 
 2. **Ports are declared by the consumer, not the implementer.** A new
    persistence need becomes a method on the `Store` interface in the use case

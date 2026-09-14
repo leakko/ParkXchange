@@ -26,6 +26,11 @@ const (
 	// ever cancels.
 	MaxDuration = 24 * time.Hour
 
+	// MaxLeadTime is how far ahead an offer may be announced. Past a day the
+	// promise that a public street space will still be there is not one this
+	// product can keep.
+	MaxLeadTime = 24 * time.Hour
+
 	MaxNotesLength       = 280
 	MaxAddressHintLength = 160
 )
@@ -108,6 +113,12 @@ type Spot struct {
 	OwnerName   string
 	OwnerRating *float64
 
+	// HolderID is the driver with a live reservation on this spot, if any.
+	// Empty means the spot is unclaimed. Carried on the spot so the privacy
+	// rule can disclose exact coordinates to that driver without a second
+	// round trip per pin.
+	HolderID string
+
 	Lon float64
 	Lat float64
 
@@ -132,10 +143,12 @@ func (s Spot) Expired(now time.Time) bool {
 }
 
 // Claimable reports whether a driver could reserve this spot right now.
+//
+// A start still in the future is claimable on purpose: that is advance
+// booking. The window that has closed, or a spot that is no longer available,
+// is not.
 func (s Spot) Claimable(now time.Time) bool {
-	return s.Status == SpotAvailable &&
-		!s.Expired(now) &&
-		!s.AvailableFrom.After(now)
+	return s.Status == SpotAvailable && !s.Expired(now)
 }
 
 // OwnedBy reports whether userID owns the spot.
@@ -262,6 +275,10 @@ func NewSpot(in NewSpotInput, now time.Time) (SpotDraft, error) {
 	availableFrom := in.AvailableFrom
 	if availableFrom.IsZero() {
 		availableFrom = now
+	}
+
+	if availableFrom.Sub(now) > MaxLeadTime {
+		fields["available_from"] = "must be at most 24 hours from now"
 	}
 
 	switch {

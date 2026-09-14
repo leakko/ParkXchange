@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/marco/parkxchange/services/api/internal/accounts"
 	"github.com/marco/parkxchange/services/api/internal/api"
@@ -18,6 +19,7 @@ import (
 	"github.com/marco/parkxchange/services/api/internal/config"
 	"github.com/marco/parkxchange/services/api/internal/logging"
 	"github.com/marco/parkxchange/services/api/internal/postgres"
+	"github.com/marco/parkxchange/services/api/internal/reservations"
 	"github.com/marco/parkxchange/services/api/internal/spots"
 )
 
@@ -65,12 +67,15 @@ func run() error {
 		return err
 	}
 
+	reservationsService := reservations.New(db)
+
 	apiHandler, err := api.New(api.Deps{
-		Config:   cfg,
-		Logger:   log,
-		Accounts: accountsService,
-		Spots:    spots.New(db),
-		Health:   db,
+		Config:       cfg,
+		Logger:       log,
+		Accounts:     accountsService,
+		Spots:        spots.New(db),
+		Reservations: reservationsService,
+		Health:       db,
 	})
 	if err != nil {
 		return err
@@ -95,6 +100,29 @@ func run() error {
 	}
 
 	serverErrors := make(chan error, 1)
+
+	go func() {
+		ticker := time.NewTicker(cfg.SweepInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				result, sweepErr := reservationsService.Sweep(ctx)
+				if sweepErr != nil {
+					log.Error("sweep failed", slog.Any("err", sweepErr))
+					continue
+				}
+				if result.ExpiredSpots+result.ExpiredReservations > 0 {
+					log.Info("sweep",
+						slog.Int("expired_spots", result.ExpiredSpots),
+						slog.Int("expired_reservations", result.ExpiredReservations),
+					)
+				}
+			}
+		}
+	}()
 
 	go func() {
 		log.Info("api listening",

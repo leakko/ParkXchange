@@ -95,11 +95,22 @@ func (a *API) handleListSpots(w http.ResponseWriter, r *http.Request) error {
 		return domain.Invalid("zoom_invalid", "zoom must be a whole number")
 	}
 
+	from, err := optionalTime(query.Get("from"))
+	if err != nil {
+		return domain.Invalid("from_invalid", "from must be an RFC3339 timestamp")
+	}
+	to, err := optionalTime(query.Get("to"))
+	if err != nil {
+		return domain.Invalid("to_invalid", "to must be an RFC3339 timestamp")
+	}
+
 	viewer := claimsFrom(r.Context())
 
 	visible, err := a.spots.InViewport(r.Context(), spots.ViewportQuery{
 		BBox:   bbox,
 		Zoom:   zoom,
+		From:   from,
+		To:     to,
 		Viewer: viewer,
 	})
 	if err != nil {
@@ -146,12 +157,13 @@ type createSpotRequest struct {
 	AddressHint string `json:"address_hint"`
 	Notes       string `json:"notes"`
 
-	// DurationMinutes is how long the offer stands, rather than an absolute
-	// expiry. A phone's clock can be minutes out, and an absolute timestamp
-	// from a skewed clock either expires immediately or outlives its window.
-	// A duration is interpreted against the server's clock, which is the one
-	// the expiry sweeper uses.
+	// DurationMinutes is how long the offer stands after it becomes
+	// available, rather than an absolute expiry.
 	DurationMinutes int `json:"duration_minutes"`
+
+	// AvailableInMinutes is how long until the offer starts. Zero or omitted
+	// means immediately. Capped at 24 hours by the domain.
+	AvailableInMinutes int `json:"available_in_minutes"`
 }
 
 func (a *API) handleCreateSpot(w http.ResponseWriter, r *http.Request) error {
@@ -170,12 +182,16 @@ func (a *API) handleCreateSpot(w http.ResponseWriter, r *http.Request) error {
 	if req.DurationMinutes <= 0 {
 		fields["duration_minutes"] = "must be a positive number of minutes"
 	}
+	if req.AvailableInMinutes < 0 {
+		fields["available_in_minutes"] = "must not be negative"
+	}
 	if len(fields) > 0 {
 		return domain.InvalidFields(fields)
 	}
 
 	claims := claimsFrom(r.Context())
 	now := time.Now()
+	availableFrom := now.Add(time.Duration(req.AvailableInMinutes) * time.Minute)
 
 	spot, err := a.spots.Offer(r.Context(), domain.NewSpotInput{
 		OwnerID:       claims.UserID,
@@ -185,8 +201,8 @@ func (a *API) handleCreateSpot(w http.ResponseWriter, r *http.Request) error {
 		Size:          req.Size,
 		PriceCents:    req.PriceCents,
 		Notes:         req.Notes,
-		AvailableFrom: now,
-		ExpiresAt:     now.Add(time.Duration(req.DurationMinutes) * time.Minute),
+		AvailableFrom: availableFrom,
+		ExpiresAt:     availableFrom.Add(time.Duration(req.DurationMinutes) * time.Minute),
 	})
 	if err != nil {
 		return err
@@ -216,4 +232,11 @@ func optionalInt(raw string) (int, error) {
 		return 0, errors.New("not a whole number")
 	}
 	return value, nil
+}
+
+func optionalTime(raw string) (time.Time, error) {
+	if raw == "" {
+		return time.Time{}, nil
+	}
+	return time.Parse(time.RFC3339, raw)
 }

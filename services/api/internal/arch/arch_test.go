@@ -28,19 +28,20 @@ const (
 
 // Short names for the packages the rules refer to.
 const (
-	pkgDomain   = "internal/domain"
-	pkgAccounts = "internal/accounts"
-	pkgSpots    = "internal/spots"
-	pkgAuth     = "internal/auth"
-	pkgWeb      = "internal/web"
-	pkgPostgres = "internal/postgres"
-	pkgAPI      = "internal/api"
-	pkgConfig   = "internal/config"
-	pkgLogging  = "internal/logging"
-	pkgSeed     = "internal/seed"
-	pkgTestDB   = "internal/testdb"
-	pkgArch     = "internal/arch"
-	pkgMigrate  = "migrations"
+	pkgDomain       = "internal/domain"
+	pkgAccounts     = "internal/accounts"
+	pkgSpots        = "internal/spots"
+	pkgReservations = "internal/reservations"
+	pkgAuth         = "internal/auth"
+	pkgWeb          = "internal/web"
+	pkgPostgres     = "internal/postgres"
+	pkgAPI          = "internal/api"
+	pkgConfig       = "internal/config"
+	pkgLogging      = "internal/logging"
+	pkgSeed         = "internal/seed"
+	pkgTestDB       = "internal/testdb"
+	pkgArch         = "internal/arch"
+	pkgMigrate      = "migrations"
 )
 
 // rule is what one package is permitted to depend on.
@@ -93,6 +94,12 @@ var rules = map[string]rule{
 		packages: []string{pkgDomain, geoModule},
 	},
 
+	pkgReservations: {
+		why: "a use case package declares the ports it needs and depends only " +
+			"on the domain, so it can be tested without a database",
+		packages: []string{pkgDomain},
+	},
+
 	pkgAuth: {
 		why: "auth is a cryptography adapter: it implements the hashing and " +
 			"token ports and must not reach for HTTP or the database",
@@ -111,7 +118,7 @@ var rules = map[string]rule{
 		why: "postgres is the database adapter: it implements the ports the " +
 			"use cases declare, which is why it may import them, and it is " +
 			"the only package allowed to speak SQL",
-		packages:   []string{pkgDomain, pkgAccounts, pkgSpots, geoModule},
+		packages:   []string{pkgDomain, pkgAccounts, pkgSpots, pkgReservations, geoModule},
 		thirdParty: []string{"github.com/jackc/pgx"},
 	},
 
@@ -119,7 +126,7 @@ var rules = map[string]rule{
 		why: "api is the HTTP adapter: it decodes requests, calls use cases " +
 			"and serialises results, and must reach the database only " +
 			"through a port",
-		packages: []string{pkgDomain, pkgAccounts, pkgSpots, pkgWeb, pkgConfig, geoModule},
+		packages: []string{pkgDomain, pkgAccounts, pkgSpots, pkgReservations, pkgWeb, pkgConfig, geoModule},
 	},
 
 	pkgConfig: {
@@ -195,6 +202,18 @@ var forbidden = []struct {
 		imported: pkgPostgres,
 		because: "a use case must not depend on an adapter. Add the method to " +
 			"the Store interface in spots/ports.go instead",
+	},
+	{
+		importer: pkgReservations,
+		imported: pkgPostgres,
+		because: "a use case must not depend on an adapter. Add the method to " +
+			"the Store interface in reservations/ports.go instead",
+	},
+	{
+		importer: pkgReservations,
+		imported: "net/http",
+		because: "a use case must work without a request. The expiry sweeper " +
+			"and the WebSocket hub call these same rules with no HTTP in sight",
 	},
 	{
 		importer: pkgAccounts,

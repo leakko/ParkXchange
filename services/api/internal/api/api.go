@@ -13,6 +13,7 @@ import (
 
 	"github.com/marco/parkxchange/services/api/internal/accounts"
 	"github.com/marco/parkxchange/services/api/internal/config"
+	"github.com/marco/parkxchange/services/api/internal/reservations"
 	"github.com/marco/parkxchange/services/api/internal/spots"
 	"github.com/marco/parkxchange/services/api/internal/web"
 )
@@ -37,6 +38,7 @@ type API struct {
 
 	accounts *accounts.Service
 	spots    *spots.Service
+	reserves *reservations.Service
 
 	health Pinger
 	limit  *web.RateLimiter
@@ -45,11 +47,12 @@ type API struct {
 // Deps is what New requires. A struct rather than a growing parameter list, so
 // that adding a use case does not silently reorder arguments at the call site.
 type Deps struct {
-	Config   config.Config
-	Logger   *slog.Logger
-	Accounts *accounts.Service
-	Spots    *spots.Service
-	Health   Pinger
+	Config       config.Config
+	Logger       *slog.Logger
+	Accounts     *accounts.Service
+	Spots        *spots.Service
+	Reservations *reservations.Service
+	Health       Pinger
 }
 
 // New builds the API. Call Close when finished, to stop the rate limiter's
@@ -60,6 +63,7 @@ func New(deps Deps) (*API, error) {
 		log:      deps.Logger,
 		accounts: deps.Accounts,
 		spots:    deps.Spots,
+		reserves: deps.Reservations,
 		health:   deps.Health,
 		limit:    web.NewRateLimiter(deps.Config.RateLimitRPS, deps.Config.RateLimitBurst),
 	}, nil
@@ -99,6 +103,13 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("POST /v1/spots", a.requireAuth(a.handleCreateSpot))
 	mux.Handle("DELETE /v1/spots/{id}", a.requireAuth(a.handleDeleteSpot))
 	mux.Handle("GET /v1/spots/mine", a.requireAuth(a.handleMySpots))
+
+	mux.Handle("POST /v1/spots/{id}/reservations", a.requireAuth(a.handleClaimSpot))
+	mux.Handle("GET /v1/reservations/active", a.requireAuth(a.handleActiveReservations))
+	mux.Handle("GET /v1/reservations/{id}", a.requireAuth(a.handleGetReservation))
+	mux.Handle("POST /v1/reservations/{id}/reconfirm", a.requireAuth(a.handleReconfirm))
+	mux.Handle("POST /v1/reservations/{id}/cancel", a.requireAuth(a.handleCancelReservation))
+	mux.Handle("POST /v1/reservations/{id}/complete", a.requireAuth(a.handleCompleteReservation))
 
 	// Order matters and reads top to bottom as the request travels inwards.
 	return web.Chain(mux,

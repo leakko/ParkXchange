@@ -45,8 +45,9 @@ const (
 
 // SQLSTATE codes this adapter translates into domain sentinels.
 const (
-	uniqueViolation = "23505"
-	checkViolation  = "23514"
+	uniqueViolation    = "23505"
+	exclusionViolation = "23P01"
+	checkViolation     = "23514"
 )
 
 // Open builds the pool and verifies it can reach the database.
@@ -111,7 +112,7 @@ func translate(err error, context string) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
-		case uniqueViolation:
+		case uniqueViolation, exclusionViolation:
 			return domain.ErrDuplicate
 		case checkViolation:
 			// A CHECK rejection means the domain rules let something through

@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -19,7 +20,14 @@ const spotColumns = `
 	s.id, s.owner_id, u.display_name, u.rating_sum, u.rating_count,
 	ST_X(s.geom), ST_Y(s.geom),
 	s.address_hint, s.size_class, s.status, s.price_cents, s.notes,
-	s.available_from, s.expires_at, s.created_at`
+	s.available_from, s.expires_at, s.created_at,
+	(
+		SELECT r.driver_id
+		  FROM reservations r
+		 WHERE r.spot_id = s.id
+		   AND r.status IN ('pending', 'confirmed', 'arrived')
+		 LIMIT 1
+	)`
 
 // discoveryQuery answers the map's viewport request, and is the hottest query
 // in the product.
@@ -35,11 +43,11 @@ const discoveryQuery = `
 	  FROM spots s
 	  JOIN users u ON u.id = s.owner_id
 	 WHERE s.status = 'available'
-	   AND s.expires_at > now()
-	   AND s.available_from <= now()
+	   AND s.expires_at > $5
+	   AND s.available_from < $6
 	   AND s.geom && ST_MakeEnvelope($1, $2, $3, $4, 4326)
 	 ORDER BY s.created_at DESC
-	 LIMIT $5`
+	 LIMIT $7`
 
 func scanSpot(row pgx.Row) (domain.Spot, error) {
 	var (
@@ -50,6 +58,7 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 		notes       *string
 		size        string
 		status      string
+		holderID    *string
 	)
 
 	err := row.Scan(
@@ -57,6 +66,7 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 		&spot.Lon, &spot.Lat,
 		&addressHint, &size, &status, &spot.PriceCents, &notes,
 		&spot.AvailableFrom, &spot.ExpiresAt, &spot.CreatedAt,
+		&holderID,
 	)
 	if err != nil {
 		return domain.Spot{}, translate(err, "scan spot")
@@ -66,6 +76,7 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 	spot.Status = domain.SpotStatus(status)
 	spot.AddressHint = optional(addressHint)
 	spot.Notes = optional(notes)
+	spot.HolderID = optional(holderID)
 
 	// An unrated owner is left as nil rather than 0, because a new user is not
 	// a zero-star user and the client renders the two differently.
@@ -85,7 +96,7 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 // geometry would defeat the index entirely, because the bounding box of a
 // collection spanning the antimeridian is the whole planet. A viewport only
 // splits when it crosses the date line, so in practice this loop runs once.
-func (db *DB) SpotsInBBox(ctx context.Context, boxes []geo.BBox, limit int) ([]domain.Spot, error) {
+func (db *DB) SpotsInBBox(ctx context.Context, boxes []geo.BBox, from, to time.Time, limit int) ([]domain.Spot, error) {
 	// Deduplicated by id because a caller could pass overlapping rectangles.
 	// The antimeridian split never does, but the port does not forbid it and
 	// returning the same spot twice would put two markers on one pin.
@@ -98,7 +109,7 @@ func (db *DB) SpotsInBBox(ctx context.Context, boxes []geo.BBox, limit int) ([]d
 		}
 
 		rows, err := db.Pool.Query(ctx, discoveryQuery,
-			box.MinLon, box.MinLat, box.MaxLon, box.MaxLat, limit-len(spots))
+			box.MinLon, box.MinLat, box.MaxLon, box.MaxLat, from, to, limit-len(spots))
 		if err != nil {
 			return nil, translate(err, "query spots in bbox")
 		}
@@ -211,30 +222,81 @@ func (db *DB) SpotsByOwner(ctx context.Context, ownerID string, limit int) ([]do
 	return spots, nil
 }
 
-// CancelSpot withdraws an offer.
+// CancelSpot withdraws an offer, including one that has already been claimed.
 //
-// The ownership and status checks are in the WHERE clause rather than in Go,
-// which makes the whole operation one atomic statement. A read followed by a
-// write would leave a window in which a driver reserves the spot, and the
-// owner would then withdraw a space somebody is already driving towards.
+// A reserved spot cannot just be flipped to cancelled: the live reservation
+// has to be settled in the same transaction, the driver's deposit released,
+// and the owner debited. Doing those as separate statements is how a crash
+// leaves a claimed spot with a stranded hold.
 func (db *DB) CancelSpot(ctx context.Context, spotID, ownerID string) error {
-	tag, err := db.Pool.Exec(ctx, `
-		UPDATE spots
-		   SET status = 'cancelled'
-		 WHERE id = $1
-		   AND owner_id = $2
-		   AND status = 'available'
-	`, spotID, ownerID)
+	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
+		return translate(err, "begin withdraw")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var status string
+	err = tx.QueryRow(ctx, `
+		SELECT status FROM spots
+		 WHERE id = $1 AND owner_id = $2
+		   FOR UPDATE
+	`, spotID, ownerID).Scan(&status)
+	if err != nil {
+		return translate(err, "lock spot for withdraw")
+	}
+
+	if status != string(domain.SpotAvailable) && status != string(domain.SpotReserved) {
+		return domain.ErrConflict
+	}
+
+	if status == string(domain.SpotReserved) {
+		var (
+			resID  string
+			driver string
+			price  int
+		)
+		err := tx.QueryRow(ctx, `
+			SELECT id, driver_id, price_cents
+			  FROM reservations
+			 WHERE spot_id = $1
+			   AND status IN ('pending', 'confirmed', 'arrived')
+			   FOR UPDATE
+		`, spotID).Scan(&resID, &driver, &price)
+		if err != nil {
+			return translate(err, "lock reservation for withdraw")
+		}
+
+		if _, err := tx.Exec(ctx, `
+			UPDATE reservations
+			   SET status = 'cancelled', cancelled_at = now(), cancel_reason = 'owner'
+			 WHERE id = $1
+		`, resID); err != nil {
+			return translate(err, "cancel reservation on withdraw")
+		}
+
+		if price > 0 {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO ledger_entries (user_id, reservation_id, kind, amount_cents, memo)
+				VALUES ($1, $2, $3, $4, $5)
+			`, driver, resID, string(domain.LedgerRelease), domain.ReleaseCents(price),
+				"deposit released: owner withdrew"); err != nil {
+				return translate(err, "release driver on owner withdraw")
+			}
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO ledger_entries (user_id, reservation_id, kind, amount_cents, memo)
+				VALUES ($1, $2, $3, $4, $5)
+			`, ownerID, resID, string(domain.LedgerDebit), domain.HoldCents(price),
+				"penalty: withdrew a claimed spot"); err != nil {
+				return translate(err, "debit owner on withdraw")
+			}
+		}
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE spots SET status = 'cancelled' WHERE id = $1
+	`, spotID); err != nil {
 		return translate(err, "cancel spot")
 	}
 
-	// Zero rows means the condition did not hold: the spot is gone, is not
-	// this caller's, or somebody reserved it first. The adapter cannot tell
-	// which and does not guess; the service already knows enough to phrase a
-	// useful message.
-	if tag.RowsAffected() == 0 {
-		return domain.ErrConflict
-	}
-	return nil
+	return translate(tx.Commit(ctx), "commit withdraw")
 }
