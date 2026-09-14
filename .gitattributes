@@ -1,0 +1,23 @@
+# Normalise to LF in the repository and on checkout. Without this, a Windows
+# clone with core.autocrlf=true rewrites tools/doctor.sh with CRLF endings and
+# bash fails on the carriage returns.
+* text=auto eol=lf
+
+*.sh    text eol=lf
+*.go    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.sql   text eol=lf
+
+# Gradle wrappers and Windows scripts must keep their native endings.
+*.bat    text eol=crlf
+*.cmd    text eol=crlf
+gradlew  text eol=lf
+
+# Generated lockfiles: keep diffs out of review.
+pnpm-lock.yaml -diff linguist-generated
+
+*.png binary
+*.jpg binary
+*.keystore binary
+*.pmtiles binary
