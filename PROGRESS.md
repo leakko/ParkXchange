@@ -21,19 +21,18 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** Phase 10 — Map discovery
+- **Phase in progress:** Phase 11 — User flows
 - **Last updated:** 2026-09-14
-- **Phases complete:** 9 of 12
-- **Blockers:** none open (Android emulator outbound Internet is broken on
-  this host; demotiles are served through `task mobile:map-proxy` via
-  `10.0.2.2` — see decision 49)
+- **Phases complete:** 10 of 12
+- **Blockers:** none open (emulator outbound Internet still requires
+  `task mobile:map-proxy`; see decision 54)
 
 ---
 
 ## Next immediate step
 
-Phase 10: viewport→bbox debounce, clustered GeoJSON, WS client with
-reconnect, TanStack Query snapshot, bottom sheet; time range on viewport.
+Phase 11: announce / claim / reconfirm (push via expo-notifications),
+handover complete, deep-link navigation to Google Maps / Waze / Apple Maps.
 
 ---
 
@@ -205,14 +204,17 @@ decisions 39–48 and ARCHITECTURE.md §3.13.
 
 ### Phase 10 — Map discovery
 
-- [ ] Viewport to bounding box, debounced on `onMapIdle` + `getBounds()`
-- [ ] `<GeoJSONSource cluster>` with circle and symbol layers
-- [ ] WebSocket client with exponential backoff reconnect and viewport
-      re-subscription
-- [ ] TanStack Query for the REST snapshot
-- [ ] Spot detail bottom sheet
-- [ ] **Demo:** a spot published over curl appears on the emulator without any
-      user interaction
+- [x] Viewport to bounding box, debounced on `onRegionDidChange` + `getBounds()`
+      (MapLibre v11 has no `onMapIdle`; region-did-change is the equivalent)
+- [x] `<GeoJSONSource cluster>` with circle and symbol layers
+- [x] WebSocket client with exponential backoff reconnect and viewport
+      re-subscription (`from`/`to` included)
+- [x] TanStack Query for the REST snapshot
+- [x] Spot detail bottom sheet
+- [x] **Demo passed:** Barcelona viewport shows a live spot count and pink/orange
+      markers; selecting a marker opens the bottom sheet. Publishing a spot over
+      curl (`POST /v1/spots`) is picked up by the subscribed socket / query
+      refresh without touching the UI
 
 > Phase 10 note added 2026-09-14: with advance booking, the map has a time
 > dimension. The viewport request carries a time range, and the WebSocket
@@ -515,6 +517,19 @@ does not relitigate it.
     demotiles URL. Demotiles themselves only go to zoom 6 — city zoom comes
     with a street style in Phase 10 / 12.
 
+### 2026-09-14 — Phase 10
+
+55. **Map style proxy serves OpenFreeMap liberty, not demotiles.** City zoom
+    needs street tiles; demotiles stop at z6. The proxy still allows demotiles
+    hosts for back-compat.
+56. **Arm GeoJSONSource only after the first non-empty FeatureCollection.**
+    Creating the native source with `features: []` and later swapping in
+    hundreds of points left the circle layers blank on MapLibre RN 11 /
+    Android. Mounting once with real data works.
+57. **Dev session auto-logs in as `driver@parkxchange.test`.** WS tickets need
+    a Bearer token; discovery itself is public. The hook validates `/v1/me` and
+    re-logins when the access token has expired.
+
 ---
 
 ## Blockers
@@ -755,5 +770,19 @@ about the missing path, not about 3.1. v2.8 is what actually parses 3.1.
 hoisted layout because there is no local `.bin`. Always
 `pnpm --filter @parkxchange/mobile exec expo …`, which is what
 `Taskfile.mobile.yml` now does.
+
+### 2026-09-14 — Phase 10
+
+- Built map discovery: debounced viewport (`onRegionDidChange` + `getBounds`),
+  TanStack Query REST snapshot with a `from`/`to` window, WS client with ticket
+  auth and exponential reconnect, clustered GeoJSON layers, and a Gorhom bottom
+  sheet for spot detail.
+- Extended `tools/map_style_proxy.py` to OpenFreeMap liberty for city zoom.
+- Demo passed on the emulator: pink spot markers over Barcelona, bottom sheet on
+  tap, live count badge. Closed Phase 10.
+
+**Gotcha worth remembering:** do not mount `GeoJSONSource` with an empty
+FeatureCollection and fill it later — on Android the layers stay blank. Wait
+for the first non-empty payload, then mount once (`spotsArmed`).
 
 
