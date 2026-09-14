@@ -1,0 +1,307 @@
+package domain
+
+import (
+	"math"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/marco/parkxchange/libs/go/geo"
+)
+
+// Spot rules. These mirror the CHECK constraints in the spots table on
+// purpose: the database is the last line of defence and refuses to store a
+// nonsensical row whatever the code does, while these give the client a
+// readable reason instead of a constraint violation.
+const (
+	// MaxPriceCents caps the compensation. This is a favour between drivers,
+	// not a parking business, and a ceiling also limits the damage from a
+	// client that sends cents where it meant euros.
+	MaxPriceCents = 2000
+
+	// MinDuration stops a spot that expires before anyone could drive to it.
+	MinDuration = 2 * time.Minute
+
+	// MaxDuration keeps the table from filling with stale offers that nobody
+	// ever cancels.
+	MaxDuration = 24 * time.Hour
+
+	MaxNotesLength       = 280
+	MaxAddressHintLength = 160
+)
+
+// SpotStatus is where a spot sits in its lifecycle.
+type SpotStatus string
+
+const (
+	SpotAvailable SpotStatus = "available"
+	SpotReserved  SpotStatus = "reserved"
+	SpotHandover  SpotStatus = "handover"
+	SpotCompleted SpotStatus = "completed"
+	SpotCancelled SpotStatus = "cancelled"
+	SpotExpired   SpotStatus = "expired"
+)
+
+// spotTransitions is the state machine, written out rather than implied by
+// scattered if statements.
+//
+// The same machine is enforced in SQL by the status CHECK plus the conditional
+// UPDATE that claims a spot. That duplication is deliberate: this copy gives a
+// caller a sensible error before any work happens, and the SQL copy is what
+// actually holds under concurrency, where a check in Go has already gone stale
+// by the time the write lands.
+var spotTransitions = map[SpotStatus][]SpotStatus{
+	SpotAvailable: {SpotReserved, SpotCancelled, SpotExpired},
+	SpotReserved:  {SpotHandover, SpotAvailable, SpotCancelled, SpotExpired},
+	SpotHandover:  {SpotCompleted, SpotCancelled},
+
+	// Terminal. A completed handover is history, and reopening it would let a
+	// settled ledger entry be settled twice.
+	SpotCompleted: {},
+	SpotCancelled: {},
+	SpotExpired:   {},
+}
+
+// Valid reports whether the status is one the system understands.
+func (s SpotStatus) Valid() bool {
+	_, known := spotTransitions[s]
+	return known
+}
+
+// CanTransitionTo reports whether next is reachable from s.
+func (s SpotStatus) CanTransitionTo(next SpotStatus) bool {
+	for _, allowed := range spotTransitions[s] {
+		if allowed == next {
+			return true
+		}
+	}
+	return false
+}
+
+// Terminal reports whether the spot can no longer change.
+func (s SpotStatus) Terminal() bool {
+	return len(spotTransitions[s]) == 0
+}
+
+// SpotSize describes what fits in the space.
+type SpotSize string
+
+const (
+	SizeSmall  SpotSize = "small"
+	SizeMedium SpotSize = "medium"
+	SizeLarge  SpotSize = "large"
+)
+
+// Valid reports whether the size is one of the three the table accepts.
+func (s SpotSize) Valid() bool {
+	return s == SizeSmall || s == SizeMedium || s == SizeLarge
+}
+
+// Spot is a parking space being offered.
+type Spot struct {
+	ID      string
+	OwnerID string
+
+	// OwnerName and OwnerRating are denormalised onto the spot because the
+	// map needs them to render a marker, and issuing a second request per
+	// visible spot would be dozens of round trips per pan.
+	OwnerName   string
+	OwnerRating *float64
+
+	Lon float64
+	Lat float64
+
+	AddressHint   string
+	Size          SpotSize
+	Status        SpotStatus
+	PriceCents    int
+	Notes         string
+	AvailableFrom time.Time
+	ExpiresAt     time.Time
+	CreatedAt     time.Time
+}
+
+// Expired reports whether the offer has run out, independently of the stored
+// status.
+//
+// The status column lags: a spot goes stale the moment its expiry passes, but
+// the row only says so once the sweeper has run. Every read path has to treat
+// an overdue spot as gone, or a client sees offers that cannot be claimed.
+func (s Spot) Expired(now time.Time) bool {
+	return !s.ExpiresAt.After(now)
+}
+
+// Claimable reports whether a driver could reserve this spot right now.
+func (s Spot) Claimable(now time.Time) bool {
+	return s.Status == SpotAvailable &&
+		!s.Expired(now) &&
+		!s.AvailableFrom.After(now)
+}
+
+// OwnedBy reports whether userID owns the spot.
+func (s Spot) OwnedBy(userID string) bool {
+	// Guard the empty string so an unauthenticated caller, whose user id is
+	// "", cannot come out as the owner of a row with an empty owner_id.
+	return userID != "" && s.OwnerID == userID
+}
+
+// Viewer describes who is asking to see a spot, for the coordinate privacy
+// rule.
+type Viewer struct {
+	// UserID is empty for an anonymous caller.
+	UserID string
+
+	// HoldsReservation is true when this viewer has an active reservation on
+	// the spot in question.
+	HoldsReservation bool
+}
+
+// CoordinatesFor returns the position to disclose to a viewer, and whether it
+// is the exact one.
+//
+// While a spot is merely on offer, everyone sees a coordinate snapped to a
+// ~30 m grid. Publishing the exact position of an unclaimed space would tell
+// anybody with the app precisely where a specific car is about to leave, which
+// is a surveillance feature nobody asked for. The owner always sees their own
+// spot exactly, and the driver who holds the reservation gets the exact
+// position because they have to find it.
+func (s Spot) CoordinatesFor(viewer Viewer) (lon, lat float64, exact bool) {
+	if s.OwnedBy(viewer.UserID) || viewer.HoldsReservation {
+		return s.Lon, s.Lat, true
+	}
+
+	fuzzedLon, fuzzedLat := geo.Fuzz(s.Lon, s.Lat)
+	return fuzzedLon, fuzzedLat, false
+}
+
+// SpotDraft is a validated offer that has not been persisted yet.
+//
+// It is a separate type from Spot because it genuinely is one: a draft has no
+// identifier and no timestamps, and modelling it as a Spot with those fields
+// left blank invites code to read an id that is not there yet.
+//
+// The window is carried as two durations rather than two timestamps, and that
+// is the important part. The API's clock and the database's clock are not the
+// same clock: in development they were observed to differ by over a hundred
+// milliseconds, which is enough for a spot inserted with an absolute
+// available_from to be invisible to a viewport query issued immediately
+// afterwards, because that query compares against the database's now(). Every
+// read path and the expiry sweeper use the database's clock, so the window has
+// to be anchored to it too. Sending offsets makes the anchor the database's,
+// whatever the API's clock says.
+type SpotDraft struct {
+	OwnerID     string
+	Lon         float64
+	Lat         float64
+	AddressHint string
+	Size        SpotSize
+	PriceCents  int
+	Notes       string
+
+	// AvailableIn is how long until the offer starts. Zero means immediately.
+	AvailableIn time.Duration
+
+	// ExpiresIn is how long until the offer ends, measured from the same
+	// instant as AvailableIn.
+	ExpiresIn time.Duration
+}
+
+// NewSpotInput is an offer that has not been validated.
+type NewSpotInput struct {
+	OwnerID     string
+	Lon         float64
+	Lat         float64
+	AddressHint string
+	Size        string
+	PriceCents  int
+	Notes       string
+
+	// AvailableFrom is optional; zero means "right now".
+	AvailableFrom time.Time
+	ExpiresAt     time.Time
+}
+
+// NewSpot validates an offer and returns the draft to persist.
+//
+// now is passed in rather than read from the clock so the rules are testable
+// without sleeping and without a package-level clock variable that tests would
+// have to mutate. Note that it is used only to check the window's shape, never
+// to stamp a timestamp that gets stored: see SpotDraft for why.
+func NewSpot(in NewSpotInput, now time.Time) (SpotDraft, error) {
+	fields := make(map[string]string)
+
+	if math.IsNaN(in.Lon) || math.IsInf(in.Lon, 0) || in.Lon < -180 || in.Lon > 180 {
+		fields["lon"] = "must be a longitude between -180 and 180"
+	}
+	if math.IsNaN(in.Lat) || math.IsInf(in.Lat, 0) || in.Lat < -90 || in.Lat > 90 {
+		fields["lat"] = "must be a latitude between -90 and 90"
+	}
+
+	size := SpotSize(strings.TrimSpace(in.Size))
+	if !size.Valid() {
+		fields["size_class"] = "must be small, medium or large"
+	}
+
+	switch {
+	case in.PriceCents < 0:
+		fields["price_cents"] = "must not be negative"
+	case in.PriceCents > MaxPriceCents:
+		fields["price_cents"] = "must be at most 2000 (20 euros)"
+	}
+
+	notes := strings.TrimSpace(in.Notes)
+	if utf8.RuneCountInString(notes) > MaxNotesLength {
+		fields["notes"] = "must be at most 280 characters"
+	}
+
+	addressHint := strings.TrimSpace(in.AddressHint)
+	if utf8.RuneCountInString(addressHint) > MaxAddressHintLength {
+		fields["address_hint"] = "must be at most 160 characters"
+	}
+
+	availableFrom := in.AvailableFrom
+	if availableFrom.IsZero() {
+		availableFrom = now
+	}
+
+	switch {
+	case in.ExpiresAt.IsZero():
+		fields["expires_at"] = "is required"
+	case in.ExpiresAt.Sub(availableFrom) < MinDuration:
+		fields["expires_at"] = "must be at least 2 minutes after the spot becomes available"
+	case in.ExpiresAt.Sub(availableFrom) > MaxDuration:
+		fields["expires_at"] = "must be at most 24 hours after the spot becomes available"
+	case !in.ExpiresAt.After(now):
+		fields["expires_at"] = "must be in the future"
+	}
+
+	if in.OwnerID == "" {
+		// Not a client-facing field: reaching here without an owner means the
+		// caller skipped authentication, which is a programming error.
+		return SpotDraft{}, Internal(Invalid("owner_required", "a spot needs an owner"))
+	}
+
+	if len(fields) > 0 {
+		return SpotDraft{}, InvalidFields(fields)
+	}
+
+	// Offsets, not timestamps. A negative AvailableIn would mean the offer
+	// started in the past, which is harmless but pointless, so it is clamped
+	// to "immediately".
+	availableIn := availableFrom.Sub(now)
+	if availableIn < 0 {
+		availableIn = 0
+	}
+
+	return SpotDraft{
+		OwnerID:     in.OwnerID,
+		Lon:         in.Lon,
+		Lat:         in.Lat,
+		AddressHint: addressHint,
+		Size:        size,
+		PriceCents:  in.PriceCents,
+		Notes:       notes,
+		AvailableIn: availableIn,
+		ExpiresIn:   in.ExpiresAt.Sub(now),
+	}, nil
+}

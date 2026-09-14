@@ -46,7 +46,7 @@ func (a *API) handleReadyz(w http.ResponseWriter, r *http.Request) error {
 	ctx, cancel := context.WithTimeout(r.Context(), readinessTimeout)
 	defer cancel()
 
-	if err := a.db.Ping(ctx); err != nil {
+	if err := a.health.Ping(ctx); err != nil {
 		web.LoggerFrom(r.Context()).Warn("readiness check failed", "error", err)
 		return web.JSON(w, http.StatusServiceUnavailable, readyResponse{
 			Status:   "unavailable",

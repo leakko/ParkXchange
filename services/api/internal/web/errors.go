@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+
+	"github.com/marco/parkxchange/services/api/internal/domain"
 )
 
 // Error is an HTTP-aware error. Handlers return it to describe a failure the
@@ -120,5 +122,62 @@ func asError(err error) *Error {
 	if errors.As(err, &apiErr) {
 		return apiErr
 	}
+
+	// Errors raised by the use cases arrive classified but without a status,
+	// because the domain does not know it is being served over HTTP.
+	// Translating them here means a handler can return a service error
+	// unchanged and still get the right envelope, and that the mapping from
+	// domain kind to status code exists in exactly one place.
+	if domainErr, ok := domain.AsError(err); ok {
+		return fromDomain(domainErr)
+	}
+
 	return Internal(err)
+}
+
+func fromDomain(err *domain.Error) *Error {
+	// An internal domain fault is rewritten rather than passed through. Its
+	// message is already generic, but rebuilding it here guarantees that a
+	// future rule which puts detail in an internal message cannot start
+	// leaking the inside of the system to clients.
+	if err.Kind == domain.KindInternal {
+		return Internal(err)
+	}
+
+	return &Error{
+		Status:  statusFor(err),
+		Code:    err.Code,
+		Message: err.Message,
+		Fields:  err.Fields,
+		cause:   err.Unwrap(),
+	}
+}
+
+// statusFor maps a domain error onto an HTTP status.
+func statusFor(err *domain.Error) int {
+	switch err.Kind {
+	case domain.KindInvalid:
+		// Field-level failures are 422: the request was understood and
+		// well-formed, but the entity it describes is not acceptable. A single
+		// malformed parameter, such as an unparseable bbox, never reaches the
+		// point of describing an entity, so it is a plain 400.
+		if len(err.Fields) > 0 {
+			return http.StatusUnprocessableEntity
+		}
+		return http.StatusBadRequest
+
+	case domain.KindUnauthenticated:
+		return http.StatusUnauthorized
+	case domain.KindForbidden:
+		return http.StatusForbidden
+	case domain.KindNotFound:
+		return http.StatusNotFound
+	case domain.KindConflict:
+		return http.StatusConflict
+
+	default:
+		// Includes KindInternal, though fromDomain handles that before here.
+		// An unrecognised kind is a bug, and 500 is the safe answer.
+		return http.StatusInternalServerError
+	}
 }

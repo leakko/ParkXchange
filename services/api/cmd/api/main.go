@@ -12,10 +12,13 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/marco/parkxchange/services/api/internal/accounts"
 	"github.com/marco/parkxchange/services/api/internal/api"
+	"github.com/marco/parkxchange/services/api/internal/auth"
 	"github.com/marco/parkxchange/services/api/internal/config"
 	"github.com/marco/parkxchange/services/api/internal/logging"
-	"github.com/marco/parkxchange/services/api/internal/store"
+	"github.com/marco/parkxchange/services/api/internal/postgres"
+	"github.com/marco/parkxchange/services/api/internal/spots"
 )
 
 func main() {
@@ -41,13 +44,34 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	db, err := store.Open(ctx, cfg.DatabaseURL)
+	db, err := postgres.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
-	apiHandler, err := api.New(cfg, log, db)
+	// This function is the only place that knows both the use cases and the
+	// adapter that backs them. Everything above depends on interfaces, so
+	// composition happens once, here, rather than being rediscovered at every
+	// call site.
+	tokens, err := auth.NewTokenIssuer(cfg.JWTSecret, cfg.AccessTokenTTL)
+	if err != nil {
+		return err
+	}
+
+	accountsService, err := accounts.New(
+		db, auth.NewArgon2Hasher(), tokens, cfg.RefreshTokenTTL)
+	if err != nil {
+		return err
+	}
+
+	apiHandler, err := api.New(api.Deps{
+		Config:   cfg,
+		Logger:   log,
+		Accounts: accountsService,
+		Spots:    spots.New(db),
+		Health:   db,
+	})
 	if err != nil {
 		return err
 	}

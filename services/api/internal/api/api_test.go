@@ -12,9 +12,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/marco/parkxchange/services/api/internal/accounts"
 	"github.com/marco/parkxchange/services/api/internal/api"
+	"github.com/marco/parkxchange/services/api/internal/auth"
 	"github.com/marco/parkxchange/services/api/internal/config"
-	"github.com/marco/parkxchange/services/api/internal/store"
+	"github.com/marco/parkxchange/services/api/internal/postgres"
+	"github.com/marco/parkxchange/services/api/internal/spots"
 )
 
 func testConfig() config.Config {
@@ -46,13 +49,20 @@ func newServerWithConfig(t *testing.T, cfg config.Config) *httptest.Server {
 // newServer starts the full middleware chain in front of a real database, so
 // these tests exercise what production actually runs rather than a handler in
 // isolation.
-func newServer(t *testing.T) (*httptest.Server, *store.DB) {
+func newServer(t *testing.T) (*httptest.Server, *postgres.DB) {
 	t.Helper()
 
 	return newServerFrom(t, testConfig())
 }
 
-func newServerFrom(t *testing.T, cfg config.Config) (*httptest.Server, *store.DB) {
+// newServerFrom wires the real adapter behind the real use cases behind the
+// real middleware chain.
+//
+// The services take interfaces, so a fake store would be easy here, and that
+// is deliberately not what these tests do: the guarantees worth testing at
+// this level are the ones that live in SQL, such as the partial spatial index
+// and the conditional writes. A fake would pass while production broke.
+func newServerFrom(t *testing.T, cfg config.Config) (*httptest.Server, *postgres.DB) {
 	t.Helper()
 
 	url := os.Getenv("DATABASE_URL")
@@ -63,14 +73,31 @@ func newServerFrom(t *testing.T, cfg config.Config) (*httptest.Server, *store.DB
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	t.Cleanup(cancel)
 
-	db, err := store.Open(ctx, url)
+	db, err := postgres.Open(ctx, url)
 	if err != nil {
 		t.Fatalf("open database (is 'task db:up' running?): %v", err)
 	}
 	t.Cleanup(db.Close)
 
+	tokens, err := auth.NewTokenIssuer(cfg.JWTSecret, cfg.AccessTokenTTL)
+	if err != nil {
+		t.Fatalf("build token issuer: %v", err)
+	}
+
+	accountsService, err := accounts.New(
+		db, auth.NewArgon2Hasher(), tokens, cfg.RefreshTokenTTL)
+	if err != nil {
+		t.Fatalf("build accounts service: %v", err)
+	}
+
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	a, err := api.New(cfg, log, db)
+	a, err := api.New(api.Deps{
+		Config:   cfg,
+		Logger:   log,
+		Accounts: accountsService,
+		Spots:    spots.New(db),
+		Health:   db,
+	})
 	if err != nil {
 		t.Fatalf("build api: %v", err)
 	}

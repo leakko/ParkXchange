@@ -9,14 +9,16 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/marco/parkxchange/services/api/internal/domain"
 )
 
 // Token lifetimes.
 //
-// The access token is short because it is unrevocable by design: once issued,
+// The access token is short because it is unrevocable by design: once issued
 // it is valid until it expires, so its lifetime is the window during which a
 // stolen token is useful. The refresh token is long but is stored, rotated and
-// revocable, which is where the real session control lives.
+// revocable, which is where real session control lives.
 const (
 	AccessTokenTTL  = 15 * time.Minute
 	RefreshTokenTTL = 30 * 24 * time.Hour
@@ -33,20 +35,13 @@ const (
 	MinSecretBytes = 32
 )
 
-// Errors returned when a token cannot be accepted. Callers map all of them to
-// 401 but may want to distinguish them in logs.
-var (
-	ErrTokenInvalid = errors.New("auth: token is invalid")
-	ErrTokenExpired = errors.New("auth: token has expired")
-)
+// ErrTokenInvalid is returned when a token cannot be accepted for any reason
+// other than expiry. Expiry is reported as domain.ErrTokenExpired, because the
+// caller's correct reaction differs: expired means refresh and retry, invalid
+// means sign in again.
+var ErrTokenInvalid = errors.New("auth: token is invalid")
 
-// Claims is the payload of an access token.
-type Claims struct {
-	UserID string
-	Email  string
-}
-
-// TokenIssuer mints and verifies access tokens.
+// TokenIssuer mints and verifies the credentials that represent a session.
 type TokenIssuer struct {
 	secret    []byte
 	accessTTL time.Duration
@@ -86,63 +81,62 @@ func (ti *TokenIssuer) IssueAccess(userID, email string) (string, time.Time, err
 }
 
 // ParseAccess verifies a token's signature and claims.
-func (ti *TokenIssuer) ParseAccess(raw string) (Claims, error) {
+func (ti *TokenIssuer) ParseAccess(raw string) (domain.Claims, error) {
 	parsed, err := jwt.Parse(
 		raw,
-		func(token *jwt.Token) (any, error) { return ti.secret, nil },
+		func(*jwt.Token) (any, error) { return ti.secret, nil },
 
-		// Pinning the algorithm is what closes the "alg: none" and
-		// "RS256 public key used as an HMAC secret" family of attacks. Without
-		// it, the token itself gets to choose how it is verified.
+		// Pinning the algorithm is what closes the "alg: none" and "RS256
+		// public key used as an HMAC secret" family of attacks. Without it,
+		// the token itself gets to choose how it is verified.
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
 		jwt.WithIssuer(Issuer),
 		jwt.WithExpirationRequired(),
 	)
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return Claims{}, ErrTokenExpired
+			return domain.Claims{}, domain.ErrTokenExpired
 		}
-		return Claims{}, fmt.Errorf("%w: %v", ErrTokenInvalid, err)
+		return domain.Claims{}, fmt.Errorf("%w: %v", ErrTokenInvalid, err)
 	}
 
 	mapClaims, ok := parsed.Claims.(jwt.MapClaims)
 	if !ok {
-		return Claims{}, ErrTokenInvalid
+		return domain.Claims{}, ErrTokenInvalid
 	}
 
 	subject, err := mapClaims.GetSubject()
 	if err != nil || subject == "" {
-		return Claims{}, ErrTokenInvalid
+		return domain.Claims{}, ErrTokenInvalid
 	}
 
 	email, _ := mapClaims["email"].(string)
 
-	return Claims{UserID: subject, Email: email}, nil
+	return domain.Claims{UserID: subject, Email: email}, nil
 }
 
 // NewRefreshToken returns a fresh opaque token and the hash to store.
 //
 // Only the hash is persisted, so a database leak does not hand out live
 // sessions.
-func NewRefreshToken() (plaintext string, hash []byte, err error) {
+func (ti *TokenIssuer) NewRefreshToken() (plaintext string, hash []byte, err error) {
 	buf := make([]byte, refreshTokenBytes)
 	if _, err := rand.Read(buf); err != nil {
 		return "", nil, fmt.Errorf("auth: generate refresh token: %w", err)
 	}
 
 	plaintext = base64.RawURLEncoding.EncodeToString(buf)
-	return plaintext, HashRefreshToken(plaintext), nil
+	return plaintext, ti.HashRefreshToken(plaintext), nil
 }
 
 // HashRefreshToken hashes a refresh token for storage and lookup.
 //
 // SHA-256 rather than argon2id, deliberately. Argon2 exists to make guessing a
 // low-entropy human password expensive; a refresh token is 256 bits of
-// cryptographic randomness, so there is nothing to guess. Using a slow hash
-// here would only mean every refresh request pays 64 MiB of memory, and it
-// would make lookup by hash impractical because each argon2 hash is salted
-// differently.
-func HashRefreshToken(plaintext string) []byte {
+// cryptographic randomness, so there is nothing to guess. A slow hash here
+// would only mean every refresh request pays 64 MiB of memory, and per-token
+// salting would make lookup by hash impossible.
+func (ti *TokenIssuer) HashRefreshToken(plaintext string) []byte {
 	sum := sha256.Sum256([]byte(plaintext))
 	return sum[:]
 }

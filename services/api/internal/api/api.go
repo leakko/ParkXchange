@@ -1,14 +1,19 @@
-// Package api wires the HTTP routes to their handlers.
+// Package api is the HTTP adapter.
+//
+// Its job is narrow on purpose: decode a request, call a use case, translate
+// the result into JSON. No business rule lives here, which is what lets the
+// same rules be driven by the WebSocket hub and by the expiry sweeper without
+// either of them faking an *http.Request.
 package api
 
 import (
-	"fmt"
+	"context"
 	"log/slog"
 	"net/http"
 
-	"github.com/marco/parkxchange/services/api/internal/auth"
+	"github.com/marco/parkxchange/services/api/internal/accounts"
 	"github.com/marco/parkxchange/services/api/internal/config"
-	"github.com/marco/parkxchange/services/api/internal/store"
+	"github.com/marco/parkxchange/services/api/internal/spots"
 	"github.com/marco/parkxchange/services/api/internal/web"
 )
 
@@ -18,43 +23,45 @@ const (
 	pathReadyz  = "/readyz"
 )
 
-// API holds the dependencies every handler needs.
-type API struct {
-	cfg    config.Config
-	log    *slog.Logger
-	db     *store.DB
-	limit  *web.RateLimiter
-	tokens *auth.TokenIssuer
+// Pinger reports whether a backing dependency is reachable. It is all the
+// readiness probe needs, so it is all the probe asks for.
+type Pinger interface {
+	Ping(ctx context.Context) error
+}
 
-	// dummyHash is verified against when a login names an account that does
-	// not exist, so the response takes the same time either way. Without it
-	// the endpoint tells an attacker which addresses are registered simply by
-	// answering faster.
-	dummyHash string
+// API holds what the handlers need: the use cases, and the HTTP-level
+// machinery that has nowhere else to live.
+type API struct {
+	cfg config.Config
+	log *slog.Logger
+
+	accounts *accounts.Service
+	spots    *spots.Service
+
+	health Pinger
+	limit  *web.RateLimiter
+}
+
+// Deps is what New requires. A struct rather than a growing parameter list, so
+// that adding a use case does not silently reorder arguments at the call site.
+type Deps struct {
+	Config   config.Config
+	Logger   *slog.Logger
+	Accounts *accounts.Service
+	Spots    *spots.Service
+	Health   Pinger
 }
 
 // New builds the API. Call Close when finished, to stop the rate limiter's
 // eviction goroutine.
-func New(cfg config.Config, log *slog.Logger, db *store.DB) (*API, error) {
-	tokens, err := auth.NewTokenIssuer(cfg.JWTSecret, cfg.AccessTokenTTL)
-	if err != nil {
-		return nil, err
-	}
-
-	// Computed once at startup: the cost has to match a real verification,
-	// but paying it per failed login would be a free denial-of-service knob.
-	dummyHash, err := auth.HashPassword("there is no account with this address")
-	if err != nil {
-		return nil, fmt.Errorf("api: build timing-equalisation hash: %w", err)
-	}
-
+func New(deps Deps) (*API, error) {
 	return &API{
-		cfg:       cfg,
-		log:       log,
-		db:        db,
-		limit:     web.NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst),
-		tokens:    tokens,
-		dummyHash: dummyHash,
+		cfg:      deps.Config,
+		log:      deps.Logger,
+		accounts: deps.Accounts,
+		spots:    deps.Spots,
+		health:   deps.Health,
+		limit:    web.NewRateLimiter(deps.Config.RateLimitRPS, deps.Config.RateLimitBurst),
 	}, nil
 }
 
@@ -73,7 +80,6 @@ func (a *API) Handler() http.Handler {
 
 	mux.Handle("GET "+pathHealthz, web.Handler(a.handleHealthz))
 	mux.Handle("GET "+pathReadyz, web.Handler(a.handleReadyz))
-
 	mux.Handle("GET /v1/version", web.Handler(a.handleVersion))
 
 	mux.Handle("POST /v1/auth/register", web.Handler(a.handleRegister))
@@ -81,7 +87,18 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("POST /v1/auth/refresh", web.Handler(a.handleRefresh))
 	mux.Handle("POST /v1/auth/logout", web.Handler(a.handleLogout))
 
-	mux.Handle("GET /v1/me", a.authenticated(a.handleMe))
+	mux.Handle("GET /v1/me", a.requireAuth(a.handleMe))
+
+	// Discovery is readable without an account, but the caller's identity
+	// still matters when present: an owner sees their own spots at full
+	// precision. optionalAuth attaches claims when a token is supplied and
+	// lets the request through when it is not.
+	mux.Handle("GET /v1/spots", a.optionalAuth(a.handleListSpots))
+	mux.Handle("GET /v1/spots/{id}", a.optionalAuth(a.handleGetSpot))
+
+	mux.Handle("POST /v1/spots", a.requireAuth(a.handleCreateSpot))
+	mux.Handle("DELETE /v1/spots/{id}", a.requireAuth(a.handleDeleteSpot))
+	mux.Handle("GET /v1/spots/mine", a.requireAuth(a.handleMySpots))
 
 	// Order matters and reads top to bottom as the request travels inwards.
 	return web.Chain(mux,
@@ -98,9 +115,4 @@ func (a *API) Handler() http.Handler {
 		// the traffic spike the limiter is there to survive.
 		web.Skip(a.limit.Middleware, pathHealthz, pathReadyz),
 	)
-}
-
-// authenticated adapts a handler that requires a signed-in caller.
-func (a *API) authenticated(h web.Handler) http.Handler {
-	return a.requireAuth(h)
 }
