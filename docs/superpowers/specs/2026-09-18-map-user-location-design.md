@@ -29,7 +29,7 @@ Out of scope: heading/compass mode, continuous course tracking, redesign of Anno
 
 - `apps/mobile/src/app/index.tsx` — wire permission, `followUser` state, Camera props, region handler, locate button.
 - Optional small hook `apps/mobile/src/hooks/useMapLocation.ts` — request foreground permission once and expose `{ granted, coords? }` so the screen stays thin.
-- `apps/mobile/src/config.ts` — add `userZoom = 16` (keep `barcelonaCenter` as fallback).
+- `apps/mobile/src/config.ts` — add `userZoom = 16` (keep `defaultMapCenter` / Sevilla as fallback).
 
 No API or backend changes.
 

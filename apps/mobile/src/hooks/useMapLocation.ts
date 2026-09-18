@@ -1,25 +1,46 @@
 import * as Location from "expo-location";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+export type LonLat = [number, number];
 
 type MapLocation = {
   /** True after the permission request has settled. */
   ready: boolean;
   granted: boolean;
-  /** `[lon, lat]` from the first fix, if available. */
-  coords: [number, number] | null;
+  /** Latest `[lon, lat]` from GPS, if available. */
+  coords: LonLat | null;
+  /** Fetch a fresh fix (ignores any cached California/emulator default). */
+  refresh: () => Promise<LonLat | null>;
 };
 
 /**
- * Requests foreground location once for the map screen. Used to seed the
- * camera; the live puck is owned by MapLibre's NativeUserLocation.
+ * Requests foreground location for the map screen and keeps coords updated.
+ * The live puck is still owned by MapLibre's NativeUserLocation.
  */
 export function useMapLocation(): MapLocation {
   const [ready, setReady] = useState(false);
   const [granted, setGranted] = useState(false);
-  const [coords, setCoords] = useState<[number, number] | null>(null);
+  const [coords, setCoords] = useState<LonLat | null>(null);
+
+  const readFix = useCallback(async (): Promise<LonLat | null> => {
+    try {
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const next: LonLat = [
+        position.coords.longitude,
+        position.coords.latitude,
+      ];
+      setCoords(next);
+      return next;
+    } catch {
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
+    let subscription: Location.LocationSubscription | null = null;
 
     void (async () => {
       try {
@@ -33,19 +54,23 @@ export function useMapLocation(): MapLocation {
           return;
         }
         setGranted(true);
-        try {
-          const position = await Location.getCurrentPositionAsync({
+        await readFix();
+        if (cancelled) {
+          return;
+        }
+        subscription = await Location.watchPositionAsync(
+          {
             accuracy: Location.Accuracy.Balanced,
-          });
-          if (!cancelled) {
+            distanceInterval: 5,
+            timeInterval: 2000,
+          },
+          (position) => {
             setCoords([
               position.coords.longitude,
               position.coords.latitude,
             ]);
-          }
-        } catch {
-          // Permission granted but no fix yet; MapLibre may still locate.
-        }
+          },
+        );
       } finally {
         if (!cancelled) {
           setReady(true);
@@ -55,8 +80,9 @@ export function useMapLocation(): MapLocation {
 
     return () => {
       cancelled = true;
+      subscription?.remove();
     };
-  }, []);
+  }, [readFix]);
 
-  return { ready, granted, coords };
+  return { ready, granted, coords, refresh: readFix };
 }

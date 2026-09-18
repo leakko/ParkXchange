@@ -21,7 +21,7 @@ import {
 
 import type { SpotFeature } from "@/api/client";
 import {
-  barcelonaCenter,
+  defaultMapCenter,
   fallbackZoom,
   mapStyleUrl,
   userZoom,
@@ -53,6 +53,7 @@ export default function MapScreen() {
   const sheetRef = useRef<BottomSheet>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const jumpedToUserRef = useRef(false);
+  const lastJumpCoordsRef = useRef<[number, number] | null>(null);
   const timeWindow = useMemo(() => defaultTimeWindow(), []);
 
   const { ready, error: sessionError } = useDevSession();
@@ -122,11 +123,19 @@ export default function MapScreen() {
   }, [location.ready, location.granted]);
 
   useEffect(() => {
-    if (!location.coords || !follow.followUser || jumpedToUserRef.current) {
+    if (!location.coords || !follow.followUser) {
+      return;
+    }
+    const [lon, lat] = location.coords;
+    const prev = lastJumpCoordsRef.current;
+    const movedFar =
+      prev != null && Math.hypot(lon - prev[0], lat - prev[1]) > 0.5;
+    if (jumpedToUserRef.current && !movedFar) {
       return;
     }
     cameraRef.current?.jumpTo({ center: location.coords, zoom: userZoom });
     jumpedToUserRef.current = true;
+    lastJumpCoordsRef.current = location.coords;
   }, [location.coords, follow.followUser]);
 
   const publishViewport = useCallback(async () => {
@@ -181,14 +190,19 @@ export default function MapScreen() {
 
   const onRecenter = useCallback(() => {
     dispatchFollow({ type: "recenter" });
-    if (location.coords) {
+    void (async () => {
+      const coords = await location.refresh();
+      if (!coords) {
+        return;
+      }
+      lastJumpCoordsRef.current = coords;
       cameraRef.current?.easeTo({
-        center: location.coords,
+        center: coords,
         zoom: userZoom,
         duration: 400,
       });
-    }
-  }, [location.coords]);
+    })();
+  }, [location]);
 
   const doAnnounceHere = useCallback(async () => {
     Alert.alert("Announce a spot", "When does it become available?", [
@@ -306,7 +320,7 @@ export default function MapScreen() {
         <Camera
           ref={cameraRef}
           initialViewState={{
-            center: barcelonaCenter,
+            center: defaultMapCenter,
             zoom: fallbackZoom,
           }}
           {...(follow.followUser ? { trackUserLocation: "default" as const } : {})}

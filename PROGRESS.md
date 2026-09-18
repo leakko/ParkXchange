@@ -603,8 +603,8 @@ instead; the container then became ready in about a second.
 1. **Repository host.** The Go module path currently assumes
    `github.com/marco/parkxchange`. Confirm or correct before the module graph
    grows further.
-2. **Seed city.** Barcelona is assumed for development data, clustered around
-   ten real districts plus eight landmark spots.
+2. **Seed city.** Resolved: Sevilla (clustered around ten neighbourhoods plus
+   eight landmarks, including Calle Malvaloca 5).
 3. **Starting virtual balance.** Resolved: a `credit` of 500 cents on
    registration (`domain.SignupGrantCents`).
 4. **Penalty amounts.** Resolved: a forfeit equals the spot's price. An owner

@@ -22,7 +22,8 @@ export const mapStyleUrl =
   process.env.EXPO_PUBLIC_MAP_STYLE_URL ??
   "https://tiles.openfreemap.org/styles/liberty";
 
-export const barcelonaCenter: [number, number] = [2.1734, 41.3851];
+/** Fallback map center when GPS is unavailable: Calle Malvaloca 5, Sevilla. */
+export const defaultMapCenter: [number, number] = [-5.97315, 37.37185];
 
 /** Street-level zoom when the camera opens on the user. */
 export const userZoom = 16;

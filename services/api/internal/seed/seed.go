@@ -113,24 +113,24 @@ SELECT 'driver' || lpad(g.i::text, 2, '0') || '@parkxchange.test',
   FROM generate_series(1, $2::int) AS g(i)
 `
 
-// Spots are clustered around real Barcelona districts rather than scattered
+// Spots are clustered around real Sevilla neighbourhoods rather than scattered
 // uniformly over a rectangle, because a uniform scatter would drop half the
-// dataset into the sea and make every viewport look the same.
+// dataset into the Guadalquivir and make every viewport look the same.
 //
 // 15% are seeded as already expired. Those rows sit outside the partial GiST
 // index, which is what makes the index's selectivity visible in EXPLAIN.
 const insertGeneratedSpotsSQL = `
 WITH districts(rn, name, lon, lat) AS (
-    VALUES (0, 'Eixample',       2.16200::double precision, 41.39150::double precision),
-           (1, 'Gracia',         2.15600::double precision, 41.40300::double precision),
-           (2, 'Poblenou',       2.19900::double precision, 41.40100::double precision),
-           (3, 'Sants',          2.13300::double precision, 41.37500::double precision),
-           (4, 'Ciutat Vella',   2.17700::double precision, 41.38300::double precision),
-           (5, 'Sarria',         2.12200::double precision, 41.39900::double precision),
-           (6, 'Sant Andreu',    2.18900::double precision, 41.43500::double precision),
-           (7, 'Barceloneta',    2.19000::double precision, 41.37900::double precision),
-           (8, 'Les Corts',      2.13000::double precision, 41.38300::double precision),
-           (9, 'Horta-Guinardo', 2.16700::double precision, 41.42300::double precision)
+    VALUES (0, 'Sur',            -5.97315::double precision, 37.37185::double precision),
+           (1, 'Nervion',        -5.97300::double precision, 37.38300::double precision),
+           (2, 'Centro',         -5.99300::double precision, 37.38900::double precision),
+           (3, 'Triana',         -6.00300::double precision, 37.38300::double precision),
+           (4, 'Los Remedios',   -5.99800::double precision, 37.37500::double precision),
+           (5, 'Macarena',       -5.98200::double precision, 37.40200::double precision),
+           (6, 'Sevilla Este',   -5.93500::double precision, 37.39000::double precision),
+           (7, 'Cerro-Amate',    -5.95500::double precision, 37.37800::double precision),
+           (8, 'Bellavista',     -5.96800::double precision, 37.35000::double precision),
+           (9, 'Santa Justa',    -5.97500::double precision, 37.39500::double precision)
 ),
 owners AS (
     SELECT id,
@@ -141,8 +141,8 @@ owners AS (
 generated AS (
     SELECT g.i,
            d.name                                                     AS district,
-           (d.lon + (random() - 0.5) * 0.026)::double precision       AS lon,
-           (d.lat + (random() - 0.5) * 0.020)::double precision       AS lat,
+           (d.lon + (random() - 0.5) * 0.020)::double precision       AS lon,
+           (d.lat + (random() - 0.5) * 0.016)::double precision       AS lat,
            random()                                                   AS status_roll,
            random()                                                   AS price_roll,
            random()                                                   AS size_roll,
@@ -154,7 +154,7 @@ INSERT INTO spots (owner_id, geom, address_hint, size_class, status,
                    price_cents, available_from, expires_at)
 SELECT o.id,
        ST_SetSRID(ST_MakePoint(gen.lon, gen.lat), 4326),
-       gen.district || ', carrer de mostra ' || gen.i,
+       gen.district || ', calle de muestra ' || gen.i,
        (ARRAY['small', 'medium', 'large'])[1 + floor(gen.size_roll * 3)::int],
        CASE WHEN gen.status_roll < 0.85 THEN 'available' ELSE 'expired' END,
        50 + floor(gen.price_roll * 19)::int * 25,
@@ -171,7 +171,8 @@ SELECT o.id,
 `
 
 // Spots at recognisable landmarks, all owned by the demo account, so manual
-// testing has predictable places to navigate to.
+// testing has predictable places to navigate to. The first row is the
+// developer home address used as the emulator GPS fix.
 const insertLandmarkSpotsSQL = `
 INSERT INTO spots (owner_id, geom, address_hint, size_class, status,
                    price_cents, expires_at)
@@ -183,13 +184,13 @@ SELECT (SELECT id FROM users WHERE email = 'owner@parkxchange.test'),
        s.price_cents,
        now() + interval '45 minutes'
   FROM (VALUES
-           (2.17000::double precision, 41.38740::double precision, 'Placa de Catalunya, west side',        'medium', 250),
-           (2.17440::double precision, 41.40360::double precision, 'Sagrada Familia, Carrer de Mallorca',  'small',  300),
-           (2.15270::double precision, 41.41450::double precision, 'Park Guell, Carrer d''Olot',           'medium', 200),
-           (2.12280::double precision, 41.38090::double precision, 'Camp Nou, Travessera de les Corts',    'large',  175),
-           (2.19250::double precision, 41.37840::double precision, 'Barceloneta, Passeig Maritim',         'small',  225),
-           (2.18060::double precision, 41.39100::double precision, 'Arc de Triomf, Passeig de Lluis Companys', 'medium', 150),
-           (2.16330::double precision, 41.37940::double precision, 'Mercat de Sant Antoni',                'small',  125),
-           (2.18690::double precision, 41.40760::double precision, 'Placa de les Glories Catalanes',       'large',  100)
+           (-5.97315::double precision, 37.37185::double precision, 'Calle Malvaloca 5, 41013 Sevilla',     'medium', 250),
+           (-5.99250::double precision, 37.38610::double precision, 'Catedral / Giralda',                 'small',  300),
+           (-5.98690::double precision, 37.37720::double precision, 'Plaza de Espana',                    'medium', 200),
+           (-5.99190::double precision, 37.39300::double precision, 'Metropol Parasol (Setas)',           'medium', 175),
+           (-5.99650::double precision, 37.38240::double precision, 'Torre del Oro',                      'small',  225),
+           (-5.98850::double precision, 37.37550::double precision, 'Parque de Maria Luisa',              'large',  150),
+           (-5.97050::double precision, 37.38410::double precision, 'Estadio Ramon Sanchez-Pizjuan',      'large',  125),
+           (-6.00900::double precision, 37.40500::double precision, 'Isla de la Cartuja',                 'medium', 100)
        ) AS s(lon, lat, hint, size_class, price_cents)
 `
