@@ -137,6 +137,83 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Update the caller's display name */
+        patch: operations["updateMe"];
+        trace?: never;
+    };
+    "/v1/me/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change password and revoke all refresh tokens */
+        post: operations["changePassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vehicles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's vehicles (metadata only; no photo bytes) */
+        get: operations["listVehicles"];
+        put?: never;
+        /** Register a vehicle */
+        post: operations["createVehicle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vehicles/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["VehicleID"];
+            };
+            cookie?: never;
+        };
+        /** One of the caller's vehicles */
+        get: operations["getVehicle"];
+        put?: never;
+        post?: never;
+        /** Delete a vehicle and its photo */
+        delete: operations["deleteVehicle"];
+        options?: never;
+        head?: never;
+        /** Replace mutable vehicle fields */
+        patch: operations["updateVehicle"];
+        trace?: never;
+    };
+    "/v1/vehicles/{id}/photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["VehicleID"];
+            };
+            cookie?: never;
+        };
+        /** Download the vehicle photo (owner only) */
+        get: operations["getVehiclePhoto"];
+        /** Upload a JPEG or PNG photo (max 300 KiB) */
+        put: operations["putVehiclePhoto"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -190,6 +267,24 @@ export interface paths {
         post?: never;
         /** Withdraw an offer */
         delete: operations["deleteSpot"];
+        options?: never;
+        head?: never;
+        /** Edit an available offer (owner only) */
+        patch: operations["updateSpot"];
+        trace?: never;
+    };
+    "/v1/spots/{id}/vehicle/photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Photo of the vehicle linked to a spot */
+        get: operations["getSpotVehiclePhoto"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -384,6 +479,56 @@ export interface components {
             /** Format: int64 */
             balance_cents: number;
         };
+        UpdateMeRequest: {
+            display_name: string;
+        };
+        ChangePasswordRequest: {
+            current_password: string;
+            new_password: string;
+        };
+        VehicleResponse: {
+            /** Format: uuid */
+            id: string;
+            plate: string;
+            make_model: string;
+            /** @enum {string} */
+            size_class: "small" | "medium" | "large";
+            color: string;
+            year: number;
+            has_photo: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        CreateVehicleRequest: {
+            plate: string;
+            make_model: string;
+            /** @enum {string} */
+            size_class: "small" | "medium" | "large";
+            color: string;
+            year: number;
+        };
+        UpdateVehicleRequest: {
+            plate: string;
+            make_model: string;
+            /** @enum {string} */
+            size_class: "small" | "medium" | "large";
+            color: string;
+            year: number;
+        };
+        /** @description Claimer-visible car identity embedded on spot features */
+        VehicleSummary: {
+            /** Format: uuid */
+            id: string;
+            plate: string;
+            make_model: string;
+            color: string;
+            year: number;
+            /** @enum {string} */
+            size_class: "small" | "medium" | "large";
+            has_photo: boolean;
+        };
         CreateSpotRequest: {
             /** Format: double */
             lon: number;
@@ -393,8 +538,26 @@ export interface components {
             price_cents: number;
             address_hint?: string;
             notes?: string;
+            /**
+             * Format: uuid
+             * @description One of the caller's vehicles; required so claimers know which car to meet
+             */
+            vehicle_id: string;
             duration_minutes: number;
             /** @description Delay until the offer starts. Zero means immediately. Capped at 24 hours. */
+            available_in_minutes?: number;
+        };
+        /**
+         * @description Partial edit of an available offer. Location and spot size_class are not
+         *     editable. When available_in_minutes is set, duration_minutes is required.
+         */
+        UpdateSpotRequest: {
+            price_cents?: number;
+            notes?: string;
+            /** Format: uuid */
+            vehicle_id?: string;
+            duration_minutes?: number;
+            /** @description Delay until the offer starts. Requires duration_minutes. */
             available_in_minutes?: number;
         };
         SpotProperties: {
@@ -414,6 +577,7 @@ export interface components {
             expires_at: string;
             exact_location: boolean;
             is_mine: boolean;
+            vehicle: components["schemas"]["VehicleSummary"];
         };
         GeoJSONPoint: {
             /** @enum {string} */
@@ -518,6 +682,7 @@ export interface components {
     };
     parameters: {
         SpotID: string;
+        VehicleID: string;
         ReservationID: string;
         /** @description minLon,minLat,maxLon,maxLat */
         BBox: string;
@@ -723,6 +888,234 @@ export interface operations {
             401: components["responses"]["Error"];
         };
     };
+    updateMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMeRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated profile */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    changePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Password changed; existing refresh tokens revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    listVehicles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Vehicles */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleResponse"][];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    createVehicle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVehicleRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    getVehicle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["VehicleID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Vehicle */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    deleteVehicle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["VehicleID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    updateVehicle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["VehicleID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateVehicleRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    getVehiclePhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["VehicleID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Image bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    putVehiclePhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["VehicleID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "image/jpeg": string;
+                "image/png": string;
+            };
+        };
+        responses: {
+            /** @description Photo stored */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
     listSpots: {
         parameters: {
             query: {
@@ -839,6 +1232,61 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    updateSpot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["SpotID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSpotRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated offer as a GeoJSON feature */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpotFeature"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    getSpotVehiclePhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["SpotID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Image bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                };
             };
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];

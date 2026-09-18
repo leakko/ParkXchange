@@ -9,6 +9,27 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for CreateVehicleRequestSizeClass.
+const (
+	CreateVehicleRequestSizeClassLarge  CreateVehicleRequestSizeClass = "large"
+	CreateVehicleRequestSizeClassMedium CreateVehicleRequestSizeClass = "medium"
+	CreateVehicleRequestSizeClassSmall  CreateVehicleRequestSizeClass = "small"
+)
+
+// Valid indicates whether the value is a known member of the CreateVehicleRequestSizeClass enum.
+func (e CreateVehicleRequestSizeClass) Valid() bool {
+	switch e {
+	case CreateVehicleRequestSizeClassLarge:
+		return true
+	case CreateVehicleRequestSizeClassMedium:
+		return true
+	case CreateVehicleRequestSizeClassSmall:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GeoJSONPointType.
 const (
 	Point GeoJSONPointType = "Point"
@@ -93,6 +114,69 @@ func (e SpotFeatureCollectionType) Valid() bool {
 	}
 }
 
+// Defines values for UpdateVehicleRequestSizeClass.
+const (
+	UpdateVehicleRequestSizeClassLarge  UpdateVehicleRequestSizeClass = "large"
+	UpdateVehicleRequestSizeClassMedium UpdateVehicleRequestSizeClass = "medium"
+	UpdateVehicleRequestSizeClassSmall  UpdateVehicleRequestSizeClass = "small"
+)
+
+// Valid indicates whether the value is a known member of the UpdateVehicleRequestSizeClass enum.
+func (e UpdateVehicleRequestSizeClass) Valid() bool {
+	switch e {
+	case UpdateVehicleRequestSizeClassLarge:
+		return true
+	case UpdateVehicleRequestSizeClassMedium:
+		return true
+	case UpdateVehicleRequestSizeClassSmall:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VehicleResponseSizeClass.
+const (
+	VehicleResponseSizeClassLarge  VehicleResponseSizeClass = "large"
+	VehicleResponseSizeClassMedium VehicleResponseSizeClass = "medium"
+	VehicleResponseSizeClassSmall  VehicleResponseSizeClass = "small"
+)
+
+// Valid indicates whether the value is a known member of the VehicleResponseSizeClass enum.
+func (e VehicleResponseSizeClass) Valid() bool {
+	switch e {
+	case VehicleResponseSizeClassLarge:
+		return true
+	case VehicleResponseSizeClassMedium:
+		return true
+	case VehicleResponseSizeClassSmall:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VehicleSummarySizeClass.
+const (
+	VehicleSummarySizeClassLarge  VehicleSummarySizeClass = "large"
+	VehicleSummarySizeClassMedium VehicleSummarySizeClass = "medium"
+	VehicleSummarySizeClassSmall  VehicleSummarySizeClass = "small"
+)
+
+// Valid indicates whether the value is a known member of the VehicleSummarySizeClass enum.
+func (e VehicleSummarySizeClass) Valid() bool {
+	switch e {
+	case VehicleSummarySizeClassLarge:
+		return true
+	case VehicleSummarySizeClassMedium:
+		return true
+	case VehicleSummarySizeClassSmall:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ViewportMessageType.
 const (
 	Viewport ViewportMessageType = "viewport"
@@ -108,6 +192,12 @@ func (e ViewportMessageType) Valid() bool {
 	}
 }
 
+// ChangePasswordRequest defines model for ChangePasswordRequest.
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
 // CreateSpotRequest defines model for CreateSpotRequest.
 type CreateSpotRequest struct {
 	AddressHint *string `json:"address_hint,omitempty"`
@@ -120,7 +210,22 @@ type CreateSpotRequest struct {
 	Notes              *string `json:"notes,omitempty"`
 	PriceCents         int     `json:"price_cents"`
 	SizeClass          string  `json:"size_class"`
+
+	// VehicleId One of the caller's vehicles; required so claimers know which car to meet
+	VehicleId openapi_types.UUID `json:"vehicle_id"`
 }
+
+// CreateVehicleRequest defines model for CreateVehicleRequest.
+type CreateVehicleRequest struct {
+	Color     string                        `json:"color"`
+	MakeModel string                        `json:"make_model"`
+	Plate     string                        `json:"plate"`
+	SizeClass CreateVehicleRequestSizeClass `json:"size_class"`
+	Year      int                           `json:"year"`
+}
+
+// CreateVehicleRequestSizeClass defines model for CreateVehicleRequest.SizeClass.
+type CreateVehicleRequestSizeClass string
 
 // ErrorBody defines model for ErrorBody.
 type ErrorBody struct {
@@ -258,6 +363,9 @@ type SpotProperties struct {
 	PriceCents    int                `json:"price_cents"`
 	SizeClass     string             `json:"size_class"`
 	Status        string             `json:"status"`
+
+	// Vehicle Claimer-visible car identity embedded on spot features
+	Vehicle VehicleSummary `json:"vehicle"`
 }
 
 // TicketResponse defines model for TicketResponse.
@@ -265,6 +373,34 @@ type TicketResponse struct {
 	ExpiresIn int    `json:"expires_in"`
 	Ticket    string `json:"ticket"`
 }
+
+// UpdateMeRequest defines model for UpdateMeRequest.
+type UpdateMeRequest struct {
+	DisplayName string `json:"display_name"`
+}
+
+// UpdateSpotRequest Partial edit of an available offer. Location and spot size_class are not
+// editable. When available_in_minutes is set, duration_minutes is required.
+type UpdateSpotRequest struct {
+	// AvailableInMinutes Delay until the offer starts. Requires duration_minutes.
+	AvailableInMinutes *int                `json:"available_in_minutes,omitempty"`
+	DurationMinutes    *int                `json:"duration_minutes,omitempty"`
+	Notes              *string             `json:"notes,omitempty"`
+	PriceCents         *int                `json:"price_cents,omitempty"`
+	VehicleId          *openapi_types.UUID `json:"vehicle_id,omitempty"`
+}
+
+// UpdateVehicleRequest defines model for UpdateVehicleRequest.
+type UpdateVehicleRequest struct {
+	Color     string                        `json:"color"`
+	MakeModel string                        `json:"make_model"`
+	Plate     string                        `json:"plate"`
+	SizeClass UpdateVehicleRequestSizeClass `json:"size_class"`
+	Year      int                           `json:"year"`
+}
+
+// UpdateVehicleRequestSizeClass defines model for UpdateVehicleRequest.SizeClass.
+type UpdateVehicleRequestSizeClass string
 
 // UserResponse defines model for UserResponse.
 type UserResponse struct {
@@ -275,6 +411,36 @@ type UserResponse struct {
 	Rating       *float64            `json:"rating,omitempty"`
 	RatingCount  int                 `json:"rating_count"`
 }
+
+// VehicleResponse defines model for VehicleResponse.
+type VehicleResponse struct {
+	Color     string                   `json:"color"`
+	CreatedAt time.Time                `json:"created_at"`
+	HasPhoto  bool                     `json:"has_photo"`
+	Id        openapi_types.UUID       `json:"id"`
+	MakeModel string                   `json:"make_model"`
+	Plate     string                   `json:"plate"`
+	SizeClass VehicleResponseSizeClass `json:"size_class"`
+	UpdatedAt time.Time                `json:"updated_at"`
+	Year      int                      `json:"year"`
+}
+
+// VehicleResponseSizeClass defines model for VehicleResponse.SizeClass.
+type VehicleResponseSizeClass string
+
+// VehicleSummary Claimer-visible car identity embedded on spot features
+type VehicleSummary struct {
+	Color     string                  `json:"color"`
+	HasPhoto  bool                    `json:"has_photo"`
+	Id        openapi_types.UUID      `json:"id"`
+	MakeModel string                  `json:"make_model"`
+	Plate     string                  `json:"plate"`
+	SizeClass VehicleSummarySizeClass `json:"size_class"`
+	Year      int                     `json:"year"`
+}
+
+// VehicleSummarySizeClass defines model for VehicleSummary.SizeClass.
+type VehicleSummarySizeClass string
 
 // VersionResponse defines model for VersionResponse.
 type VersionResponse struct {
@@ -311,6 +477,9 @@ type SpotID = openapi_types.UUID
 
 // To defines model for To.
 type To = time.Time
+
+// VehicleID defines model for VehicleID.
+type VehicleID = openapi_types.UUID
 
 // Zoom defines model for Zoom.
 type Zoom = int
@@ -349,5 +518,20 @@ type RefreshJSONRequestBody = RefreshRequest
 // RegisterJSONRequestBody defines body for Register for application/json ContentType.
 type RegisterJSONRequestBody = RegisterRequest
 
+// UpdateMeJSONRequestBody defines body for UpdateMe for application/json ContentType.
+type UpdateMeJSONRequestBody = UpdateMeRequest
+
+// ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
+type ChangePasswordJSONRequestBody = ChangePasswordRequest
+
 // CreateSpotJSONRequestBody defines body for CreateSpot for application/json ContentType.
 type CreateSpotJSONRequestBody = CreateSpotRequest
+
+// UpdateSpotJSONRequestBody defines body for UpdateSpot for application/json ContentType.
+type UpdateSpotJSONRequestBody = UpdateSpotRequest
+
+// CreateVehicleJSONRequestBody defines body for CreateVehicle for application/json ContentType.
+type CreateVehicleJSONRequestBody = CreateVehicleRequest
+
+// UpdateVehicleJSONRequestBody defines body for UpdateVehicle for application/json ContentType.
+type UpdateVehicleJSONRequestBody = UpdateVehicleRequest
