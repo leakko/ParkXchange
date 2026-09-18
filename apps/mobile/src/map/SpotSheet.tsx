@@ -1,5 +1,5 @@
 import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
-import { forwardRef, useEffect, useMemo, useState } from "react";
+import { forwardRef, useMemo } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -11,7 +11,7 @@ import {
 
 import type { ReservationResponse, SpotFeature } from "@/api/client";
 import { spotVehiclePhotoUrl } from "@/api/client";
-import { getAccessToken } from "@/api/session";
+import { useAuthImage } from "@/hooks/useAuthImage";
 import { openNavigation } from "@/lib/navigation";
 
 type Props = {
@@ -46,17 +46,11 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
   const isActiveForSpot =
     !!active && !!spot && String(active.spot_id) === String(spot.id);
   const vehicle = spot?.properties.vehicle;
-  const [photoHeaders, setPhotoHeaders] = useState<
-    Record<string, string> | undefined
-  >();
-
-  useEffect(() => {
-    void getAccessToken().then((token) => {
-      if (token) {
-        setPhotoHeaders({ Authorization: `Bearer ${token}` });
-      }
-    });
-  }, []);
+  const photoUrl =
+    vehicle?.has_photo && spot?.id
+      ? spotVehiclePhotoUrl(String(spot.id))
+      : null;
+  const { uri: photoUri } = useAuthImage(photoUrl);
 
   return (
     <BottomSheet
@@ -95,12 +89,9 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                     .filter(Boolean)
                     .join(" · ")}
                 </Text>
-                {vehicle.has_photo && spot.id ? (
+                {photoUri ? (
                   <Image
-                    source={{
-                      uri: spotVehiclePhotoUrl(String(spot.id)),
-                      headers: photoHeaders,
-                    }}
+                    source={{ uri: photoUri }}
                     style={styles.photo}
                     resizeMode="cover"
                   />

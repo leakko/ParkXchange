@@ -21,8 +21,8 @@ export type VehicleFormValues = CreateVehicleRequest;
 
 type Props = {
   initial: VehicleFormValues;
+  /** Local file URI or pre-fetched data URI — never a remote auth URL. */
   photoUri?: string | null;
-  photoHeaders?: Record<string, string> | undefined;
   submitLabel: string;
   busy?: boolean;
   onSubmit: (values: VehicleFormValues, photo: PickedVehiclePhoto | null) => void;
@@ -33,7 +33,6 @@ type Props = {
 export function VehicleForm({
   initial,
   photoUri,
-  photoHeaders,
   submitLabel,
   busy,
   onSubmit,
@@ -119,7 +118,7 @@ export function VehicleForm({
         <Text style={accountStyles.label}>Photo (optional)</Text>
         {previewUri ? (
           <Image
-            source={{ uri: previewUri, headers: photoHeaders }}
+            source={{ uri: previewUri }}
             style={{ width: "100%", height: 160, borderRadius: 12, marginBottom: 8 }}
             resizeMode="cover"
           />

@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,10 +15,10 @@ import {
   updateVehicle,
   vehiclePhotoUrl,
 } from "@/api/client";
-import { getAccessToken } from "@/api/session";
 import { VehicleForm, type VehicleFormValues } from "@/account/VehicleForm";
 import type { PickedVehiclePhoto } from "@/account/pickVehiclePhoto";
 import { accountStyles } from "@/account/theme";
+import { useAuthImage } from "@/hooks/useAuthImage";
 import { useDevSession } from "@/hooks/useDevSession";
 
 export default function EditVehicleScreen() {
@@ -27,7 +26,6 @@ export default function EditVehicleScreen() {
   const router = useRouter();
   const { ready } = useDevSession();
   const queryClient = useQueryClient();
-  const [authHeader, setAuthHeader] = useState<Record<string, string> | undefined>();
 
   const vehicles = useQuery({
     queryKey: ["vehicles"],
@@ -36,14 +34,9 @@ export default function EditVehicleScreen() {
   });
 
   const vehicle = vehicles.data?.find((v) => v.id === id);
-
-  useEffect(() => {
-    void getAccessToken().then((token) => {
-      if (token) {
-        setAuthHeader({ Authorization: `Bearer ${token}` });
-      }
-    });
-  }, []);
+  const { uri: authPhotoUri } = useAuthImage(
+    vehicle?.has_photo ? vehiclePhotoUrl(vehicle.id) : null,
+  );
 
   const save = useMutation({
     mutationFn: async ({
@@ -117,8 +110,7 @@ export default function EditVehicleScreen() {
           color: vehicle.color,
           year: vehicle.year,
         }}
-        photoUri={vehicle.has_photo ? vehiclePhotoUrl(vehicle.id) : null}
-        photoHeaders={authHeader}
+        photoUri={authPhotoUri}
         submitLabel="Save vehicle"
         busy={save.isPending}
         onSubmit={(values, photo) => save.mutate({ values, photo })}
