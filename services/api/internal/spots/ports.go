@@ -8,6 +8,18 @@ import (
 	"github.com/marco/parkxchange/services/api/internal/domain"
 )
 
+// SpotPatch is a partial edit to an available offer.
+//
+// Window fields are durations anchored to the database clock, matching
+// SpotDraft: the API and database clocks are not the same clock.
+type SpotPatch struct {
+	AvailableIn *time.Duration
+	ExpiresIn   *time.Duration
+	PriceCents  *int
+	Notes       *string
+	VehicleID   *string
+}
+
 // Store is the persistence the spot use cases need.
 //
 // Declared here, in the consumer, so the dependency points inwards. Every
@@ -44,4 +56,16 @@ type Store interface {
 	// (release the driver, debit the owner) in the same write. ErrConflict
 	// when the spot has moved past that.
 	CancelSpot(ctx context.Context, spotID, ownerID string) error
+
+	// UpdateAvailableSpot applies a partial edit to an available offer the
+	// owner still holds. ErrConflict when the status is no longer available;
+	// ErrNoRows when the spot is missing or not owned by ownerID.
+	UpdateAvailableSpot(ctx context.Context, spotID, ownerID string, patch SpotPatch) (domain.Spot, error)
+
+	// VehicleOwnedBy reports whether vehicleID belongs to ownerID.
+	VehicleOwnedBy(ctx context.Context, vehicleID, ownerID string) (bool, error)
+
+	// SpotVehiclePhoto returns the image bytes for the vehicle linked to the
+	// spot, or ErrNoRows when the spot is missing or the vehicle has no photo.
+	SpotVehiclePhoto(ctx context.Context, spotID string) ([]byte, string, error)
 }

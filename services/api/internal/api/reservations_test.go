@@ -25,12 +25,12 @@ type reservationBody struct {
 }
 
 func TestClaimRemovesTheSpotFromTheMap(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	driver, _, _ := registerUser(t, server)
 	at := uniqueLocation()
-	spot := createSpot(t, server, owner.AccessToken, at, nil)
+	spot := createSpot(t, server, db, owner, at, nil)
 
 	resp := authedRequest(t, server, http.MethodPost,
 		"/v1/spots/"+spot.ID+"/reservations", driver.AccessToken, nil)
@@ -45,11 +45,11 @@ func TestClaimRemovesTheSpotFromTheMap(t *testing.T) {
 }
 
 func TestOwnerCannotClaimTheirOwnSpot(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	at := uniqueLocation()
-	spot := createSpot(t, server, owner.AccessToken, at, nil)
+	spot := createSpot(t, server, db, owner, at, nil)
 
 	resp := authedRequest(t, server, http.MethodPost,
 		"/v1/spots/"+spot.ID+"/reservations", owner.AccessToken, nil)
@@ -62,13 +62,13 @@ func TestOwnerCannotClaimTheirOwnSpot(t *testing.T) {
 }
 
 func TestSecondClaimIsAConflict(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	a, _, _ := registerUser(t, server)
 	b, _, _ := registerUser(t, server)
 	at := uniqueLocation()
-	spot := createSpot(t, server, owner.AccessToken, at, nil)
+	spot := createSpot(t, server, db, owner, at, nil)
 
 	first := authedRequest(t, server, http.MethodPost,
 		"/v1/spots/"+spot.ID+"/reservations", a.AccessToken, nil)
@@ -84,12 +84,12 @@ func TestSecondClaimIsAConflict(t *testing.T) {
 }
 
 func TestFutureSpotIsVisibleAndClaimable(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	driver, _, _ := registerUser(t, server)
 	at := uniqueLocation()
-	spot := createSpot(t, server, owner.AccessToken, at, map[string]any{
+	spot := createSpot(t, server, db, owner, at, map[string]any{
 		"available_in_minutes": 120,
 		"duration_minutes":     30,
 	})
@@ -123,12 +123,12 @@ func TestFutureSpotIsVisibleAndClaimable(t *testing.T) {
 }
 
 func TestImmediateClaimIsBornConfirmed(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	driver, _, _ := registerUser(t, server)
 	at := uniqueLocation()
-	spot := createSpot(t, server, owner.AccessToken, at, nil)
+	spot := createSpot(t, server, db, owner, at, nil)
 
 	resp := authedRequest(t, server, http.MethodPost,
 		"/v1/spots/"+spot.ID+"/reservations", driver.AccessToken, nil)
@@ -139,12 +139,12 @@ func TestImmediateClaimIsBornConfirmed(t *testing.T) {
 }
 
 func TestDriverCancelReleasesTheSpot(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	driver, _, _ := registerUser(t, server)
 	at := uniqueLocation()
-	spot := createSpot(t, server, owner.AccessToken, at, nil)
+	spot := createSpot(t, server, db, owner, at, nil)
 
 	claimed := decode[reservationBody](t, authedRequest(t, server, http.MethodPost,
 		"/v1/spots/"+spot.ID+"/reservations", driver.AccessToken, nil))
@@ -162,12 +162,12 @@ func TestDriverCancelReleasesTheSpot(t *testing.T) {
 }
 
 func TestCompletePaysTheOwner(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	driver, _, _ := registerUser(t, server)
 	at := uniqueLocation()
-	spot := createSpot(t, server, owner.AccessToken, at, map[string]any{"price_cents": 150})
+	spot := createSpot(t, server, db, owner, at, map[string]any{"price_cents": 150})
 
 	claimed := decode[reservationBody](t, authedRequest(t, server, http.MethodPost,
 		"/v1/spots/"+spot.ID+"/reservations", driver.AccessToken, nil))
@@ -215,7 +215,7 @@ func TestUnreconfirmedReservationReturnsTheSpotToTheMap(t *testing.T) {
 	owner, _, _ := registerUser(t, server)
 	driver, _, _ := registerUser(t, server)
 	at := uniqueLocation()
-	spot := createSpot(t, server, owner.AccessToken, at, map[string]any{
+	spot := createSpot(t, server, db, owner, at, map[string]any{
 		"available_in_minutes": 120,
 		"duration_minutes":     30,
 	})
@@ -251,7 +251,7 @@ func TestAHundredConcurrentClaimsProduceOneWinner(t *testing.T) {
 
 	owner, _, _ := registerUser(t, server)
 	at := uniqueLocation()
-	spot := createSpot(t, server, owner.AccessToken, at, nil)
+	spot := createSpot(t, server, db, owner, at, nil)
 
 	const n = 100
 	ids := make([]string, n)
@@ -304,12 +304,12 @@ func TestAHundredConcurrentClaimsProduceOneWinner(t *testing.T) {
 }
 
 func TestOwnerWithdrawOfAClaimedSpotReleasesTheDriver(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	driver, _, _ := registerUser(t, server)
 	at := uniqueLocation()
-	spot := createSpot(t, server, owner.AccessToken, at, map[string]any{"price_cents": 150})
+	spot := createSpot(t, server, db, owner, at, map[string]any{"price_cents": 150})
 
 	authedRequest(t, server, http.MethodPost,
 		"/v1/spots/"+spot.ID+"/reservations", driver.AccessToken, nil)

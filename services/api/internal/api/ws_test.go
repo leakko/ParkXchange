@@ -41,7 +41,7 @@ func TestAccessTokenIsRejectedAsASocketTicket(t *testing.T) {
 }
 
 func TestPublishingASpotAppearsOnASubscribedSocket(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	watcher, _, _ := registerUser(t, server)
@@ -53,7 +53,7 @@ func TestPublishingASpotAppearsOnASubscribedSocket(t *testing.T) {
 	sendViewport(t, conn, at)
 	readSnapshot(t, conn)
 
-	spot := createSpot(t, server, owner.AccessToken, at, nil)
+	spot := createSpot(t, server, db, owner, at, nil)
 
 	msg := readWS(t, conn, 3*time.Second)
 	if msg.Type != "spot.added" {
@@ -65,7 +65,7 @@ func TestPublishingASpotAppearsOnASubscribedSocket(t *testing.T) {
 }
 
 func TestUnrelatedViewportDoesNotReceiveTheSpot(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	watcher, _, _ := registerUser(t, server)
@@ -78,7 +78,7 @@ func TestUnrelatedViewportDoesNotReceiveTheSpot(t *testing.T) {
 	sendViewport(t, conn, elsewhere)
 	readSnapshot(t, conn)
 
-	createSpot(t, server, owner.AccessToken, at, nil)
+	createSpot(t, server, db, owner, at, nil)
 
 	if msg, ok := readWSOptional(t, conn, 200*time.Millisecond); ok {
 		t.Fatalf("unrelated viewport received %+v", msg)
@@ -93,7 +93,7 @@ func TestThousandSocketsReceiveOneFanOut(t *testing.T) {
 	cfg := testConfig()
 	cfg.RateLimitRPS = 100_000
 	cfg.RateLimitBurst = 100_000
-	server := newServerWithConfig(t, cfg)
+	server, db := newServerFrom(t, cfg)
 
 	owner, _, _ := registerUser(t, server)
 	watcher, _, _ := registerUser(t, server)
@@ -151,7 +151,7 @@ func TestThousandSocketsReceiveOneFanOut(t *testing.T) {
 	}
 
 	started := time.Now()
-	spot := createSpot(t, server, owner.AccessToken, at, nil)
+	spot := createSpot(t, server, db, owner, at, nil)
 
 	var seen int
 	var mu sync.Mutex

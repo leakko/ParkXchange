@@ -248,6 +248,7 @@ func TestNewSpotValidation(t *testing.T) {
 
 	valid := domain.NewSpotInput{
 		OwnerID:    "owner-1",
+		VehicleID:  "vehicle-1",
 		Lon:        testLon,
 		Lat:        testLat,
 		Size:       "medium",
@@ -274,6 +275,9 @@ func TestNewSpotValidation(t *testing.T) {
 		}
 		if draft.Size != domain.SizeMedium {
 			t.Errorf("Size = %q, want medium", draft.Size)
+		}
+		if draft.VehicleID != "vehicle-1" {
+			t.Errorf("VehicleID = %q, want vehicle-1", draft.VehicleID)
 		}
 	})
 
@@ -344,6 +348,9 @@ func TestNewSpotValidation(t *testing.T) {
 				in.AddressHint = longString(domain.MaxAddressHintLength + 1)
 			}, "address_hint",
 		},
+		"missing vehicle": {
+			func(in *domain.NewSpotInput) { in.VehicleID = "" }, "vehicle_id",
+		},
 	}
 
 	for name, tc := range tests {
@@ -378,6 +385,7 @@ func TestNewSpotValidation(t *testing.T) {
 
 		_, err := domain.NewSpot(domain.NewSpotInput{
 			OwnerID:    "owner-1",
+			VehicleID:  "vehicle-1",
 			Lon:        999,
 			Lat:        999,
 			Size:       "enormous",
@@ -410,6 +418,60 @@ func TestNewSpotValidation(t *testing.T) {
 			t.Errorf("kind = %v, want KindInternal", domain.KindOf(err))
 		}
 	})
+}
+
+func TestApplySpotUpdateRejectsInvalidPriceAndNotes(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
+	existing := domain.Spot{
+		ID: "spot-1", OwnerID: "owner-1", VehicleID: "vehicle-1",
+		Status: domain.SpotAvailable, PriceCents: 100,
+		AvailableFrom: now, ExpiresAt: now.Add(30 * time.Minute),
+	}
+
+	tooHigh := domain.MaxPriceCents + 1
+	_, err := domain.ApplySpotUpdate(existing, domain.UpdateSpotInput{
+		PriceCents: &tooHigh,
+	}, now)
+	if domain.KindOf(err) != domain.KindInvalid {
+		t.Fatalf("kind = %v, want KindInvalid", domain.KindOf(err))
+	}
+
+	longNotes := longString(domain.MaxNotesLength + 1)
+	_, err = domain.ApplySpotUpdate(existing, domain.UpdateSpotInput{
+		Notes: &longNotes,
+	}, now)
+	if domain.KindOf(err) != domain.KindInvalid {
+		t.Fatalf("notes kind = %v, want KindInvalid", domain.KindOf(err))
+	}
+}
+
+func TestApplySpotUpdateRebuildsTheWindow(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
+	existing := domain.Spot{
+		ID: "spot-1", OwnerID: "owner-1", VehicleID: "vehicle-1",
+		Status: domain.SpotAvailable, PriceCents: 100,
+		AvailableFrom: now, ExpiresAt: now.Add(30 * time.Minute),
+	}
+
+	availableFrom := now.Add(5 * time.Minute)
+	expiresAt := now.Add(45 * time.Minute)
+	update, err := domain.ApplySpotUpdate(existing, domain.UpdateSpotInput{
+		AvailableFrom: &availableFrom,
+		ExpiresAt:     &expiresAt,
+	}, now)
+	if err != nil {
+		t.Fatalf("ApplySpotUpdate: %v", err)
+	}
+	if update.AvailableIn == nil || *update.AvailableIn != 5*time.Minute {
+		t.Errorf("AvailableIn = %v, want 5m", update.AvailableIn)
+	}
+	if update.ExpiresIn == nil || *update.ExpiresIn != 45*time.Minute {
+		t.Errorf("ExpiresIn = %v, want 45m", update.ExpiresIn)
+	}
 }
 
 // The domain's rules must not be looser than the database's, or a valid-looking

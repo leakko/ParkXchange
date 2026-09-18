@@ -242,43 +242,43 @@ func TestLedgerIsAppendOnly(t *testing.T) {
 func TestSpotConstraintsRejectInvalidRows(t *testing.T) {
 	ctx, tx := testdb.Begin(t)
 	owner := testdb.InsertUser(t, ctx, tx, "constraint-owner")
+	vehicle := testdb.InsertVehicle(t, ctx, tx, owner)
 
 	tests := map[string]struct {
 		columns string
 		values  string
-		args    []any
 	}{
 		"price above the ceiling": {
-			columns: "owner_id, geom, size_class, price_cents, expires_at",
-			values:  "$1, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'medium', 5000, now() + interval '1 hour'",
+			columns: "owner_id, vehicle_id, geom, size_class, price_cents, expires_at",
+			values:  "$1, $2, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'medium', 5000, now() + interval '1 hour'",
 		},
 		"negative price": {
-			columns: "owner_id, geom, size_class, price_cents, expires_at",
-			values:  "$1, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'medium', -100, now() + interval '1 hour'",
+			columns: "owner_id, vehicle_id, geom, size_class, price_cents, expires_at",
+			values:  "$1, $2, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'medium', -100, now() + interval '1 hour'",
 		},
 		"unknown size class": {
-			columns: "owner_id, geom, size_class, price_cents, expires_at",
-			values:  "$1, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'enormous', 200, now() + interval '1 hour'",
+			columns: "owner_id, vehicle_id, geom, size_class, price_cents, expires_at",
+			values:  "$1, $2, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'enormous', 200, now() + interval '1 hour'",
 		},
 		"unknown status": {
-			columns: "owner_id, geom, size_class, status, price_cents, expires_at",
-			values:  "$1, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'medium', 'haunted', 200, now() + interval '1 hour'",
+			columns: "owner_id, vehicle_id, geom, size_class, status, price_cents, expires_at",
+			values:  "$1, $2, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'medium', 'haunted', 200, now() + interval '1 hour'",
 		},
 		"expiry before availability": {
-			columns: "owner_id, geom, size_class, price_cents, available_from, expires_at",
-			values:  "$1, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'medium', 200, now(), now() - interval '1 hour'",
+			columns: "owner_id, vehicle_id, geom, size_class, price_cents, available_from, expires_at",
+			values:  "$1, $2, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'medium', 200, now(), now() - interval '1 hour'",
 		},
 		"start more than a day away": {
-			columns: "owner_id, geom, size_class, price_cents, available_from, expires_at",
-			values:  "$1, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'medium', 200, now() + interval '25 hours', now() + interval '26 hours'",
+			columns: "owner_id, vehicle_id, geom, size_class, price_cents, available_from, expires_at",
+			values:  "$1, $2, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'medium', 200, now() + interval '25 hours', now() + interval '26 hours'",
 		},
 		"longitude off the planet": {
-			columns: "owner_id, geom, size_class, price_cents, expires_at",
-			values:  "$1, ST_SetSRID(ST_MakePoint(200.0, 41.39), 4326), 'medium', 200, now() + interval '1 hour'",
+			columns: "owner_id, vehicle_id, geom, size_class, price_cents, expires_at",
+			values:  "$1, $2, ST_SetSRID(ST_MakePoint(200.0, 41.39), 4326), 'medium', 200, now() + interval '1 hour'",
 		},
 		"latitude off the planet": {
-			columns: "owner_id, geom, size_class, price_cents, expires_at",
-			values:  "$1, ST_SetSRID(ST_MakePoint(2.16, 120.0), 4326), 'medium', 200, now() + interval '1 hour'",
+			columns: "owner_id, vehicle_id, geom, size_class, price_cents, expires_at",
+			values:  "$1, $2, ST_SetSRID(ST_MakePoint(2.16, 120.0), 4326), 'medium', 200, now() + interval '1 hour'",
 		},
 	}
 
@@ -286,7 +286,7 @@ func TestSpotConstraintsRejectInvalidRows(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			inSavepoint(t, ctx, tx, func(ctx context.Context, tx pgx.Tx) {
 				sql := "INSERT INTO spots (" + tc.columns + ") VALUES (" + tc.values + ")"
-				if _, err := tx.Exec(ctx, sql, owner); err == nil {
+				if _, err := tx.Exec(ctx, sql, owner, vehicle); err == nil {
 					t.Error("invalid row was accepted")
 				}
 			})
@@ -358,14 +358,16 @@ func seedSpotsForPlanner(t *testing.T, ctx context.Context, tx pgx.Tx, count int
 	t.Helper()
 
 	owner := testdb.InsertUser(t, ctx, tx, "planner-owner")
+	vehicle := testdb.InsertVehicle(t, ctx, tx, owner)
 
 	if _, err := tx.Exec(ctx, `SELECT setseed(0.1234)`); err != nil {
 		t.Fatalf("setseed: %v", err)
 	}
 
 	_, err := tx.Exec(ctx, `
-		INSERT INTO spots (owner_id, geom, size_class, price_cents, expires_at)
+		INSERT INTO spots (owner_id, vehicle_id, geom, size_class, price_cents, expires_at)
 		SELECT $1,
+		       $2,
 		       ST_SetSRID(ST_MakePoint(
 		           (2.10 + random() * 0.12)::double precision,
 		           (41.35 + random() * 0.10)::double precision
@@ -373,8 +375,8 @@ func seedSpotsForPlanner(t *testing.T, ctx context.Context, tx pgx.Tx, count int
 		       'medium',
 		       200,
 		       now() + interval '30 minutes'
-		  FROM generate_series(1, $2::int)
-	`, owner, count)
+		  FROM generate_series(1, $3::int)
+	`, owner, vehicle, count)
 	if err != nil {
 		t.Fatalf("seed spots: %v", err)
 	}

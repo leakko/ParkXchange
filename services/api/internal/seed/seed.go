@@ -28,8 +28,9 @@ const (
 
 // Result reports what the seeder wrote.
 type Result struct {
-	Users int64
-	Spots int64
+	Users    int64
+	Vehicles int64
+	Spots    int64
 }
 
 // Load truncates the application tables and repopulates them. It is
@@ -64,6 +65,12 @@ func Load(ctx context.Context, conn *pgx.Conn) (Result, error) {
 		return result, fmt.Errorf("credit signup grants: %w", err)
 	}
 
+	tag, err = conn.Exec(ctx, insertVehiclesSQL)
+	if err != nil {
+		return result, fmt.Errorf("insert vehicles: %w", err)
+	}
+	result.Vehicles = tag.RowsAffected()
+
 	// Fix the PRNG so the generated map is identical on every run. Debugging a
 	// spatial query against a dataset that moves between runs is miserable.
 	if _, err := conn.Exec(ctx, "SELECT setseed(0.4242)"); err != nil {
@@ -86,7 +93,7 @@ func Load(ctx context.Context, conn *pgx.Conn) (Result, error) {
 }
 
 const truncateSQL = `
-TRUNCATE ledger_entries, reservations, spots, refresh_tokens, users RESTART IDENTITY CASCADE
+TRUNCATE ledger_entries, reservations, spots, vehicles, refresh_tokens, users RESTART IDENTITY CASCADE
 `
 
 const creditSignupGrantsSQL = `
@@ -113,6 +120,18 @@ SELECT 'driver' || lpad(g.i::text, 2, '0') || '@parkxchange.test',
   FROM generate_series(1, $2::int) AS g(i)
 `
 
+// One vehicle per seeded user so every spot can reference an owned car.
+const insertVehiclesSQL = `
+INSERT INTO vehicles (owner_id, plate, make_model, size_class, color, year)
+SELECT id,
+       'SEED-' || lpad((row_number() OVER (ORDER BY email))::text, 4, '0'),
+       'Seed Car',
+       'medium',
+       'silver',
+       2020
+  FROM users
+`
+
 // Spots are clustered around real Sevilla neighbourhoods rather than scattered
 // uniformly over a rectangle, because a uniform scatter would drop half the
 // dataset into the Guadalquivir and make every viewport look the same.
@@ -133,10 +152,12 @@ WITH districts(rn, name, lon, lat) AS (
            (9, 'Santa Justa',    -5.97500::double precision, 37.39500::double precision)
 ),
 owners AS (
-    SELECT id,
-           (row_number() OVER (ORDER BY email)) - 1 AS rn,
+    SELECT u.id,
+           v.id AS vehicle_id,
+           (row_number() OVER (ORDER BY u.email)) - 1 AS rn,
            count(*) OVER ()                        AS total
-      FROM users
+      FROM users u
+      JOIN vehicles v ON v.owner_id = u.id
 ),
 generated AS (
     SELECT g.i,
@@ -150,9 +171,10 @@ generated AS (
       FROM generate_series(1, $1::int) AS g(i)
       JOIN districts d ON d.rn = g.i % 10
 )
-INSERT INTO spots (owner_id, geom, address_hint, size_class, status,
+INSERT INTO spots (owner_id, vehicle_id, geom, address_hint, size_class, status,
                    price_cents, available_from, expires_at)
 SELECT o.id,
+       o.vehicle_id,
        ST_SetSRID(ST_MakePoint(gen.lon, gen.lat), 4326),
        gen.district || ', calle de muestra ' || gen.i,
        (ARRAY['small', 'medium', 'large'])[1 + floor(gen.size_roll * 3)::int],
@@ -174,16 +196,19 @@ SELECT o.id,
 // testing has predictable places to navigate to. The first row is the
 // developer home address used as the emulator GPS fix.
 const insertLandmarkSpotsSQL = `
-INSERT INTO spots (owner_id, geom, address_hint, size_class, status,
+INSERT INTO spots (owner_id, vehicle_id, geom, address_hint, size_class, status,
                    price_cents, expires_at)
-SELECT (SELECT id FROM users WHERE email = 'owner@parkxchange.test'),
+SELECT u.id,
+       v.id,
        ST_SetSRID(ST_MakePoint(s.lon, s.lat), 4326),
        s.hint,
        s.size_class,
        'available',
        s.price_cents,
        now() + interval '45 minutes'
-  FROM (VALUES
+  FROM users u
+  JOIN vehicles v ON v.owner_id = u.id
+  CROSS JOIN (VALUES
            (-5.97315::double precision, 37.37185::double precision, 'Calle Malvaloca 5, 41013 Sevilla',     'medium', 250),
            (-5.99250::double precision, 37.38610::double precision, 'Catedral / Giralda',                 'small',  300),
            (-5.98690::double precision, 37.37720::double precision, 'Plaza de Espana',                    'medium', 200),
@@ -193,4 +218,5 @@ SELECT (SELECT id FROM users WHERE email = 'owner@parkxchange.test'),
            (-5.97050::double precision, 37.38410::double precision, 'Estadio Ramon Sanchez-Pizjuan',      'large',  125),
            (-6.00900::double precision, 37.40500::double precision, 'Isla de la Cartuja',                 'medium', 100)
        ) AS s(lon, lat, hint, size_class, price_cents)
+ WHERE u.email = 'owner@parkxchange.test'
 `

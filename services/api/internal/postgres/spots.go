@@ -8,6 +8,7 @@ import (
 
 	"github.com/marco/parkxchange/libs/go/geo"
 	"github.com/marco/parkxchange/services/api/internal/domain"
+	"github.com/marco/parkxchange/services/api/internal/spots"
 )
 
 // spotColumns is shared by every spot query so the scan order cannot drift.
@@ -15,7 +16,9 @@ import (
 // ST_X and ST_Y extract the coordinates rather than sending the geometry to
 // Go, which avoids decoding WKB in the driver for two float64s. The owner's
 // name and rating are joined in because the map needs them to draw a marker,
-// and fetching them per spot would be one round trip per pin.
+// and fetching them per spot would be one round trip per pin. The vehicle
+// summary is joined for the same reason: a claimer has to see which car to
+// meet without a second request per pin.
 const spotColumns = `
 	s.id, s.owner_id, u.display_name, u.rating_sum, u.rating_count,
 	ST_X(s.geom), ST_Y(s.geom),
@@ -27,7 +30,15 @@ const spotColumns = `
 		 WHERE r.spot_id = s.id
 		   AND r.status IN ('pending', 'confirmed', 'arrived')
 		 LIMIT 1
-	)`
+	),
+	s.vehicle_id,
+	v.plate, v.make_model, v.color, v.year, v.size_class,
+	(v.photo IS NOT NULL)`
+
+const spotFrom = `
+	  FROM spots s
+	  JOIN users u ON u.id = s.owner_id
+	  JOIN vehicles v ON v.id = s.vehicle_id`
 
 // discoveryQuery answers the map's viewport request, and is the hottest query
 // in the product.
@@ -39,9 +50,7 @@ const spotColumns = `
 // the partial GiST index expects, or the index silently stops applying and the
 // endpoint keeps working while becoming unusable at scale.
 const discoveryQuery = `
-	SELECT ` + spotColumns + `
-	  FROM spots s
-	  JOIN users u ON u.id = s.owner_id
+	SELECT ` + spotColumns + spotFrom + `
 	 WHERE s.status = 'available'
 	   AND s.expires_at > $5
 	   AND s.available_from < $6
@@ -59,6 +68,7 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 		size        string
 		status      string
 		holderID    *string
+		vehicleSize string
 	)
 
 	err := row.Scan(
@@ -67,6 +77,9 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 		&addressHint, &size, &status, &spot.PriceCents, &notes,
 		&spot.AvailableFrom, &spot.ExpiresAt, &spot.CreatedAt,
 		&holderID,
+		&spot.VehicleID,
+		&spot.Vehicle.Plate, &spot.Vehicle.MakeModel, &spot.Vehicle.Color,
+		&spot.Vehicle.Year, &vehicleSize, &spot.Vehicle.HasPhoto,
 	)
 	if err != nil {
 		return domain.Spot{}, translate(err, "scan spot")
@@ -77,6 +90,8 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 	spot.AddressHint = optional(addressHint)
 	spot.Notes = optional(notes)
 	spot.HolderID = optional(holderID)
+	spot.Vehicle.ID = spot.VehicleID
+	spot.Vehicle.Size = domain.SpotSize(vehicleSize)
 
 	// An unrated owner is left as nil rather than 0, because a new user is not
 	// a zero-star user and the client renders the two differently.
@@ -165,18 +180,18 @@ func (db *DB) CreateSpot(ctx context.Context, draft domain.SpotDraft) (domain.Sp
 	// most extreme cases.
 	err = tx.QueryRow(ctx, `
 		INSERT INTO spots (
-			owner_id, geom, address_hint, size_class, status,
+			owner_id, vehicle_id, geom, address_hint, size_class, status,
 			price_cents, notes, available_from, expires_at
 		)
 		VALUES (
-			$1, ST_SetSRID(ST_MakePoint($2, $3), 4326), $4, $5, 'available',
-			$6, $7,
-			now() + make_interval(secs => $8),
-			now() + make_interval(secs => $9)
+			$1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326), $5, $6, 'available',
+			$7, $8,
+			now() + make_interval(secs => $9),
+			now() + make_interval(secs => $10)
 		)
 		RETURNING id
 	`,
-		draft.OwnerID, draft.Lon, draft.Lat, nullable(draft.AddressHint),
+		draft.OwnerID, draft.VehicleID, draft.Lon, draft.Lat, nullable(draft.AddressHint),
 		string(draft.Size), draft.PriceCents, nullable(draft.Notes),
 		draft.AvailableIn.Seconds(), draft.ExpiresIn.Seconds(),
 	).Scan(&id)
@@ -209,18 +224,14 @@ func (db *DB) CreateSpot(ctx context.Context, draft domain.SpotDraft) (domain.Sp
 // SpotByID loads one spot regardless of its status.
 func (db *DB) SpotByID(ctx context.Context, id string) (domain.Spot, error) {
 	return scanSpot(db.Pool.QueryRow(ctx, `
-		SELECT `+spotColumns+`
-		  FROM spots s
-		  JOIN users u ON u.id = s.owner_id
+		SELECT `+spotColumns+spotFrom+`
 		 WHERE s.id = $1`, id))
 }
 
 // SpotsByOwner lists a user's own spots, newest first.
 func (db *DB) SpotsByOwner(ctx context.Context, ownerID string, limit int) ([]domain.Spot, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT `+spotColumns+`
-		  FROM spots s
-		  JOIN users u ON u.id = s.owner_id
+		SELECT `+spotColumns+spotFrom+`
 		 WHERE s.owner_id = $1
 		 ORDER BY s.created_at DESC
 		 LIMIT $2`, ownerID, limit)
@@ -242,6 +253,135 @@ func (db *DB) SpotsByOwner(ctx context.Context, ownerID string, limit int) ([]do
 	}
 
 	return spots, nil
+}
+
+// UpdateAvailableSpot applies a partial edit while the offer is still available.
+func (db *DB) UpdateAvailableSpot(ctx context.Context, spotID, ownerID string, patch spots.SpotPatch) (domain.Spot, error) {
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return domain.Spot{}, translate(err, "begin update spot")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var (
+		status string
+		lon    float64
+		lat    float64
+		price  int
+	)
+	err = tx.QueryRow(ctx, `
+		SELECT status, ST_X(geom), ST_Y(geom), price_cents FROM spots
+		 WHERE id = $1 AND owner_id = $2
+		   FOR UPDATE
+	`, spotID, ownerID).Scan(&status, &lon, &lat, &price)
+	if err != nil {
+		return domain.Spot{}, translate(err, "lock spot for update")
+	}
+	if status != string(domain.SpotAvailable) {
+		return domain.Spot{}, domain.ErrConflict
+	}
+
+	var (
+		availableSecs *float64
+		expiresSecs   *float64
+	)
+	if patch.AvailableIn != nil {
+		secs := patch.AvailableIn.Seconds()
+		availableSecs = &secs
+	}
+	if patch.ExpiresIn != nil {
+		secs := patch.ExpiresIn.Seconds()
+		expiresSecs = &secs
+	}
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE spots SET
+			price_cents = COALESCE($3, price_cents),
+			notes = CASE WHEN $4::boolean THEN $5 ELSE notes END,
+			available_from = CASE
+				WHEN $6::float8 IS NULL THEN available_from
+				ELSE now() + make_interval(secs => $6::float8)
+			END,
+			expires_at = CASE
+				WHEN $7::float8 IS NULL THEN expires_at
+				ELSE now() + make_interval(secs => $7::float8)
+			END,
+			vehicle_id = COALESCE($8::uuid, vehicle_id)
+		 WHERE id = $1 AND owner_id = $2 AND status = 'available'
+	`,
+		spotID, ownerID,
+		patch.PriceCents,
+		patch.Notes != nil, nullable(stringPtr(patch.Notes)),
+		availableSecs, expiresSecs,
+		patch.VehicleID,
+	)
+	if err != nil {
+		return domain.Spot{}, translate(err, "update available spot")
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.Spot{}, domain.ErrConflict
+	}
+
+	if patch.PriceCents != nil {
+		price = *patch.PriceCents
+	}
+
+	if err := notifySpot(ctx, tx, domain.SpotEvent{
+		Type:       domain.EventSpotUpdated,
+		SpotID:     spotID,
+		OwnerID:    ownerID,
+		Lon:        lon,
+		Lat:        lat,
+		Status:     domain.SpotAvailable,
+		PriceCents: price,
+	}); err != nil {
+		return domain.Spot{}, translate(err, "notify spot updated")
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Spot{}, translate(err, "commit update spot")
+	}
+	return db.SpotByID(ctx, spotID)
+}
+
+func stringPtr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+// VehicleOwnedBy reports whether the vehicle belongs to the owner.
+func (db *DB) VehicleOwnedBy(ctx context.Context, vehicleID, ownerID string) (bool, error) {
+	var found bool
+	err := db.Pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM vehicles WHERE id = $1 AND owner_id = $2
+		)`, vehicleID, ownerID).Scan(&found)
+	if err != nil {
+		return false, translate(err, "check vehicle ownership")
+	}
+	return found, nil
+}
+
+// SpotVehiclePhoto returns the linked vehicle's photo bytes.
+func (db *DB) SpotVehiclePhoto(ctx context.Context, spotID string) ([]byte, string, error) {
+	var (
+		photo       []byte
+		contentType *string
+	)
+	err := db.Pool.QueryRow(ctx, `
+		SELECT v.photo, v.photo_content_type
+		  FROM spots s
+		  JOIN vehicles v ON v.id = s.vehicle_id
+		 WHERE s.id = $1`, spotID).Scan(&photo, &contentType)
+	if err != nil {
+		return nil, "", translate(err, "load spot vehicle photo")
+	}
+	if photo == nil || contentType == nil {
+		return nil, "", domain.ErrNoRows
+	}
+	return photo, *contentType, nil
 }
 
 // CancelSpot withdraws an offer, including one that has already been claimed.

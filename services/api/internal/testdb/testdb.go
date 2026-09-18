@@ -86,18 +86,36 @@ func InsertUser(t *testing.T, ctx context.Context, tx pgx.Tx, label string) stri
 	return id
 }
 
-// InsertSpot creates an available spot at the given coordinates and returns its
-// id.
-func InsertSpot(t *testing.T, ctx context.Context, tx pgx.Tx, ownerID string, lon, lat float64) string {
+// InsertVehicle creates a vehicle for the owner and returns its id.
+func InsertVehicle(t *testing.T, ctx context.Context, tx pgx.Tx, ownerID string) string {
 	t.Helper()
 
 	var id string
 	err := tx.QueryRow(ctx, `
-		INSERT INTO spots (owner_id, geom, size_class, price_cents, expires_at)
-		VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326), 'medium', 200,
+		INSERT INTO vehicles (owner_id, plate, make_model, size_class, color, year)
+		VALUES ($1, 'T-' || substr(gen_random_uuid()::text, 1, 12), 'Test Car', 'medium', 'silver', 2020)
+		RETURNING id
+	`, ownerID).Scan(&id)
+	if err != nil {
+		t.Fatalf("insert vehicle: %v", err)
+	}
+	return id
+}
+
+// InsertSpot creates an available spot at the given coordinates and returns its
+// id. A vehicle is created for the owner so the NOT NULL FK is satisfied.
+func InsertSpot(t *testing.T, ctx context.Context, tx pgx.Tx, ownerID string, lon, lat float64) string {
+	t.Helper()
+
+	vehicleID := InsertVehicle(t, ctx, tx, ownerID)
+
+	var id string
+	err := tx.QueryRow(ctx, `
+		INSERT INTO spots (owner_id, vehicle_id, geom, size_class, price_cents, expires_at)
+		VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326), 'medium', 200,
 		        now() + interval '30 minutes')
 		RETURNING id
-	`, ownerID, lon, lat).Scan(&id)
+	`, ownerID, vehicleID, lon, lat).Scan(&id)
 	if err != nil {
 		t.Fatalf("insert spot: %v", err)
 	}

@@ -64,19 +64,29 @@ func TestVehicleCreateUniquePlatePhotoAndActiveSpotCount(t *testing.T) {
 	}
 
 	// Same owner, plate differing only by case → unique index on lower(plate).
-	_, err = db.Create(ctx, domain.Vehicle{
-		OwnerID:   owner,
-		Plate:     "b-1234-xy",
-		MakeModel: "Other",
-		Size:      domain.SizeSmall,
-		Color:     "red",
-		Year:      2020,
-	})
-	if err == nil {
-		t.Fatal("Create with duplicate plate succeeded, want conflict")
-	}
-	if domain.KindOf(err) != domain.KindConflict {
-		t.Errorf("duplicate plate kind = %v, want KindConflict (err=%v)", domain.KindOf(err), err)
+	// A failed INSERT aborts the surrounding transaction, so the attempt runs
+	// in a savepoint the way production requests each get their own connection.
+	{
+		sp, err := tx.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin savepoint: %v", err)
+		}
+		spDB := &DB{tx: sp}
+		_, err = spDB.Create(ctx, domain.Vehicle{
+			OwnerID:   owner,
+			Plate:     "b-1234-xy",
+			MakeModel: "Other",
+			Size:      domain.SizeSmall,
+			Color:     "red",
+			Year:      2020,
+		})
+		_ = sp.Rollback(ctx)
+		if err == nil {
+			t.Fatal("Create with duplicate plate succeeded, want conflict")
+		}
+		if domain.KindOf(err) != domain.KindConflict {
+			t.Errorf("duplicate plate kind = %v, want KindConflict (err=%v)", domain.KindOf(err), err)
+		}
 	}
 
 	if err := db.SetPhoto(ctx, created.ID, owner, jpegMagic, "image/jpeg"); err != nil {

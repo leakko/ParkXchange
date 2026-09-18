@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/marco/parkxchange/libs/go/geo"
@@ -41,6 +42,33 @@ type spotProperties struct {
 	// IsMine saves the client from comparing owner ids against its own token
 	// to decide whether to offer a withdraw button.
 	IsMine bool `json:"is_mine"`
+
+	Vehicle *vehicleSummaryJSON `json:"vehicle,omitempty"`
+}
+
+type vehicleSummaryJSON struct {
+	ID        string `json:"id"`
+	Plate     string `json:"plate"`
+	MakeModel string `json:"make_model"`
+	Color     string `json:"color"`
+	Year      int    `json:"year"`
+	Size      string `json:"size_class"`
+	HasPhoto  bool   `json:"has_photo"`
+}
+
+func toVehicleSummary(v domain.VehicleSummary) *vehicleSummaryJSON {
+	if v.ID == "" {
+		return nil
+	}
+	return &vehicleSummaryJSON{
+		ID:        v.ID,
+		Plate:     v.Plate,
+		MakeModel: v.MakeModel,
+		Color:     v.Color,
+		Year:      v.Year,
+		Size:      string(v.Size),
+		HasPhoto:  v.HasPhoto,
+	}
 }
 
 func toFeature(visible spots.VisibleSpot, viewer domain.Claims) geo.Feature[spotProperties] {
@@ -59,6 +87,7 @@ func toFeature(visible spots.VisibleSpot, viewer domain.Claims) geo.Feature[spot
 		ExpiresAt:     spot.ExpiresAt,
 		ExactLocation: visible.Exact,
 		IsMine:        spot.OwnedBy(viewer.UserID),
+		Vehicle:       toVehicleSummary(spot.Vehicle),
 	})
 }
 
@@ -156,6 +185,7 @@ type createSpotRequest struct {
 	PriceCents  int    `json:"price_cents"`
 	AddressHint string `json:"address_hint"`
 	Notes       string `json:"notes"`
+	VehicleID   string `json:"vehicle_id"`
 
 	// DurationMinutes is how long the offer stands after it becomes
 	// available, rather than an absolute expiry.
@@ -185,6 +215,9 @@ func (a *API) handleCreateSpot(w http.ResponseWriter, r *http.Request) error {
 	if req.AvailableInMinutes < 0 {
 		fields["available_in_minutes"] = "must not be negative"
 	}
+	if strings.TrimSpace(req.VehicleID) == "" {
+		fields["vehicle_id"] = "is required"
+	}
 	if len(fields) > 0 {
 		return domain.InvalidFields(fields)
 	}
@@ -195,6 +228,7 @@ func (a *API) handleCreateSpot(w http.ResponseWriter, r *http.Request) error {
 
 	spot, err := a.spots.Offer(r.Context(), domain.NewSpotInput{
 		OwnerID:       claims.UserID,
+		VehicleID:     req.VehicleID,
 		Lon:           *req.Lon,
 		Lat:           *req.Lat,
 		AddressHint:   req.AddressHint,
@@ -211,6 +245,75 @@ func (a *API) handleCreateSpot(w http.ResponseWriter, r *http.Request) error {
 	// The owner sees their own spot, so the coordinates come back exact.
 	visible := spots.VisibleSpot{Spot: spot, Lon: spot.Lon, Lat: spot.Lat, Exact: true}
 	return web.JSON(w, http.StatusCreated, toFeature(visible, claims))
+}
+
+type updateSpotRequest struct {
+	PriceCents         *int    `json:"price_cents"`
+	Notes              *string `json:"notes"`
+	VehicleID          *string `json:"vehicle_id"`
+	DurationMinutes    *int    `json:"duration_minutes"`
+	AvailableInMinutes *int    `json:"available_in_minutes"`
+}
+
+func (a *API) handleUpdateSpot(w http.ResponseWriter, r *http.Request) error {
+	var req updateSpotRequest
+	if err := web.DecodeJSON(w, r, &req); err != nil {
+		return err
+	}
+
+	fields := make(map[string]string)
+	if req.AvailableInMinutes != nil && *req.AvailableInMinutes < 0 {
+		fields["available_in_minutes"] = "must not be negative"
+	}
+	if req.DurationMinutes != nil && *req.DurationMinutes <= 0 {
+		fields["duration_minutes"] = "must be a positive number of minutes"
+	}
+	if (req.DurationMinutes == nil) != (req.AvailableInMinutes == nil) {
+		// Allow duration alone (keep current start) or both; available_in
+		// alone without a new duration is ambiguous against the existing end.
+		if req.DurationMinutes == nil {
+			fields["duration_minutes"] = "is required when available_in_minutes is set"
+		}
+	}
+	if len(fields) > 0 {
+		return domain.InvalidFields(fields)
+	}
+
+	patch := spots.SpotPatch{
+		PriceCents: req.PriceCents,
+		Notes:      req.Notes,
+		VehicleID:  req.VehicleID,
+	}
+	if req.DurationMinutes != nil {
+		availableIn := time.Duration(0)
+		if req.AvailableInMinutes != nil {
+			availableIn = time.Duration(*req.AvailableInMinutes) * time.Minute
+		}
+		expiresIn := availableIn + time.Duration(*req.DurationMinutes)*time.Minute
+		patch.AvailableIn = &availableIn
+		patch.ExpiresIn = &expiresIn
+	}
+
+	claims := claimsFrom(r.Context())
+	spot, err := a.spots.Update(r.Context(), r.PathValue("id"), claims, patch)
+	if err != nil {
+		return err
+	}
+
+	visible := spots.VisibleSpot{Spot: spot, Lon: spot.Lon, Lat: spot.Lat, Exact: true}
+	return web.JSON(w, http.StatusOK, toFeature(visible, claims))
+}
+
+func (a *API) handleSpotVehiclePhoto(w http.ResponseWriter, r *http.Request) error {
+	photo, contentType, err := a.spots.VehiclePhoto(
+		r.Context(), r.PathValue("id"), claimsFrom(r.Context()))
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.WriteHeader(http.StatusOK)
+	_, err = w.Write(photo)
+	return err
 }
 
 func (a *API) handleDeleteSpot(w http.ResponseWriter, r *http.Request) error {

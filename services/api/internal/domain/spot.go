@@ -119,6 +119,14 @@ type Spot struct {
 	// round trip per pin.
 	HolderID string
 
+	// VehicleID is the owner's car that will vacate the space. Required on
+	// every offer so a claimer knows which vehicle to meet.
+	VehicleID string
+
+	// Vehicle is the claimer-visible summary joined on read paths. Empty on
+	// a draft that has not been persisted yet.
+	Vehicle VehicleSummary
+
 	Lon float64
 	Lat float64
 
@@ -204,6 +212,7 @@ func (s Spot) CoordinatesFor(viewer Viewer) (lon, lat float64, exact bool) {
 // whatever the API's clock says.
 type SpotDraft struct {
 	OwnerID     string
+	VehicleID   string
 	Lon         float64
 	Lat         float64
 	AddressHint string
@@ -222,6 +231,7 @@ type SpotDraft struct {
 // NewSpotInput is an offer that has not been validated.
 type NewSpotInput struct {
 	OwnerID     string
+	VehicleID   string
 	Lon         float64
 	Lat         float64
 	AddressHint string
@@ -298,6 +308,11 @@ func NewSpot(in NewSpotInput, now time.Time) (SpotDraft, error) {
 		return SpotDraft{}, Internal(Invalid("owner_required", "a spot needs an owner"))
 	}
 
+	vehicleID := strings.TrimSpace(in.VehicleID)
+	if vehicleID == "" {
+		fields["vehicle_id"] = "is required"
+	}
+
 	if len(fields) > 0 {
 		return SpotDraft{}, InvalidFields(fields)
 	}
@@ -312,6 +327,7 @@ func NewSpot(in NewSpotInput, now time.Time) (SpotDraft, error) {
 
 	return SpotDraft{
 		OwnerID:     in.OwnerID,
+		VehicleID:   vehicleID,
 		Lon:         in.Lon,
 		Lat:         in.Lat,
 		AddressHint: addressHint,
@@ -321,4 +337,92 @@ func NewSpot(in NewSpotInput, now time.Time) (SpotDraft, error) {
 		AvailableIn: availableIn,
 		ExpiresIn:   in.ExpiresAt.Sub(now),
 	}, nil
+}
+
+// UpdateSpotInput is a partial edit to an available offer.
+//
+// Location and size_class are intentionally absent: moving or resizing a
+// published offer is out of scope for this delivery.
+type UpdateSpotInput struct {
+	AvailableFrom *time.Time
+	ExpiresAt     *time.Time
+	PriceCents    *int
+	Notes         *string
+}
+
+// SpotUpdate is the validated change set ready to persist.
+type SpotUpdate struct {
+	AvailableIn *time.Duration
+	ExpiresIn   *time.Duration
+	PriceCents  *int
+	Notes       *string
+}
+
+// ApplySpotUpdate validates a partial edit against an existing available spot.
+//
+// Ownership and status checks belong in the use case: this only shapes the
+// fields that may change. A missing window half is filled from the existing
+// row so a caller can lengthen the offer without restating the start.
+func ApplySpotUpdate(existing Spot, in UpdateSpotInput, now time.Time) (SpotUpdate, error) {
+	fields := make(map[string]string)
+	out := SpotUpdate{}
+
+	if in.PriceCents != nil {
+		switch {
+		case *in.PriceCents < 0:
+			fields["price_cents"] = "must not be negative"
+		case *in.PriceCents > MaxPriceCents:
+			fields["price_cents"] = "must be at most 2000 (20 euros)"
+		default:
+			out.PriceCents = in.PriceCents
+		}
+	}
+
+	if in.Notes != nil {
+		notes := strings.TrimSpace(*in.Notes)
+		if utf8.RuneCountInString(notes) > MaxNotesLength {
+			fields["notes"] = "must be at most 280 characters"
+		} else {
+			out.Notes = &notes
+		}
+	}
+
+	if in.AvailableFrom != nil || in.ExpiresAt != nil {
+		availableFrom := existing.AvailableFrom
+		expiresAt := existing.ExpiresAt
+		if in.AvailableFrom != nil {
+			availableFrom = *in.AvailableFrom
+		}
+		if in.ExpiresAt != nil {
+			expiresAt = *in.ExpiresAt
+		}
+
+		if availableFrom.Sub(now) > MaxLeadTime {
+			fields["available_from"] = "must be at most 24 hours from now"
+		}
+
+		switch {
+		case expiresAt.IsZero():
+			fields["expires_at"] = "is required"
+		case expiresAt.Sub(availableFrom) < MinDuration:
+			fields["expires_at"] = "must be at least 2 minutes after the spot becomes available"
+		case expiresAt.Sub(availableFrom) > MaxDuration:
+			fields["expires_at"] = "must be at most 24 hours after the spot becomes available"
+		case !expiresAt.After(now):
+			fields["expires_at"] = "must be in the future"
+		default:
+			availableIn := availableFrom.Sub(now)
+			if availableIn < 0 {
+				availableIn = 0
+			}
+			expiresIn := expiresAt.Sub(now)
+			out.AvailableIn = &availableIn
+			out.ExpiresIn = &expiresIn
+		}
+	}
+
+	if len(fields) > 0 {
+		return SpotUpdate{}, InvalidFields(fields)
+	}
+	return out, nil
 }

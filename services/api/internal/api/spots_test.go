@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/marco/parkxchange/services/api/internal/postgres"
 )
 
 // These tests write to the real development database, so each one works in its
@@ -61,6 +63,15 @@ type feature struct {
 		Notes         string   `json:"notes"`
 		ExactLocation bool     `json:"exact_location"`
 		IsMine        bool     `json:"is_mine"`
+		Vehicle       *struct {
+			ID        string `json:"id"`
+			Plate     string `json:"plate"`
+			MakeModel string `json:"make_model"`
+			Color     string `json:"color"`
+			Year      int    `json:"year"`
+			Size      string `json:"size_class"`
+			HasPhoto  bool   `json:"has_photo"`
+		} `json:"vehicle"`
 	} `json:"properties"`
 }
 
@@ -119,10 +130,12 @@ func authedRequest(
 }
 
 // createSpot publishes a spot at the location and returns the feature.
+// A vehicle is created for the owner unless overrides already supply vehicle_id.
 func createSpot(
 	t *testing.T,
 	server *httptest.Server,
-	token string,
+	db *postgres.DB,
+	owner session,
 	at testLocation,
 	overrides map[string]any,
 ) feature {
@@ -138,8 +151,11 @@ func createSpot(
 	for key, value := range overrides {
 		body[key] = value
 	}
+	if _, ok := body["vehicle_id"]; !ok {
+		body["vehicle_id"] = insertTestVehicle(t, db, owner.User.ID)
+	}
 
-	resp := authedRequest(t, server, http.MethodPost, "/v1/spots", token, body)
+	resp := authedRequest(t, server, http.MethodPost, "/v1/spots", owner.AccessToken, body)
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("POST /v1/spots: status = %d, want 201 (code %q)",
 			resp.StatusCode, errorCode(t, resp))
@@ -148,13 +164,28 @@ func createSpot(
 	return decode[feature](t, resp)
 }
 
+func insertTestVehicle(t *testing.T, db *postgres.DB, ownerID string) string {
+	t.Helper()
+
+	var id string
+	err := db.Pool.QueryRow(t.Context(), `
+		INSERT INTO vehicles (owner_id, plate, make_model, size_class, color, year)
+		VALUES ($1, 'T-' || substr(gen_random_uuid()::text, 1, 12), 'Test Car', 'medium', 'silver', 2020)
+		RETURNING id
+	`, ownerID).Scan(&id)
+	if err != nil {
+		t.Fatalf("insert test vehicle: %v", err)
+	}
+	return id
+}
+
 func TestCreateSpotReturnsAGeoJSONFeature(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	at := uniqueLocation()
 
-	got := createSpot(t, server, owner.AccessToken, at, map[string]any{
+	got := createSpot(t, server, db, owner, at, map[string]any{
 		"address_hint": "outside number 42",
 		"notes":        "behind the blue van",
 	})
@@ -192,6 +223,12 @@ func TestCreateSpotReturnsAGeoJSONFeature(t *testing.T) {
 	if got.Properties.AddressHint != "outside number 42" {
 		t.Errorf("address_hint = %q", got.Properties.AddressHint)
 	}
+	if got.Properties.Vehicle == nil || got.Properties.Vehicle.ID == "" {
+		t.Fatal("vehicle summary missing from the created feature")
+	}
+	if got.Properties.Vehicle.Plate == "" {
+		t.Error("vehicle plate missing")
+	}
 }
 
 func TestCreateSpotRequiresAuthentication(t *testing.T) {
@@ -200,7 +237,7 @@ func TestCreateSpotRequiresAuthentication(t *testing.T) {
 	at := uniqueLocation()
 	resp := authedRequest(t, server, http.MethodPost, "/v1/spots", "", map[string]any{
 		"lon": at.Lon, "lat": at.Lat, "size_class": "medium",
-		"price_cents": 150, "duration_minutes": 30,
+		"price_cents": 150, "duration_minutes": 30, "vehicle_id": "00000000-0000-0000-0000-000000000001",
 	})
 
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -209,15 +246,17 @@ func TestCreateSpotRequiresAuthentication(t *testing.T) {
 }
 
 func TestCreateSpotRejectsInvalidInput(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	at := uniqueLocation()
+	vehicleID := insertTestVehicle(t, db, owner.User.ID)
 
 	base := func() map[string]any {
 		return map[string]any{
 			"lon": at.Lon, "lat": at.Lat, "size_class": "medium",
 			"price_cents": 150, "duration_minutes": 30,
+			"vehicle_id": vehicleID,
 		}
 	}
 
@@ -251,6 +290,9 @@ func TestCreateSpotRejectsInvalidInput(t *testing.T) {
 		},
 		"notes too long": {
 			func(b map[string]any) { b["notes"] = strings.Repeat("x", 281) }, "notes",
+		},
+		"missing vehicle": {
+			func(b map[string]any) { delete(b, "vehicle_id") }, "vehicle_id",
 		},
 	}
 
@@ -289,12 +331,12 @@ func TestCreateSpotRejectsInvalidInput(t *testing.T) {
 
 // The viewport query is the product's hot path, so it gets the most attention.
 func TestListSpotsReturnsSpotsInsideTheViewport(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	at := uniqueLocation()
 
-	created := createSpot(t, server, owner.AccessToken, at, nil)
+	created := createSpot(t, server, db, owner, at, nil)
 
 	resp := get(t, server, "/v1/spots?bbox="+at.bbox()+"&zoom=16")
 	if resp.StatusCode != http.StatusOK {
@@ -313,12 +355,12 @@ func TestListSpotsReturnsSpotsInsideTheViewport(t *testing.T) {
 }
 
 func TestListSpotsExcludesSpotsOutsideTheViewport(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	at := uniqueLocation()
 
-	created := createSpot(t, server, owner.AccessToken, at, nil)
+	created := createSpot(t, server, db, owner, at, nil)
 
 	resp := get(t, server, "/v1/spots?bbox="+at.elsewhere())
 	if resp.StatusCode != http.StatusOK {
@@ -404,13 +446,13 @@ func TestListSpotsValidatesTheBBox(t *testing.T) {
 
 // The privacy rule, end to end through the real query path.
 func TestListSpotsFuzzesCoordinatesForStrangers(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	stranger, _, _ := registerUser(t, server)
 	at := uniqueLocation()
 
-	created := createSpot(t, server, owner.AccessToken, at, nil)
+	created := createSpot(t, server, db, owner, at, nil)
 
 	t.Run("anonymous", func(t *testing.T) {
 		resp := get(t, server, "/v1/spots?bbox="+at.bbox())
@@ -486,7 +528,7 @@ func TestListSpotsRejectsABadTokenRatherThanIgnoringIt(t *testing.T) {
 // PostGIS, whose ST_MakeEnvelope would otherwise build the rectangle going the
 // wrong way round the planet and return almost every row.
 func TestListSpotsHandlesTheAntimeridian(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 
@@ -494,8 +536,8 @@ func TestListSpotsHandlesTheAntimeridian(t *testing.T) {
 	east := testLocation{Lon: 179.995, Lat: -16.5}
 	west := testLocation{Lon: -179.995, Lat: -16.5}
 
-	eastSpot := createSpot(t, server, owner.AccessToken, east, nil)
-	westSpot := createSpot(t, server, owner.AccessToken, west, nil)
+	eastSpot := createSpot(t, server, db, owner, east, nil)
+	westSpot := createSpot(t, server, db, owner, west, nil)
 
 	// A wrapping viewport: minLon greater than maxLon.
 	resp := get(t, server, "/v1/spots?bbox=179.99,-16.51,-179.99,-16.49")
@@ -514,12 +556,12 @@ func TestListSpotsHandlesTheAntimeridian(t *testing.T) {
 }
 
 func TestGetSpotReturnsOneFeature(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	at := uniqueLocation()
 
-	created := createSpot(t, server, owner.AccessToken, at, nil)
+	created := createSpot(t, server, db, owner, at, nil)
 
 	resp := get(t, server, "/v1/spots/"+created.ID)
 	if resp.StatusCode != http.StatusOK {
@@ -545,13 +587,13 @@ func TestGetSpotReportsAMissingSpot(t *testing.T) {
 }
 
 func TestMySpotsListsOnlyTheCallersSpots(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	other, _, _ := registerUser(t, server)
 
-	mine := createSpot(t, server, owner.AccessToken, uniqueLocation(), nil)
-	theirs := createSpot(t, server, other.AccessToken, uniqueLocation(), nil)
+	mine := createSpot(t, server, db, owner, uniqueLocation(), nil)
+	theirs := createSpot(t, server, db, other, uniqueLocation(), nil)
 
 	resp := authedRequest(t, server, http.MethodGet, "/v1/spots/mine", owner.AccessToken, nil)
 	if resp.StatusCode != http.StatusOK {
@@ -577,12 +619,12 @@ func TestMySpotsListsOnlyTheCallersSpots(t *testing.T) {
 }
 
 func TestDeleteSpotWithdrawsTheOffer(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	at := uniqueLocation()
 
-	created := createSpot(t, server, owner.AccessToken, at, nil)
+	created := createSpot(t, server, db, owner, at, nil)
 
 	resp := authedRequest(t, server, http.MethodDelete,
 		"/v1/spots/"+created.ID, owner.AccessToken, nil)
@@ -598,12 +640,12 @@ func TestDeleteSpotWithdrawsTheOffer(t *testing.T) {
 }
 
 func TestDeleteSpotRefusesSomebodyElsesSpot(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
 	intruder, _, _ := registerUser(t, server)
 
-	created := createSpot(t, server, owner.AccessToken, uniqueLocation(), nil)
+	created := createSpot(t, server, db, owner, uniqueLocation(), nil)
 
 	resp := authedRequest(t, server, http.MethodDelete,
 		"/v1/spots/"+created.ID, intruder.AccessToken, nil)
@@ -616,10 +658,10 @@ func TestDeleteSpotRefusesSomebodyElsesSpot(t *testing.T) {
 }
 
 func TestDeleteSpotIsNotRepeatable(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
-	created := createSpot(t, server, owner.AccessToken, uniqueLocation(), nil)
+	created := createSpot(t, server, db, owner, uniqueLocation(), nil)
 
 	first := authedRequest(t, server, http.MethodDelete,
 		"/v1/spots/"+created.ID, owner.AccessToken, nil)
@@ -637,10 +679,10 @@ func TestDeleteSpotIsNotRepeatable(t *testing.T) {
 }
 
 func TestDeleteSpotRequiresAuthentication(t *testing.T) {
-	server, _ := newServer(t)
+	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
-	created := createSpot(t, server, owner.AccessToken, uniqueLocation(), nil)
+	created := createSpot(t, server, db, owner, uniqueLocation(), nil)
 
 	resp := authedRequest(t, server, http.MethodDelete, "/v1/spots/"+created.ID, "", nil)
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -656,7 +698,7 @@ func TestListSpotsExcludesExpiredSpots(t *testing.T) {
 	owner, _, _ := registerUser(t, server)
 	at := uniqueLocation()
 
-	created := createSpot(t, server, owner.AccessToken, at, nil)
+	created := createSpot(t, server, db, owner, at, nil)
 
 	// Backdate the window directly, which is the only way to observe expiry
 	// without waiting. The API deliberately refuses to create a spot that has
@@ -672,5 +714,100 @@ func TestListSpotsExcludesExpiredSpots(t *testing.T) {
 	resp := get(t, server, "/v1/spots?bbox="+at.bbox())
 	if _, found := decode[featureCollection](t, resp).find(created.ID); found {
 		t.Error("an expired spot is still being returned by the viewport query")
+	}
+}
+
+func TestUpdateSpotEditsAnAvailableOffer(t *testing.T) {
+	server, db := newServer(t)
+
+	owner, _, _ := registerUser(t, server)
+	at := uniqueLocation()
+	created := createSpot(t, server, db, owner, at, map[string]any{"price_cents": 100})
+	otherVehicle := insertTestVehicle(t, db, owner.User.ID)
+
+	resp := authedRequest(t, server, http.MethodPatch, "/v1/spots/"+created.ID,
+		owner.AccessToken, map[string]any{
+			"price_cents": 275,
+			"notes":       "moved closer to the corner",
+			"vehicle_id":  otherVehicle,
+		})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH status = %d, want 200 (%s)", resp.StatusCode, errorCode(t, resp))
+	}
+
+	got := decode[feature](t, resp)
+	if got.Properties.PriceCents != 275 {
+		t.Errorf("price_cents = %d, want 275", got.Properties.PriceCents)
+	}
+	if got.Properties.Notes != "moved closer to the corner" {
+		t.Errorf("notes = %q", got.Properties.Notes)
+	}
+	if got.Properties.Vehicle == nil || got.Properties.Vehicle.ID != otherVehicle {
+		t.Errorf("vehicle = %+v, want %s", got.Properties.Vehicle, otherVehicle)
+	}
+}
+
+func TestUpdateSpotRejectsAReservedOffer(t *testing.T) {
+	server, db := newServer(t)
+
+	owner, _, _ := registerUser(t, server)
+	driver, _, _ := registerUser(t, server)
+	created := createSpot(t, server, db, owner, uniqueLocation(), nil)
+
+	claim := authedRequest(t, server, http.MethodPost,
+		"/v1/spots/"+created.ID+"/reservations", driver.AccessToken, nil)
+	if claim.StatusCode != http.StatusCreated {
+		t.Fatalf("claim status = %d, want 201 (%s)", claim.StatusCode, errorCode(t, claim))
+	}
+
+	resp := authedRequest(t, server, http.MethodPatch, "/v1/spots/"+created.ID,
+		owner.AccessToken, map[string]any{"price_cents": 300})
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("status = %d, want 409", resp.StatusCode)
+	}
+}
+
+func TestSpotVehiclePhotoReturnsBytes(t *testing.T) {
+	server, db := newServer(t)
+
+	owner, _, _ := registerUser(t, server)
+	driver, _, _ := registerUser(t, server)
+	vehicleID := insertTestVehicle(t, db, owner.User.ID)
+
+	jpeg := []byte{0xFF, 0xD8, 0xFF, 0xD9}
+	_, err := db.Pool.Exec(t.Context(), `
+		UPDATE vehicles SET photo = $1, photo_content_type = 'image/jpeg'
+		 WHERE id = $2`, jpeg, vehicleID)
+	if err != nil {
+		t.Fatalf("set photo: %v", err)
+	}
+
+	created := createSpot(t, server, db, owner, uniqueLocation(), map[string]any{
+		"vehicle_id": vehicleID,
+	})
+	if !created.Properties.Vehicle.HasPhoto {
+		t.Fatal("has_photo = false after attaching a photo")
+	}
+
+	resp := authedRequest(t, server, http.MethodGet,
+		"/v1/spots/"+created.ID+"/vehicle/photo", driver.AccessToken, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET photo status = %d, want 200 (%s)", resp.StatusCode, errorCode(t, resp))
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "image/jpeg" {
+		t.Errorf("Content-Type = %q, want image/jpeg", ct)
+	}
+}
+
+func TestSpotVehiclePhotoRequiresAuthentication(t *testing.T) {
+	server, db := newServer(t)
+
+	owner, _, _ := registerUser(t, server)
+	created := createSpot(t, server, db, owner, uniqueLocation(), nil)
+
+	resp := authedRequest(t, server, http.MethodGet,
+		"/v1/spots/"+created.ID+"/vehicle/photo", "", nil)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", resp.StatusCode)
 	}
 }

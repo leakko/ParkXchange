@@ -39,15 +39,26 @@ func TestDiscoveryQueryUsesThePartialSpatialIndex(t *testing.T) {
 		t.Fatalf("insert owner: %v", err)
 	}
 
+	var vehicleID string
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO vehicles (owner_id, plate, make_model, size_class, color, year)
+		SELECT id, 'PLAN-0001', 'Planner Car', 'medium', 'silver', 2020
+		  FROM users WHERE email = 'planner@parkxchange.test'
+		RETURNING id
+	`).Scan(&vehicleID); err != nil {
+		t.Fatalf("insert vehicle: %v", err)
+	}
+
 	// Enough live, available spots spread over the city for the spatial
 	// predicate to be the selective one.
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO spots (
-			owner_id, geom, size_class, status, price_cents,
+			owner_id, vehicle_id, geom, size_class, status, price_cents,
 			available_from, expires_at
 		)
 		SELECT
 			(SELECT id FROM users WHERE email = 'planner@parkxchange.test'),
+			$1,
 			ST_SetSRID(ST_MakePoint(
 				2.0 + random() * 0.4,
 				41.3 + random() * 0.2
@@ -56,7 +67,7 @@ func TestDiscoveryQueryUsesThePartialSpatialIndex(t *testing.T) {
 			now() - interval '1 minute',
 			now() + interval '1 hour'
 		FROM generate_series(1, 5000)
-	`); err != nil {
+	`, vehicleID); err != nil {
 		t.Fatalf("seed spots: %v", err)
 	}
 

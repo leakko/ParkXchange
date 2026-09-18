@@ -5,6 +5,7 @@ package spots
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/marco/parkxchange/libs/go/geo"
@@ -105,11 +106,125 @@ func (s *Service) Offer(ctx context.Context, in domain.NewSpotInput) (domain.Spo
 		return domain.Spot{}, err
 	}
 
+	owned, err := s.store.VehicleOwnedBy(ctx, draft.VehicleID, draft.OwnerID)
+	if err != nil {
+		return domain.Spot{}, domain.Internal(err)
+	}
+	if !owned {
+		return domain.Spot{}, domain.NotFound("vehicle_not_found", "that vehicle does not exist")
+	}
+
 	created, err := s.store.CreateSpot(ctx, draft)
 	if err != nil {
 		return domain.Spot{}, domain.Internal(err)
 	}
 	return created, nil
+}
+
+// Update edits an available offer the caller owns.
+func (s *Service) Update(ctx context.Context, spotID string, viewer domain.Claims, patch SpotPatch) (domain.Spot, error) {
+	if !viewer.Authenticated() {
+		return domain.Spot{}, domain.Unauthenticated("unauthorized", "an access token is required")
+	}
+
+	spot, err := s.store.SpotByID(ctx, spotID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			return domain.Spot{}, domain.NotFound("spot_not_found", "that spot does not exist")
+		}
+		return domain.Spot{}, domain.Internal(err)
+	}
+
+	if !spot.OwnedBy(viewer.UserID) {
+		return domain.Spot{}, domain.NotFound("spot_not_found", "that spot does not exist")
+	}
+
+	if spot.Status != domain.SpotAvailable {
+		return domain.Spot{}, domain.Conflict("spot_not_available",
+			"that spot can no longer be edited")
+	}
+
+	if patch.VehicleID != nil {
+		vehicleID := strings.TrimSpace(*patch.VehicleID)
+		if vehicleID == "" {
+			return domain.Spot{}, domain.InvalidFields(map[string]string{
+				"vehicle_id": "is required",
+			})
+		}
+		owned, err := s.store.VehicleOwnedBy(ctx, vehicleID, viewer.UserID)
+		if err != nil {
+			return domain.Spot{}, domain.Internal(err)
+		}
+		if !owned {
+			return domain.Spot{}, domain.NotFound("vehicle_not_found", "that vehicle does not exist")
+		}
+		patch.VehicleID = &vehicleID
+	}
+
+	now := s.now()
+	in := domain.UpdateSpotInput{
+		PriceCents: patch.PriceCents,
+		Notes:      patch.Notes,
+	}
+	if patch.AvailableIn != nil || patch.ExpiresIn != nil {
+		availableFrom := spot.AvailableFrom
+		expiresAt := spot.ExpiresAt
+		if patch.AvailableIn != nil {
+			availableFrom = now.Add(*patch.AvailableIn)
+		}
+		if patch.ExpiresIn != nil {
+			expiresAt = now.Add(*patch.ExpiresIn)
+		}
+		in.AvailableFrom = &availableFrom
+		in.ExpiresAt = &expiresAt
+	}
+
+	validated, err := domain.ApplySpotUpdate(spot, in, now)
+	if err != nil {
+		return domain.Spot{}, err
+	}
+
+	storePatch := SpotPatch{
+		AvailableIn: validated.AvailableIn,
+		ExpiresIn:   validated.ExpiresIn,
+		PriceCents:  validated.PriceCents,
+		Notes:       validated.Notes,
+		VehicleID:   patch.VehicleID,
+	}
+
+	updated, err := s.store.UpdateAvailableSpot(ctx, spotID, viewer.UserID, storePatch)
+	if err != nil {
+		if errors.Is(err, domain.ErrConflict) {
+			return domain.Spot{}, domain.Conflict("spot_not_available",
+				"that spot can no longer be edited")
+		}
+		if errors.Is(err, domain.ErrNoRows) {
+			return domain.Spot{}, domain.NotFound("spot_not_found", "that spot does not exist")
+		}
+		return domain.Spot{}, domain.Internal(err)
+	}
+	return updated, nil
+}
+
+// VehiclePhoto returns the image bytes for the vehicle linked to a spot the
+// viewer is allowed to see.
+func (s *Service) VehiclePhoto(ctx context.Context, spotID string, viewer domain.Claims) ([]byte, string, error) {
+	if !viewer.Authenticated() {
+		return nil, "", domain.Unauthenticated("unauthorized", "an access token is required")
+	}
+
+	if _, err := s.Get(ctx, spotID, viewer); err != nil {
+		return nil, "", err
+	}
+
+	photo, contentType, err := s.store.SpotVehiclePhoto(ctx, spotID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			return nil, "", domain.NotFound("photo_not_found", "that vehicle has no photo")
+		}
+		return nil, "", domain.Internal(err)
+	}
+	return photo, contentType, nil
 }
 
 // Get returns a single spot as the viewer may see it.

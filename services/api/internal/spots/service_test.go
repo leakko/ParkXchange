@@ -37,6 +37,17 @@ type fakeStore struct {
 	cancelErr error
 
 	inBBox []domain.Spot
+
+	// ownedVehicles maps ownerID → set of vehicle IDs they own.
+	ownedVehicles map[string]map[string]bool
+
+	updateCalls int
+	updateErr   error
+
+	photos map[string]struct {
+		data        []byte
+		contentType string
+	}
 }
 
 func newFakeStore() *fakeStore {
@@ -59,6 +70,7 @@ func (f *fakeStore) CreateSpot(_ context.Context, draft domain.SpotDraft) (domai
 	spot := domain.Spot{
 		ID:            "created-1",
 		OwnerID:       draft.OwnerID,
+		VehicleID:     draft.VehicleID,
 		Lon:           draft.Lon,
 		Lat:           draft.Lat,
 		AddressHint:   draft.AddressHint,
@@ -110,6 +122,60 @@ func (f *fakeStore) CancelSpot(_ context.Context, spotID, ownerID string) error 
 	spot.Status = domain.SpotCancelled
 	f.spots[spotID] = spot
 	return nil
+}
+
+func (f *fakeStore) VehicleOwnedBy(_ context.Context, vehicleID, ownerID string) (bool, error) {
+	if f.ownedVehicles == nil {
+		return false, nil
+	}
+	owners, ok := f.ownedVehicles[ownerID]
+	if !ok {
+		return false, nil
+	}
+	_, found := owners[vehicleID]
+	return found, nil
+}
+
+func (f *fakeStore) UpdateAvailableSpot(_ context.Context, spotID, ownerID string, patch spots.SpotPatch) (domain.Spot, error) {
+	f.updateCalls++
+	if f.updateErr != nil {
+		return domain.Spot{}, f.updateErr
+	}
+
+	spot, found := f.spots[spotID]
+	if !found || spot.OwnerID != ownerID {
+		return domain.Spot{}, domain.ErrNoRows
+	}
+	if spot.Status != domain.SpotAvailable {
+		return domain.Spot{}, domain.ErrConflict
+	}
+
+	now := time.Now()
+	if patch.AvailableIn != nil {
+		spot.AvailableFrom = now.Add(*patch.AvailableIn)
+	}
+	if patch.ExpiresIn != nil {
+		spot.ExpiresAt = now.Add(*patch.ExpiresIn)
+	}
+	if patch.PriceCents != nil {
+		spot.PriceCents = *patch.PriceCents
+	}
+	if patch.Notes != nil {
+		spot.Notes = *patch.Notes
+	}
+	if patch.VehicleID != nil {
+		spot.VehicleID = *patch.VehicleID
+	}
+	f.spots[spotID] = spot
+	return spot, nil
+}
+
+func (f *fakeStore) SpotVehiclePhoto(_ context.Context, spotID string) ([]byte, string, error) {
+	photo, ok := f.photos[spotID]
+	if !ok {
+		return nil, "", domain.ErrNoRows
+	}
+	return photo.data, photo.contentType, nil
 }
 
 // barcelona is a viewport small enough to pass the area check.
@@ -404,6 +470,7 @@ func TestOfferValidatesThroughTheDomain(t *testing.T) {
 
 	_, err := service.Offer(context.Background(), domain.NewSpotInput{
 		OwnerID:    "owner-1",
+		VehicleID:  "vehicle-1",
 		Lon:        999,
 		Lat:        41.40,
 		Size:       "medium",
@@ -415,14 +482,59 @@ func TestOfferValidatesThroughTheDomain(t *testing.T) {
 	}
 }
 
+func TestOfferRejectsAMissingVehicle(t *testing.T) {
+	t.Parallel()
+
+	service := spots.New(newFakeStore())
+
+	_, err := service.Offer(context.Background(), domain.NewSpotInput{
+		OwnerID:    "owner-1",
+		Lon:        2.174492,
+		Lat:        41.403706,
+		Size:       "medium",
+		PriceCents: 150,
+		ExpiresAt:  time.Now().Add(30 * time.Minute),
+	})
+	if domain.KindOf(err) != domain.KindInvalid {
+		t.Errorf("kind = %v, want KindInvalid", domain.KindOf(err))
+	}
+}
+
+func TestOfferRejectsAVehicleTheCallerDoesNotOwn(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	store.ownedVehicles = map[string]map[string]bool{
+		"owner-1": {"mine": true},
+	}
+	service := spots.New(store)
+
+	_, err := service.Offer(context.Background(), domain.NewSpotInput{
+		OwnerID:    "owner-1",
+		VehicleID:  "somebody-elses",
+		Lon:        2.174492,
+		Lat:        41.403706,
+		Size:       "medium",
+		PriceCents: 150,
+		ExpiresAt:  time.Now().Add(30 * time.Minute),
+	})
+	if domain.KindOf(err) != domain.KindNotFound {
+		t.Errorf("kind = %v, want KindNotFound", domain.KindOf(err))
+	}
+}
+
 func TestOfferPersistsAnAvailableSpot(t *testing.T) {
 	t.Parallel()
 
 	store := newFakeStore()
+	store.ownedVehicles = map[string]map[string]bool{
+		"owner-1": {"vehicle-1": true},
+	}
 	service := spots.New(store)
 
 	spot, err := service.Offer(context.Background(), domain.NewSpotInput{
 		OwnerID:    "owner-1",
+		VehicleID:  "vehicle-1",
 		Lon:        2.174492,
 		Lat:        41.403706,
 		Size:       "medium",
@@ -438,6 +550,89 @@ func TestOfferPersistsAnAvailableSpot(t *testing.T) {
 	}
 	if spot.Status != domain.SpotAvailable {
 		t.Errorf("status = %q, want available", spot.Status)
+	}
+	if spot.VehicleID != "vehicle-1" {
+		t.Errorf("VehicleID = %q, want vehicle-1", spot.VehicleID)
+	}
+}
+
+func TestUpdateRequiresAnAvailableOwnedSpot(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	store.spots["spot-1"] = domain.Spot{
+		ID: "spot-1", OwnerID: "owner-1", VehicleID: "vehicle-1",
+		Status: domain.SpotReserved, PriceCents: 100,
+		AvailableFrom: time.Now(), ExpiresAt: time.Now().Add(30 * time.Minute),
+	}
+	store.ownedVehicles = map[string]map[string]bool{
+		"owner-1": {"vehicle-1": true, "vehicle-2": true},
+	}
+	service := spots.New(store)
+
+	price := 200
+	_, err := service.Update(context.Background(), "spot-1",
+		domain.Claims{UserID: "owner-1"}, spots.SpotPatch{PriceCents: &price})
+	if domain.KindOf(err) != domain.KindConflict {
+		t.Errorf("reserved: kind = %v, want KindConflict", domain.KindOf(err))
+	}
+
+	store.spots["spot-1"] = domain.Spot{
+		ID: "spot-1", OwnerID: "owner-1", VehicleID: "vehicle-1",
+		Status: domain.SpotAvailable, PriceCents: 100,
+		AvailableFrom: time.Now(), ExpiresAt: time.Now().Add(30 * time.Minute),
+	}
+	foreign := "foreign-vehicle"
+	_, err = service.Update(context.Background(), "spot-1",
+		domain.Claims{UserID: "owner-1"}, spots.SpotPatch{VehicleID: &foreign})
+	if domain.KindOf(err) != domain.KindNotFound {
+		t.Errorf("foreign vehicle: kind = %v, want KindNotFound", domain.KindOf(err))
+	}
+
+	_, err = service.Update(context.Background(), "spot-1",
+		domain.Claims{UserID: "intruder"}, spots.SpotPatch{PriceCents: &price})
+	if domain.KindOf(err) != domain.KindNotFound {
+		t.Errorf("intruder: kind = %v, want KindNotFound", domain.KindOf(err))
+	}
+}
+
+func TestUpdatePersistsAnOwnedAvailableSpot(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	store.spots["spot-1"] = domain.Spot{
+		ID: "spot-1", OwnerID: "owner-1", VehicleID: "vehicle-1",
+		Status: domain.SpotAvailable, PriceCents: 100, Notes: "old",
+		AvailableFrom: time.Now(), ExpiresAt: time.Now().Add(30 * time.Minute),
+	}
+	store.ownedVehicles = map[string]map[string]bool{
+		"owner-1": {"vehicle-1": true, "vehicle-2": true},
+	}
+	service := spots.New(store)
+
+	price := 250
+	notes := "behind the blue van"
+	vehicle := "vehicle-2"
+	updated, err := service.Update(context.Background(), "spot-1",
+		domain.Claims{UserID: "owner-1"}, spots.SpotPatch{
+			PriceCents: &price,
+			Notes:      &notes,
+			VehicleID:  &vehicle,
+		})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if updated.PriceCents != 250 {
+		t.Errorf("PriceCents = %d, want 250", updated.PriceCents)
+	}
+	if updated.Notes != notes {
+		t.Errorf("Notes = %q, want %q", updated.Notes, notes)
+	}
+	if updated.VehicleID != vehicle {
+		t.Errorf("VehicleID = %q, want %q", updated.VehicleID, vehicle)
+	}
+	if store.updateCalls != 1 {
+		t.Errorf("updateCalls = %d, want 1", store.updateCalls)
 	}
 }
 
