@@ -71,7 +71,8 @@ export default function MapScreen() {
   const lastJumpCoordsRef = useRef<[number, number] | null>(null);
   const timeWindow = useMemo(() => defaultTimeWindow(), []);
 
-  const { ready, error: sessionError } = useDevSession();
+  const { ready, error: sessionError, signedOut, retry: retrySession } =
+    useDevSession();
   const location = useMapLocation();
   const [follow, dispatchFollow] = useReducer(
     followReducer,
@@ -364,14 +365,22 @@ export default function MapScreen() {
         ) : null}
       </Map>
 
-      {(!ready || isLoading) && (
+      {signedOut ? (
+        <View style={styles.banner}>
+          <Text style={styles.bannerText}>Signed out</Text>
+          <Pressable onPress={() => void retrySession()}>
+            <Text style={styles.link}>Dev login</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {!signedOut && (!ready || isLoading) ? (
         <View style={styles.banner} pointerEvents="none">
           <ActivityIndicator color="#F4F7FA" />
           <Text style={styles.bannerText}>
             {!ready ? "Signing in..." : "Loading spots..."}
           </Text>
         </View>
-      )}
+      ) : null}
       {ready && !isLoading ? (
         <View style={styles.banner} pointerEvents="none">
           <Text style={styles.bannerText}>
@@ -400,6 +409,9 @@ export default function MapScreen() {
       {sessionError ? (
         <View style={styles.banner}>
           <Text style={styles.bannerText}>Session: {sessionError}</Text>
+          <Pressable onPress={() => void retrySession()}>
+            <Text style={styles.link}>Retry</Text>
+          </Pressable>
         </View>
       ) : null}
 

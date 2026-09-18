@@ -7,40 +7,93 @@ import { clearSession, getAccessToken, setSession } from "@/api/session";
 const DEV_EMAIL = "driver@parkxchange.test";
 const DEV_PASSWORD = "parkxchange";
 
-export function useDevSession() {
-  const [ready, setReady] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+/**
+ * After Sign out, skip seed auto-login until explicit Dev login or process restart.
+ * Module-scoped so every useDevSession() consumer stays in sync.
+ */
+let suppressAutoLogin = false;
 
-  const ensure = useCallback(async () => {
-    setError(null);
-    try {
-      const existing = await getAccessToken();
-      if (existing) {
-        const me = await apiFetch("/v1/me");
-        if (me.ok) {
-          setReady(true);
-          return;
-        }
-        await clearSession();
+type SessionSnapshot = {
+  ready: boolean;
+  error: string | null;
+  signedOut: boolean;
+};
+
+let snapshot: SessionSnapshot = {
+  ready: false,
+  error: null,
+  signedOut: false,
+};
+
+const listeners = new Set<() => void>();
+
+function publish(next: SessionSnapshot) {
+  snapshot = next;
+  for (const listener of listeners) {
+    listener();
+  }
+}
+
+async function ensure(opts?: { forceLogin?: boolean }): Promise<void> {
+  const forceLogin = opts?.forceLogin === true;
+  if (forceLogin) {
+    suppressAutoLogin = false;
+  }
+
+  try {
+    const existing = await getAccessToken();
+    if (existing) {
+      const me = await apiFetch("/v1/me");
+      if (me.ok) {
+        publish({ ready: true, error: null, signedOut: false });
+        return;
       }
-      const session = await login(DEV_EMAIL, DEV_PASSWORD);
-      await setSession(session.access_token, session.refresh_token);
-      setReady(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "login failed");
-      setReady(false);
+      await clearSession();
     }
-  }, []);
+
+    if (suppressAutoLogin && !forceLogin) {
+      publish({ ready: false, error: null, signedOut: true });
+      return;
+    }
+
+    const session = await login(DEV_EMAIL, DEV_PASSWORD);
+    await setSession(session.access_token, session.refresh_token);
+    publish({ ready: true, error: null, signedOut: false });
+  } catch (err) {
+    publish({
+      ready: false,
+      error: err instanceof Error ? err.message : "login failed",
+      signedOut: suppressAutoLogin,
+    });
+  }
+}
+
+async function signOutSession(): Promise<void> {
+  suppressAutoLogin = true;
+  await clearSession();
+  publish({ ready: false, error: null, signedOut: true });
+}
+
+export function useDevSession() {
+  const [state, setState] = useState(snapshot);
 
   useEffect(() => {
+    const onChange = () => setState({ ...snapshot });
+    listeners.add(onChange);
     void ensure();
-  }, [ensure]);
+    return () => {
+      listeners.delete(onChange);
+    };
+  }, []);
 
-  const signOut = useCallback(async () => {
-    await clearSession();
-    setReady(false);
-    await ensure();
-  }, [ensure]);
+  const retry = useCallback(() => ensure({ forceLogin: true }), []);
+  const signOut = useCallback(() => signOutSession(), []);
 
-  return { ready, error, retry: ensure, signOut };
+  return {
+    ready: state.ready,
+    error: state.error,
+    signedOut: state.signedOut,
+    retry,
+    signOut,
+  };
 }

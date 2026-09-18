@@ -14,11 +14,25 @@ import {
 import {
   fetchMySpots,
   listVehicles,
+  type SpotFeature,
   updateSpot,
   withdrawSpot,
 } from "@/api/client";
 import { accountStyles } from "@/account/theme";
 import { useDevSession } from "@/hooks/useDevSession";
+
+/** Remaining offer window relative to now, for form defaults only. */
+function remainingWindow(spot: SpotFeature, now = Date.now()) {
+  const from = new Date(spot.properties.available_from).getTime();
+  const expires = new Date(spot.properties.expires_at).getTime();
+  const availableIn = Math.max(0, Math.ceil((from - now) / 60_000));
+  const start = Math.max(from, now);
+  const duration = Math.max(1, Math.ceil((expires - start) / 60_000));
+  return {
+    availableInMinutes: String(availableIn),
+    durationMinutes: String(duration),
+  };
+}
 
 export default function EditSpotScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -42,8 +56,12 @@ export default function EditSpotScreen() {
   const [price, setPrice] = useState("");
   const [notes, setNotes] = useState("");
   const [vehicleId, setVehicleId] = useState("");
-  const [durationMinutes, setDurationMinutes] = useState("30");
-  const [availableInMinutes, setAvailableInMinutes] = useState("0");
+  const [durationMinutes, setDurationMinutes] = useState("");
+  const [availableInMinutes, setAvailableInMinutes] = useState("");
+  const [windowBaseline, setWindowBaseline] = useState<{
+    durationMinutes: string;
+    availableInMinutes: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!spot) {
@@ -52,6 +70,10 @@ export default function EditSpotScreen() {
     setPrice((spot.properties.price_cents / 100).toFixed(2));
     setNotes(spot.properties.notes ?? "");
     setVehicleId(spot.properties.vehicle.id);
+    const window = remainingWindow(spot);
+    setDurationMinutes(window.durationMinutes);
+    setAvailableInMinutes(window.availableInMinutes);
+    setWindowBaseline(window);
   }, [spot]);
 
   const save = useMutation({
@@ -63,19 +85,25 @@ export default function EditSpotScreen() {
       if (!Number.isFinite(euros) || euros < 0) {
         throw new Error("Enter a valid price");
       }
-      const duration = Number.parseInt(durationMinutes, 10);
-      const delay = Number.parseInt(availableInMinutes, 10);
-      if (!Number.isFinite(duration) || duration <= 0) {
-        throw new Error("Duration must be a positive number of minutes");
-      }
-      if (!Number.isFinite(delay) || delay < 0) {
-        throw new Error("Available-in must be zero or more minutes");
-      }
       const body: Parameters<typeof updateSpot>[1] = {
         price_cents: Math.round(euros * 100),
-        duration_minutes: duration,
-        available_in_minutes: delay,
       };
+      const windowChanged =
+        windowBaseline != null &&
+        (durationMinutes !== windowBaseline.durationMinutes ||
+          availableInMinutes !== windowBaseline.availableInMinutes);
+      if (windowChanged) {
+        const duration = Number.parseInt(durationMinutes, 10);
+        const delay = Number.parseInt(availableInMinutes, 10);
+        if (!Number.isFinite(duration) || duration <= 0) {
+          throw new Error("Duration must be a positive number of minutes");
+        }
+        if (!Number.isFinite(delay) || delay < 0) {
+          throw new Error("Available-in must be zero or more minutes");
+        }
+        body.duration_minutes = duration;
+        body.available_in_minutes = delay;
+      }
       const trimmedNotes = notes.trim();
       if (trimmedNotes) {
         body.notes = trimmedNotes;

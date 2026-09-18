@@ -8,12 +8,32 @@ import { useDevSession } from "@/hooks/useDevSession";
 
 export default function AccountHubScreen() {
   const router = useRouter();
-  const { ready, signOut } = useDevSession();
+  const { ready, signedOut, signOut, retry } = useDevSession();
   const me = useQuery({
     queryKey: ["me"],
     queryFn: getMe,
     enabled: ready,
   });
+
+  if (signedOut) {
+    return (
+      <View style={[accountStyles.screen, accountStyles.scroll]}>
+        <Text style={accountStyles.title}>Signed out</Text>
+        <Text style={accountStyles.meta}>
+          Dev session cleared. Map and account APIs stay idle until you sign in
+          again (or restart the app).
+        </Text>
+        <Pressable
+          style={[accountStyles.primary, { marginTop: 16 }]}
+          onPress={() => {
+            void retry();
+          }}
+        >
+          <Text style={accountStyles.primaryText}>Dev login</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   if (!ready || me.isLoading) {
     return (
@@ -29,6 +49,14 @@ export default function AccountHubScreen() {
         <Text style={accountStyles.error}>
           {me.error instanceof Error ? me.error.message : "Failed to load account"}
         </Text>
+        <Pressable
+          style={[accountStyles.primary, { marginTop: 16 }]}
+          onPress={() => {
+            void retry();
+          }}
+        >
+          <Text style={accountStyles.primaryText}>Dev login</Text>
+        </Pressable>
       </View>
     );
   }
