@@ -69,6 +69,9 @@ export function SpotLayers({ data, onPressFeature }: Props) {
         filter={["has", "point_count"]}
         layerIndex={902}
         layout={{
+          // OpenFreeMap only hosts Noto Sans; MapLibre's default Open Sans stack 404s.
+          // Use a single face — combined stacks like "A,B" also 404 on their glyph CDN.
+          "text-font": ["Noto Sans Bold"],
           "text-field": ["to-string", ["get", "point_count"]],
           "text-size": 12,
           "text-allow-overlap": true,

@@ -44,6 +44,9 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
         {spot ? (
           <>
             <Text style={styles.title}>{spot.properties.owner_name}</Text>
+            {spot.properties.is_mine ? (
+              <Text style={styles.mineBadge}>Your listing</Text>
+            ) : null}
             <Text style={styles.meta}>
               {spot.properties.size_class} · €{price} · {spot.properties.status}
             </Text>
@@ -59,7 +62,9 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
             </Text>
 
             <View style={styles.actions}>
-              {!isActiveForSpot && spot.properties.status === "available" ? (
+              {!spot.properties.is_mine &&
+              !isActiveForSpot &&
+              spot.properties.status === "available" ? (
                 <Pressable
                   style={styles.primary}
                   disabled={busy}
@@ -124,6 +129,7 @@ const styles = StyleSheet.create({
   handle: { backgroundColor: "#5B7A8C" },
   body: { paddingHorizontal: 20, paddingBottom: 28, gap: 6 },
   title: { color: "#F4F7FA", fontSize: 18, fontWeight: "600" },
+  mineBadge: { color: "#1B9AAA", fontSize: 13, fontWeight: "600" },
   meta: { color: "#9DB4C0", fontSize: 14 },
   hint: { color: "#D6E2E9", fontSize: 14, marginTop: 4 },
   notes: { color: "#D6E2E9", fontSize: 14 },

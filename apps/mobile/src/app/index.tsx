@@ -42,6 +42,8 @@ import {
   followReducer,
   initialFollowState,
 } from "@/map/followUser";
+import { MySpotLayers } from "@/map/MySpotLayers";
+import { partitionMapSpots } from "@/map/partitionMapSpots";
 import { SpotLayers } from "@/map/SpotLayers";
 import { SpotSheet } from "@/map/SpotSheet";
 
@@ -67,6 +69,7 @@ export default function MapScreen() {
   const [selected, setSelected] = useState<SpotFeature | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [spotsArmed, setSpotsArmed] = useState(false);
+  const [mineArmed, setMineArmed] = useState(false);
   const [announcing, setAnnouncing] = useState(false);
 
   const { collection, featureById, isLoading, error, refetch } = useDiscovery(
@@ -83,33 +86,41 @@ export default function MapScreen() {
     refresh: refreshActive,
   } = useActiveReservation(ready);
 
-  const spotData = useMemo(
-    () => ({
-      type: "FeatureCollection" as const,
-      features: collection.features.map((feature) => ({
-        type: "Feature" as const,
-        properties: {
-          id: String(feature.id ?? ""),
-          price_cents: feature.properties.price_cents,
-          status: feature.properties.status,
-        },
-        geometry: {
-          type: "Point" as const,
-          coordinates: [
-            Number(feature.geometry.coordinates[0]),
-            Number(feature.geometry.coordinates[1]),
-          ] as [number, number],
-        },
-      })),
-    }),
-    [collection.features],
-  );
+  const spotData = useMemo(() => {
+    const features = collection.features.map((feature) => ({
+      type: "Feature" as const,
+      properties: {
+        id: String(feature.id ?? ""),
+        price_cents: feature.properties.price_cents,
+        status: feature.properties.status,
+        is_mine: Boolean(feature.properties.is_mine),
+      },
+      geometry: {
+        type: "Point" as const,
+        coordinates: [
+          Number(feature.geometry.coordinates[0]),
+          Number(feature.geometry.coordinates[1]),
+        ] as [number, number],
+      },
+    }));
+    const { mine, others } = partitionMapSpots(features);
+    return {
+      others: { type: "FeatureCollection" as const, features: others },
+      mine: { type: "FeatureCollection" as const, features: mine },
+    };
+  }, [collection.features]);
 
   useEffect(() => {
-    if (mapReady && spotData.features.length > 0) {
+    if (mapReady && spotData.others.features.length > 0) {
       setSpotsArmed(true);
     }
-  }, [mapReady, spotData.features.length]);
+  }, [mapReady, spotData.others.features.length]);
+
+  useEffect(() => {
+    if (mapReady && spotData.mine.features.length > 0) {
+      setMineArmed(true);
+    }
+  }, [mapReady, spotData.mine.features.length]);
 
   useEffect(() => {
     if (!location.ready) {
@@ -220,6 +231,7 @@ export default function MapScreen() {
               });
               setSelected(spot);
               setSpotsArmed(true);
+              setMineArmed(true);
               sheetRef.current?.snapToIndex(0);
               await refetch();
               Alert.alert("Announced", "Your spot is on the map.");
@@ -247,6 +259,7 @@ export default function MapScreen() {
               });
               setSelected(spot);
               setSpotsArmed(true);
+              setMineArmed(true);
               sheetRef.current?.snapToIndex(0);
               await refetch();
               Alert.alert("Announced", "Your future spot is on the map.");
@@ -284,6 +297,7 @@ export default function MapScreen() {
                   });
                   setSelected(spot);
                   setSpotsArmed(true);
+                  setMineArmed(true);
                   sheetRef.current?.snapToIndex(0);
                   await refetch();
                 } catch (err) {
@@ -327,7 +341,10 @@ export default function MapScreen() {
         />
         {follow.locationGranted ? <NativeUserLocation /> : null}
         {spotsArmed ? (
-          <SpotLayers data={spotData} onPressFeature={onPressFeature} />
+          <SpotLayers data={spotData.others} onPressFeature={onPressFeature} />
+        ) : null}
+        {mineArmed ? (
+          <MySpotLayers data={spotData.mine} onPressFeature={onPressFeature} />
         ) : null}
       </Map>
 
