@@ -292,6 +292,19 @@ func TestSpotConstraintsRejectInvalidRows(t *testing.T) {
 			})
 		})
 	}
+
+	t.Run("active spot without vehicle", func(t *testing.T) {
+		inSavepoint(t, ctx, tx, func(ctx context.Context, tx pgx.Tx) {
+			_, err := tx.Exec(ctx, `
+				INSERT INTO spots (owner_id, vehicle_id, geom, size_class, status, price_cents, expires_at)
+				VALUES ($1, NULL, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'medium', 'available', 100,
+				        now() + interval '1 hour')
+			`, owner)
+			if err == nil {
+				t.Error("available spot with NULL vehicle_id was accepted")
+			}
+		})
+	})
 }
 
 // Emails differing only in case are the same person, so registration must not

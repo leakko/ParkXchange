@@ -198,6 +198,29 @@ func TestDeleteVehicleConflictsWhenLinkedToActiveSpot(t *testing.T) {
 	}
 }
 
+func TestDeleteVehicleSucceedsWhenOnlyTerminalSpotsReferenceIt(t *testing.T) {
+	server, db := newServer(t)
+	owner, _, _ := registerUser(t, server)
+
+	vehicle := createVehicle(t, server, owner.AccessToken, map[string]any{"plate": "WAS-USED"})
+	spot := createSpot(t, server, db, owner, uniqueLocation(), map[string]any{
+		"vehicle_id": vehicle.ID,
+	})
+
+	withdraw := authedRequest(t, server, http.MethodDelete,
+		"/v1/spots/"+spot.ID, owner.AccessToken, nil)
+	if withdraw.StatusCode != http.StatusNoContent {
+		t.Fatalf("withdraw: status = %d, want 204", withdraw.StatusCode)
+	}
+
+	resp := authedRequest(t, server, http.MethodDelete,
+		"/v1/vehicles/"+vehicle.ID, owner.AccessToken, nil)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete vehicle: status = %d (%s), want 204",
+			resp.StatusCode, errorCode(t, resp))
+	}
+}
+
 func TestVehicleEndpointsRequireAuthentication(t *testing.T) {
 	server, _ := newServer(t)
 

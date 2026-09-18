@@ -221,32 +221,56 @@ func (db *DB) UpdateDisplayName(ctx context.Context, userID, displayName string)
 		RETURNING `+userColumns, userID, displayName))
 }
 
-// UpdatePasswordHash replaces the stored password hash.
-func (db *DB) UpdatePasswordHash(ctx context.Context, userID, passwordHash string) error {
-	tag, err := db.Pool.Exec(ctx, `
-		UPDATE users
-		   SET password_hash = $2
-		 WHERE id = $1
-	`, userID, passwordHash)
-	if err != nil {
-		return translate(err, "update password hash")
-	}
-	if tag.RowsAffected() == 0 {
-		return domain.ErrNoRows
-	}
-	return nil
-}
+// ChangePassword updates the password hash and removes every refresh token in
+// one transaction. Splitting those writes would let a crash leave a new
+// password with live sessions, or revoked tokens with the old password still
+// in place.
+func (db *DB) ChangePassword(ctx context.Context, userID, passwordHash string) error {
+	run := func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `
+			UPDATE users
+			   SET password_hash = $2
+			 WHERE id = $1
+		`, userID, passwordHash)
+		if err != nil {
+			return translate(err, "update password hash")
+		}
+		if tag.RowsAffected() == 0 {
+			return domain.ErrNoRows
+		}
 
-// RevokeAllRefreshTokens removes every refresh token for the account.
-//
-// A password change uses DELETE rather than soft-revoke so a previously
-// rotated-away hash cannot be replayed against a family that no longer exists.
-func (db *DB) RevokeAllRefreshTokens(ctx context.Context, userID string) error {
-	_, err := db.Pool.Exec(ctx, `
-		DELETE FROM refresh_tokens
-		 WHERE user_id = $1
-	`, userID)
-	return translate(err, "revoke all refresh tokens")
+		// DELETE rather than soft-revoke so a previously rotated-away hash
+		// cannot be replayed against a family that no longer exists.
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM refresh_tokens
+			 WHERE user_id = $1
+		`, userID); err != nil {
+			return translate(err, "revoke all refresh tokens")
+		}
+		return nil
+	}
+
+	if db.tx != nil {
+		sp, err := db.tx.Begin(ctx)
+		if err != nil {
+			return translate(err, "begin change password")
+		}
+		defer func() { _ = sp.Rollback(ctx) }()
+		if err := run(sp); err != nil {
+			return err
+		}
+		return translate(sp.Commit(ctx), "commit change password")
+	}
+
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return translate(err, "begin change password")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := run(tx); err != nil {
+		return err
+	}
+	return translate(tx.Commit(ctx), "commit change password")
 }
 
 // truncate bounds a value before it reaches a text column, so a client cannot

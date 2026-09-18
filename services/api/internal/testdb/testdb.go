@@ -103,7 +103,7 @@ func InsertVehicle(t *testing.T, ctx context.Context, tx pgx.Tx, ownerID string)
 }
 
 // InsertSpot creates an available spot at the given coordinates and returns its
-// id. A vehicle is created for the owner so the NOT NULL FK is satisfied.
+// id. A vehicle is created for the owner so the active-status CHECK is satisfied.
 func InsertSpot(t *testing.T, ctx context.Context, tx pgx.Tx, ownerID string, lon, lat float64) string {
 	t.Helper()
 

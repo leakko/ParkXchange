@@ -295,11 +295,7 @@ func (s *Service) ChangePassword(ctx context.Context, viewer domain.Claims, curr
 		return domain.Internal(err)
 	}
 
-	if err := s.store.UpdatePasswordHash(ctx, viewer.UserID, hash); err != nil {
-		return domain.Internal(err)
-	}
-
-	if err := s.store.RevokeAllRefreshTokens(ctx, viewer.UserID); err != nil {
+	if err := s.store.ChangePassword(ctx, viewer.UserID, hash); err != nil {
 		return domain.Internal(err)
 	}
 	return nil

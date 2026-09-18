@@ -35,10 +35,12 @@ const spotColumns = `
 	v.plate, v.make_model, v.color, v.year, v.size_class,
 	(v.photo IS NOT NULL)`
 
+// LEFT JOIN so terminal spots whose vehicle was deleted (ON DELETE SET NULL)
+// still load; active statuses are CHECK-constrained to keep vehicle_id set.
 const spotFrom = `
 	  FROM spots s
 	  JOIN users u ON u.id = s.owner_id
-	  JOIN vehicles v ON v.id = s.vehicle_id`
+	  LEFT JOIN vehicles v ON v.id = s.vehicle_id`
 
 // discoveryQuery answers the map's viewport request, and is the hottest query
 // in the product.
@@ -68,7 +70,13 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 		size        string
 		status      string
 		holderID    *string
-		vehicleSize string
+		vehicleID   *string
+		plate       *string
+		makeModel   *string
+		color       *string
+		year        *int
+		vehicleSize *string
+		hasPhoto    *bool
 	)
 
 	err := row.Scan(
@@ -77,9 +85,8 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 		&addressHint, &size, &status, &spot.PriceCents, &notes,
 		&spot.AvailableFrom, &spot.ExpiresAt, &spot.CreatedAt,
 		&holderID,
-		&spot.VehicleID,
-		&spot.Vehicle.Plate, &spot.Vehicle.MakeModel, &spot.Vehicle.Color,
-		&spot.Vehicle.Year, &vehicleSize, &spot.Vehicle.HasPhoto,
+		&vehicleID,
+		&plate, &makeModel, &color, &year, &vehicleSize, &hasPhoto,
 	)
 	if err != nil {
 		return domain.Spot{}, translate(err, "scan spot")
@@ -90,8 +97,22 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 	spot.AddressHint = optional(addressHint)
 	spot.Notes = optional(notes)
 	spot.HolderID = optional(holderID)
-	spot.Vehicle.ID = spot.VehicleID
-	spot.Vehicle.Size = domain.SpotSize(vehicleSize)
+	spot.VehicleID = optional(vehicleID)
+	if vehicleID != nil {
+		spot.Vehicle.ID = *vehicleID
+		spot.Vehicle.Plate = optional(plate)
+		spot.Vehicle.MakeModel = optional(makeModel)
+		spot.Vehicle.Color = optional(color)
+		if year != nil {
+			spot.Vehicle.Year = *year
+		}
+		if vehicleSize != nil {
+			spot.Vehicle.Size = domain.SpotSize(*vehicleSize)
+		}
+		if hasPhoto != nil {
+			spot.Vehicle.HasPhoto = *hasPhoto
+		}
+	}
 
 	// An unrated owner is left as nil rather than 0, because a new user is not
 	// a zero-star user and the client renders the two differently.

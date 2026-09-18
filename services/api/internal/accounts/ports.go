@@ -50,13 +50,10 @@ type Store interface {
 	// updated account.
 	UpdateDisplayName(ctx context.Context, userID, displayName string) (domain.User, error)
 
-	// UpdatePasswordHash replaces the stored password hash.
-	UpdatePasswordHash(ctx context.Context, userID, passwordHash string) error
-
-	// RevokeAllRefreshTokens invalidates every refresh token for the account.
-	// Password change uses it so a stolen refresh token cannot outlive a
-	// password the attacker no longer knows.
-	RevokeAllRefreshTokens(ctx context.Context, userID string) error
+	// ChangePassword replaces the password hash and deletes every refresh
+	// token for the account in one transaction, so a crash cannot leave a
+	// new password with old sessions still valid (or the reverse).
+	ChangePassword(ctx context.Context, userID, passwordHash string) error
 }
 
 // Hasher turns a password into something safe to store.

@@ -146,3 +146,108 @@ func TestVehicleCreateUniquePlatePhotoAndActiveSpotCount(t *testing.T) {
 		t.Errorf("ByID after delete: %v, want ErrNoRows", err)
 	}
 }
+
+func TestDeleteVehicleNullifiesTerminalSpotRefs(t *testing.T) {
+	ctx, tx := testdb.Begin(t)
+	db := &DB{tx: tx}
+
+	owner := testdb.InsertUser(t, ctx, tx, "vehicle-delete-owner")
+	vehicle, err := db.Create(ctx, domain.Vehicle{
+		OwnerID:   owner,
+		Plate:     "DEL-TERM-1",
+		MakeModel: "Seat Ibiza",
+		Size:      domain.SizeMedium,
+		Color:     "blue",
+		Year:      2019,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	var spotID string
+	err = tx.QueryRow(ctx, `
+		INSERT INTO spots (owner_id, vehicle_id, geom, size_class, status, price_cents,
+		                   available_from, expires_at)
+		VALUES ($1, $2, ST_SetSRID(ST_MakePoint(2.17, 41.39), 4326), 'medium', 'cancelled', 100,
+		        now() - interval '2 hours', now() - interval '1 hour')
+		RETURNING id
+	`, owner, vehicle.ID).Scan(&spotID)
+	if err != nil {
+		t.Fatalf("insert cancelled spot: %v", err)
+	}
+
+	active, err := db.ActiveSpotCount(ctx, vehicle.ID)
+	if err != nil {
+		t.Fatalf("ActiveSpotCount: %v", err)
+	}
+	if active != 0 {
+		t.Fatalf("ActiveSpotCount = %d, want 0 for cancelled spot", active)
+	}
+
+	if err := db.Delete(ctx, vehicle.ID, owner); err != nil {
+		t.Fatalf("Delete with cancelled spot: %v", err)
+	}
+
+	var vehicleID *string
+	err = tx.QueryRow(ctx, `SELECT vehicle_id FROM spots WHERE id = $1`, spotID).Scan(&vehicleID)
+	if err != nil {
+		t.Fatalf("reload spot: %v", err)
+	}
+	if vehicleID != nil {
+		t.Errorf("vehicle_id = %v, want NULL after ON DELETE SET NULL", *vehicleID)
+	}
+}
+
+func TestActiveSpotBlocksVehicleDeleteAtFK(t *testing.T) {
+	ctx, tx := testdb.Begin(t)
+	db := &DB{tx: tx}
+
+	owner := testdb.InsertUser(t, ctx, tx, "vehicle-active-owner")
+	vehicle, err := db.Create(ctx, domain.Vehicle{
+		OwnerID:   owner,
+		Plate:     "DEL-ACT-1",
+		MakeModel: "Seat Leon",
+		Size:      domain.SizeMedium,
+		Color:     "red",
+		Year:      2020,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO spots (owner_id, vehicle_id, geom, size_class, status, price_cents, expires_at)
+		VALUES ($1, $2, ST_SetSRID(ST_MakePoint(2.18, 41.40), 4326), 'medium', 'available', 100,
+		        now() + interval '30 minutes')
+	`, owner, vehicle.ID)
+	if err != nil {
+		t.Fatalf("insert available spot: %v", err)
+	}
+
+	active, err := db.ActiveSpotCount(ctx, vehicle.ID)
+	if err != nil {
+		t.Fatalf("ActiveSpotCount: %v", err)
+	}
+	if active != 1 {
+		t.Fatalf("ActiveSpotCount = %d, want 1", active)
+	}
+
+	// Bypass the use-case gate: ON DELETE SET NULL would null the active row,
+	// which the CHECK rejects, so the vehicle delete fails as a whole.
+	{
+		sp, err := tx.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin savepoint: %v", err)
+		}
+		spDB := &DB{tx: sp}
+		err = spDB.Delete(ctx, vehicle.ID, owner)
+		_ = sp.Rollback(ctx)
+		if err == nil {
+			t.Fatal("Delete with available spot succeeded; want CHECK to block SET NULL")
+		}
+	}
+
+	if _, err := db.ByID(ctx, vehicle.ID); err != nil {
+		t.Errorf("vehicle should still exist after failed delete: %v", err)
+	}
+}

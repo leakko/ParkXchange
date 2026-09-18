@@ -79,7 +79,7 @@ func (f *fakeStore) UpdateDisplayName(_ context.Context, userID, displayName str
 	return u, nil
 }
 
-func (f *fakeStore) UpdatePasswordHash(_ context.Context, userID, passwordHash string) error {
+func (f *fakeStore) ChangePassword(_ context.Context, userID, passwordHash string) error {
 	u, found := f.users[userID]
 	if !found {
 		return domain.ErrNoRows
@@ -87,10 +87,6 @@ func (f *fakeStore) UpdatePasswordHash(_ context.Context, userID, passwordHash s
 	u.PasswordHash = passwordHash
 	f.users[userID] = u
 	f.updatedPasswordHash = passwordHash
-	return nil
-}
-
-func (f *fakeStore) RevokeAllRefreshTokens(_ context.Context, userID string) error {
 	f.revokedAllFor = userID
 	delete(f.refreshTokens, userID)
 	return nil
@@ -227,7 +223,7 @@ func TestChangePasswordVerifiesHashesAndRevokesRefreshTokens(t *testing.T) {
 		t.Errorf("password hash = %q, want hash of the new password", store.updatedPasswordHash)
 	}
 	if store.revokedAllFor != "user-1" {
-		t.Errorf("RevokeAllRefreshTokens called for %q, want user-1", store.revokedAllFor)
+		t.Errorf("ChangePassword revoked tokens for %q, want user-1", store.revokedAllFor)
 	}
 	if _, still := store.refreshTokens["user-1"]; still {
 		t.Error("refresh tokens were not cleared")
