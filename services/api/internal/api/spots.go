@@ -43,7 +43,7 @@ type spotProperties struct {
 	// to decide whether to offer a withdraw button.
 	IsMine bool `json:"is_mine"`
 
-	Vehicle *vehicleSummaryJSON `json:"vehicle,omitempty"`
+	Vehicle vehicleSummaryJSON `json:"vehicle"`
 }
 
 type vehicleSummaryJSON struct {
@@ -56,11 +56,8 @@ type vehicleSummaryJSON struct {
 	HasPhoto  bool   `json:"has_photo"`
 }
 
-func toVehicleSummary(v domain.VehicleSummary) *vehicleSummaryJSON {
-	if v.ID == "" {
-		return nil
-	}
-	return &vehicleSummaryJSON{
+func toVehicleSummary(v domain.VehicleSummary) vehicleSummaryJSON {
+	return vehicleSummaryJSON{
 		ID:        v.ID,
 		Plate:     v.Plate,
 		MakeModel: v.MakeModel,
