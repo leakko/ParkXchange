@@ -20,8 +20,8 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 
-import type { SpotFeature } from "@/api/client";
-import { listVehicles } from "@/api/client";
+import type { SpotFeature, VehicleResponse } from "@/api/client";
+import { withdrawSpot } from "@/api/client";
 import {
   defaultMapCenter,
   fallbackZoom,
@@ -46,20 +46,12 @@ import {
 } from "@/map/followUser";
 import { MySpotLayers } from "@/map/MySpotLayers";
 import { partitionMapSpots } from "@/map/partitionMapSpots";
+import { pickAnnounceVehicle } from "@/map/pickAnnounceVehicle";
 import { SpotLayers } from "@/map/SpotLayers";
 import { SpotSheet } from "@/map/SpotSheet";
+import { VehiclePickModal } from "@/map/VehiclePickModal";
 
 const DEBOUNCE_MS = 350;
-
-/** Temporary until Task 11 adds a vehicle picker; uses the first registered vehicle. */
-async function firstVehicleId(): Promise<string> {
-  const vehicles = await listVehicles();
-  const id = vehicles[0]?.id;
-  if (!id) {
-    throw new Error("Register a vehicle in Account before announcing a spot");
-  }
-  return id;
-}
 
 export default function MapScreen() {
   const router = useRouter();
@@ -85,6 +77,12 @@ export default function MapScreen() {
   const [spotsArmed, setSpotsArmed] = useState(false);
   const [mineArmed, setMineArmed] = useState(false);
   const [announcing, setAnnouncing] = useState(false);
+  const [androidVehicles, setAndroidVehicles] = useState<VehicleResponse[] | null>(
+    null,
+  );
+  const androidPickRef = useRef<{
+    resolve: (id: string | null) => void;
+  } | null>(null);
 
   const { collection, featureById, isLoading, error, refetch } = useDiscovery(
     viewport,
@@ -229,7 +227,51 @@ export default function MapScreen() {
     })();
   }, [location]);
 
+  const showAndroidVehicleList = useCallback(
+    (vehicles: VehicleResponse[]) =>
+      new Promise<string | null>((resolve) => {
+        androidPickRef.current = { resolve };
+        setAndroidVehicles(vehicles);
+      }),
+    [],
+  );
+
+  const closeAndroidVehiclePicker = useCallback((id: string | null) => {
+    setAndroidVehicles(null);
+    const pending = androidPickRef.current;
+    androidPickRef.current = null;
+    pending?.resolve(id);
+  }, []);
+
+  const resolveVehicleId = useCallback(async () => {
+    try {
+      return await pickAnnounceVehicle(router, showAndroidVehicleList);
+    } catch (err) {
+      Alert.alert(
+        "Announce failed",
+        err instanceof Error ? err.message : "Could not load vehicles",
+      );
+      return null;
+    }
+  }, [router, showAndroidVehicleList]);
+
+  const afterAnnounce = useCallback(
+    async (spot: SpotFeature, message: string) => {
+      setSelected(spot);
+      setSpotsArmed(true);
+      setMineArmed(true);
+      sheetRef.current?.snapToIndex(0);
+      await refetch();
+      Alert.alert("Announced", message);
+    },
+    [refetch],
+  );
+
   const doAnnounceHere = useCallback(async () => {
+    const vehicleId = await resolveVehicleId();
+    if (!vehicleId) {
+      return;
+    }
     Alert.alert("Announce a spot", "When does it become available?", [
       { text: "Cancel", style: "cancel" },
       {
@@ -242,14 +284,9 @@ export default function MapScreen() {
                 priceCents: 150,
                 durationMinutes: 30,
                 availableInMinutes: 0,
-                vehicleId: await firstVehicleId(),
+                vehicleId,
               });
-              setSelected(spot);
-              setSpotsArmed(true);
-              setMineArmed(true);
-              sheetRef.current?.snapToIndex(0);
-              await refetch();
-              Alert.alert("Announced", "Your spot is on the map.");
+              await afterAnnounce(spot, "Your spot is on the map.");
             } catch (err) {
               Alert.alert(
                 "Announce failed",
@@ -271,14 +308,9 @@ export default function MapScreen() {
                 priceCents: 150,
                 durationMinutes: 30,
                 availableInMinutes: 60,
-                vehicleId: await firstVehicleId(),
+                vehicleId,
               });
-              setSelected(spot);
-              setSpotsArmed(true);
-              setMineArmed(true);
-              sheetRef.current?.snapToIndex(0);
-              await refetch();
-              Alert.alert("Announced", "Your future spot is on the map.");
+              await afterAnnounce(spot, "Your future spot is on the map.");
             } catch (err) {
               Alert.alert(
                 "Announce failed",
@@ -291,7 +323,7 @@ export default function MapScreen() {
         },
       },
     ]);
-  }, [refetch]);
+  }, [afterAnnounce, resolveVehicleId]);
 
   const onLongPress = useCallback(
     (event: NativeSyntheticEvent<PressEvent>) => {
@@ -307,16 +339,16 @@ export default function MapScreen() {
               void (async () => {
                 setAnnouncing(true);
                 try {
+                  const vehicleId = await resolveVehicleId();
+                  if (!vehicleId) {
+                    return;
+                  }
                   const spot = await announceAt(lon, lat, {
                     priceCents: 150,
                     durationMinutes: 30,
-                    vehicleId: await firstVehicleId(),
+                    vehicleId,
                   });
-                  setSelected(spot);
-                  setSpotsArmed(true);
-                  setMineArmed(true);
-                  sheetRef.current?.snapToIndex(0);
-                  await refetch();
+                  await afterAnnounce(spot, "Your spot is on the map.");
                 } catch (err) {
                   Alert.alert(
                     "Announce failed",
@@ -324,6 +356,53 @@ export default function MapScreen() {
                   );
                 } finally {
                   setAnnouncing(false);
+                }
+              })();
+            },
+          },
+        ],
+      );
+    },
+    [afterAnnounce, resolveVehicleId],
+  );
+
+  const onEditSpot = useCallback(
+    (spot: SpotFeature) => {
+      const id = String(spot.id ?? "");
+      if (!id) {
+        return;
+      }
+      router.push(`/account/spots/${id}` as Href);
+    },
+    [router],
+  );
+
+  const onWithdrawSpot = useCallback(
+    (spot: SpotFeature) => {
+      const id = String(spot.id ?? "");
+      if (!id) {
+        return;
+      }
+      Alert.alert(
+        "Withdraw listing?",
+        "This removes your offer from the map.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Withdraw",
+            style: "destructive",
+            onPress: () => {
+              void (async () => {
+                try {
+                  await withdrawSpot(id);
+                  setSelected(null);
+                  sheetRef.current?.close();
+                  await refetch();
+                } catch (err) {
+                  Alert.alert(
+                    "Withdraw failed",
+                    err instanceof Error ? err.message : "error",
+                  );
                 }
               })();
             },
@@ -453,6 +532,15 @@ export default function MapScreen() {
         onReconfirm={() => void reconfirm()}
         onComplete={() => void complete()}
         onCancel={() => void cancel()}
+        onEdit={onEditSpot}
+        onWithdraw={onWithdrawSpot}
+      />
+
+      <VehiclePickModal
+        visible={androidVehicles != null}
+        vehicles={androidVehicles ?? []}
+        onPick={(id) => closeAndroidVehiclePicker(id)}
+        onCancel={() => closeAndroidVehiclePicker(null)}
       />
     </View>
   );
