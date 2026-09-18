@@ -8,7 +8,8 @@
     "android": "expo run:android",
     "prebuild": "expo prebuild --platform android",
     "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test src/map/followUser.test.ts"
   },
   "dependencies": {
     "@gorhom/bottom-sheet": "^5.2.14",

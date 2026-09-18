@@ -2,10 +2,13 @@ import BottomSheet from "@gorhom/bottom-sheet";
 import {
   Camera,
   Map,
+  NativeUserLocation,
+  type CameraRef,
   type MapRef,
   type PressEvent,
+  type ViewStateChangeEvent,
 } from "@maplibre/maplibre-react-native";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -17,18 +20,28 @@ import {
 } from "react-native";
 
 import type { SpotFeature } from "@/api/client";
-import { barcelonaCenter, mapStyleUrl } from "@/config";
+import {
+  barcelonaCenter,
+  fallbackZoom,
+  mapStyleUrl,
+  userZoom,
+} from "@/config";
 import {
   defaultTimeWindow,
   useDiscovery,
   type Viewport,
 } from "@/hooks/useDiscovery";
 import { useDevSession } from "@/hooks/useDevSession";
+import { useMapLocation } from "@/hooks/useMapLocation";
 import {
   announceAt,
   announceHere,
   useActiveReservation,
 } from "@/hooks/useSpotActions";
+import {
+  followReducer,
+  initialFollowState,
+} from "@/map/followUser";
 import { SpotLayers } from "@/map/SpotLayers";
 import { SpotSheet } from "@/map/SpotSheet";
 
@@ -36,11 +49,19 @@ const DEBOUNCE_MS = 350;
 
 export default function MapScreen() {
   const mapRef = useRef<MapRef>(null);
+  const cameraRef = useRef<CameraRef>(null);
   const sheetRef = useRef<BottomSheet>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const jumpedToUserRef = useRef(false);
   const timeWindow = useMemo(() => defaultTimeWindow(), []);
 
   const { ready, error: sessionError } = useDevSession();
+  const location = useMapLocation();
+  const [follow, dispatchFollow] = useReducer(
+    followReducer,
+    undefined,
+    initialFollowState,
+  );
   const [viewport, setViewport] = useState<Viewport | null>(null);
   const [selected, setSelected] = useState<SpotFeature | null>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -89,6 +110,25 @@ export default function MapScreen() {
     }
   }, [mapReady, spotData.features.length]);
 
+  useEffect(() => {
+    if (!location.ready) {
+      return;
+    }
+    dispatchFollow(
+      location.granted
+        ? { type: "location_granted" }
+        : { type: "location_denied" },
+    );
+  }, [location.ready, location.granted]);
+
+  useEffect(() => {
+    if (!location.coords || !follow.followUser || jumpedToUserRef.current) {
+      return;
+    }
+    cameraRef.current?.jumpTo({ center: location.coords, zoom: userZoom });
+    jumpedToUserRef.current = true;
+  }, [location.coords, follow.followUser]);
+
   const publishViewport = useCallback(async () => {
     const map = mapRef.current;
     if (!map) {
@@ -110,14 +150,20 @@ export default function MapScreen() {
     });
   }, [timeWindow.from, timeWindow.to]);
 
-  const onRegionDidChange = useCallback(() => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-    debounceRef.current = setTimeout(() => {
-      void publishViewport();
-    }, DEBOUNCE_MS);
-  }, [publishViewport]);
+  const onRegionDidChange = useCallback(
+    (event: NativeSyntheticEvent<ViewStateChangeEvent>) => {
+      if (event.nativeEvent.userInteraction) {
+        dispatchFollow({ type: "user_gesture" });
+      }
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+      debounceRef.current = setTimeout(() => {
+        void publishViewport();
+      }, DEBOUNCE_MS);
+    },
+    [publishViewport],
+  );
 
   const onPressFeature = useCallback(
     (id: string) => {
@@ -132,6 +178,17 @@ export default function MapScreen() {
     setSelected(null);
     sheetRef.current?.close();
   }, []);
+
+  const onRecenter = useCallback(() => {
+    dispatchFollow({ type: "recenter" });
+    if (location.coords) {
+      cameraRef.current?.easeTo({
+        center: location.coords,
+        zoom: userZoom,
+        duration: 400,
+      });
+    }
+  }, [location.coords]);
 
   const doAnnounceHere = useCallback(async () => {
     Alert.alert("Announce a spot", "When does it become available?", [
@@ -246,7 +303,15 @@ export default function MapScreen() {
         onPress={onPressMap}
         onLongPress={onLongPress}
       >
-        <Camera initialViewState={{ center: barcelonaCenter, zoom: 14 }} />
+        <Camera
+          ref={cameraRef}
+          initialViewState={{
+            center: barcelonaCenter,
+            zoom: fallbackZoom,
+          }}
+          {...(follow.followUser ? { trackUserLocation: "default" as const } : {})}
+        />
+        {follow.locationGranted ? <NativeUserLocation /> : null}
         {spotsArmed ? (
           <SpotLayers data={spotData} onPressFeature={onPressFeature} />
         ) : null}
@@ -290,6 +355,14 @@ export default function MapScreen() {
           <Text style={styles.bannerText}>Session: {sessionError}</Text>
         </View>
       ) : null}
+
+      <Pressable
+        style={styles.locateFab}
+        disabled={!follow.locationGranted}
+        onPress={onRecenter}
+      >
+        <Text style={styles.fabText}>Me</Text>
+      </Pressable>
 
       <Pressable
         style={styles.fab}
@@ -339,6 +412,18 @@ const styles = StyleSheet.create({
   },
   bannerText: { color: "#F4F7FA", fontSize: 13 },
   link: { color: "#fff", fontWeight: "700", fontSize: 13 },
+  locateFab: {
+    position: "absolute",
+    right: 20,
+    bottom: 100,
+    backgroundColor: "#16324F",
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    elevation: 4,
+    minWidth: 56,
+    alignItems: "center",
+  },
   fab: {
     position: "absolute",
     right: 20,

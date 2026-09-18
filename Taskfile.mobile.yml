@@ -52,3 +52,8 @@ tasks:
     desc: Typecheck the mobile app
     cmds:
       - pnpm --filter @parkxchange/mobile exec tsc --noEmit
+
+  test:
+    desc: Run mobile unit tests
+    cmds:
+      - pnpm --filter @parkxchange/mobile test

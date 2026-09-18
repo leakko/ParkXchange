@@ -23,3 +23,9 @@ export const mapStyleUrl =
   "https://tiles.openfreemap.org/styles/liberty";
 
 export const barcelonaCenter: [number, number] = [2.1734, 41.3851];
+
+/** Street-level zoom when the camera opens on the user. */
+export const userZoom = 16;
+
+/** City overview used when location is unavailable. */
+export const fallbackZoom = 14;
