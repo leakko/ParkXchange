@@ -20,6 +20,8 @@ export function SpotLayers({ data, onPressFeature }: Props) {
       clusterRadius={42}
       clusterMaxZoom={14}
       onPress={(event) => {
+        // Keep the press on the source so Map.onPress does not treat it as empty.
+        event.stopPropagation();
         const feature = event.nativeEvent.features[0];
         if (!feature) {
           return;

@@ -128,6 +128,11 @@ export default function MapScreen() {
     [featureById],
   );
 
+  const onPressMap = useCallback(() => {
+    setSelected(null);
+    sheetRef.current?.close();
+  }, []);
+
   const doAnnounceHere = useCallback(async () => {
     Alert.alert("Announce a spot", "When does it become available?", [
       { text: "Cancel", style: "cancel" },
@@ -238,6 +243,7 @@ export default function MapScreen() {
           void publishViewport();
         }}
         onRegionDidChange={onRegionDidChange}
+        onPress={onPressMap}
         onLongPress={onLongPress}
       >
         <Camera initialViewState={{ center: barcelonaCenter, zoom: 14 }} />
