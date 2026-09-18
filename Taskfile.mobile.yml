@@ -23,14 +23,33 @@ tasks:
     desc: Build and install the dev client on the connected device or emulator
     interactive: true
     cmds:
+      # Gradle build-cache can restore a partial :expo compile that omits
+      # ReactActivityDelegateWrapper.class; MainActivity then fails to resolve
+      # it. Ensure a real local compile before expo run:android.
+      - |
+        WRAPPER="node_modules/expo/android/build/tmp/kotlin-classes/debug/expo/modules/ReactActivityDelegateWrapper.class"
+        if [ ! -f "$WRAPPER" ]; then
+          echo "expo ReactActivityDelegateWrapper missing; recompiling :expo without build-cache"
+          rm -rf node_modules/expo/android/build
+          (
+            cd apps/mobile/android
+            if [ -x ./gradlew ]; then
+              ./gradlew :expo:compileDebugKotlin --no-build-cache --rerun-tasks
+            else
+              ./gradlew.bat :expo:compileDebugKotlin --no-build-cache --rerun-tasks
+            fi
+          )
+        fi
       - pnpm --filter @parkxchange/mobile exec expo run:android
 
   clean:
-    desc: Drop the generated native project and Metro cache
+    desc: Drop the generated native project, Metro cache, and stale :expo Kotlin outputs
     dir: "{{.APP_DIR}}"
     cmds:
       - rm -rf android .expo
-      - echo "Removed generated native project; run task mobile:prebuild to recreate it"
+      # node_modules is hoisted at the repo root; :expo builds there, not under apps/mobile.
+      - rm -rf ../../node_modules/expo/android/build
+      - echo "Removed generated native project and :expo build; run task mobile:prebuild to recreate it"
 
   devices:
     desc: List attached Android devices and running emulators
