@@ -103,6 +103,7 @@ jobs:
               "API_ENV=production" \
               "LOG_LEVEL=info" \
               "JWT_SECRET=${JWT_SECRET}" \
+              "CORS_ALLOWED_ORIGINS=*" \
               "ACCESS_TOKEN_TTL=15m" \
               "REFRESH_TOKEN_TTL=720h" \
               "SWEEP_INTERVAL=15s" \

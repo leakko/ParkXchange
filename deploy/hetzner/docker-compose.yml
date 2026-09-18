@@ -48,6 +48,9 @@ services:
       API_ENV: ${API_ENV}
       LOG_LEVEL: ${LOG_LEVEL}
       JWT_SECRET: ${JWT_SECRET}
+      # Required outside development; "*" is fine for a mobile-first family beta
+      # (native clients are not subject to CORS; it also unlocks WS origins).
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
       ACCESS_TOKEN_TTL: ${ACCESS_TOKEN_TTL:-15m}
       REFRESH_TOKEN_TTL: ${REFRESH_TOKEN_TTL:-720h}
       SWEEP_INTERVAL: ${SWEEP_INTERVAL:-15s}
