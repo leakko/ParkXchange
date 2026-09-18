@@ -52,9 +52,3 @@ tasks:
     desc: Typecheck the mobile app
     cmds:
       - pnpm --filter @parkxchange/mobile exec tsc --noEmit
-
-  map-proxy:
-    desc: Proxy demotiles for Android emulators without outbound Internet
-    interactive: true
-    cmds:
-      - python tools/map_style_proxy.py

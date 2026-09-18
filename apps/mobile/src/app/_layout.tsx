@@ -6,8 +6,8 @@ import { useState } from "react";
 import { LogBox } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
-// Intermittent tile/glyph stream errors from the local map proxy on Windows
-// emulators are noisy but non-fatal; the map still renders.
+// Intermittent MapLibre tile/glyph stream errors on emulators are noisy but
+// non-fatal; the map still renders.
 LogBox.ignoreLogs(["MapLibre Native", "unexpected end of stream"]);
 
 export default function RootLayout() {

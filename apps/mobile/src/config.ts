@@ -19,6 +19,7 @@ export const wsUrl = stripTrailingSlash(
 );
 
 export const mapStyleUrl =
-  process.env.EXPO_PUBLIC_MAP_STYLE_URL ?? "http://10.0.2.2:8090/style.json";
+  process.env.EXPO_PUBLIC_MAP_STYLE_URL ??
+  "https://tiles.openfreemap.org/styles/liberty";
 
 export const barcelonaCenter: [number, number] = [2.1734, 41.3851];

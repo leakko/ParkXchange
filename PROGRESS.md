@@ -22,10 +22,9 @@ If that test fails, fix the code, not the test.
 ## Current state
 
 - **Phase in progress:** none — MVP plan complete
-- **Last updated:** 2026-09-14
+- **Last updated:** 2026-09-18
 - **Phases complete:** 12 of 12
-- **Blockers:** none open (emulator outbound Internet still requires
-  `task mobile:map-proxy`; see decision 54)
+- **Blockers:** none open
 
 ---
 
@@ -519,12 +518,14 @@ does not relitigate it.
     so MapLibre fetches via the host. Physical devices keep the public
     demotiles URL. Demotiles themselves only go to zoom 6 — city zoom comes
     with a street style in Phase 10 / 12.
+    **Superseded by decision 58** (proxy removed; emulator has outbound TCP/DNS).
 
 ### 2026-09-14 — Phase 10
 
 55. **Map style proxy serves OpenFreeMap liberty, not demotiles.** City zoom
     needs street tiles; demotiles stop at z6. The proxy still allows demotiles
     hosts for back-compat.
+    **Superseded by decision 58** (app points at OpenFreeMap HTTPS directly).
 56. **Arm GeoJSONSource only after the first non-empty FeatureCollection.**
     Creating the native source with `features: []` and later swapping in
     hundreds of points left the circle layers blank on MapLibre RN 11 /
@@ -532,6 +533,13 @@ does not relitigate it.
 57. **Dev session auto-logs in as `driver@parkxchange.test`.** WS tickets need
     a Bearer token; discovery itself is public. The hook validates `/v1/me` and
     re-logins when the access token has expired.
+
+### 2026-09-18 — Emulator networking
+
+58. **Removed `tools/map_style_proxy.py` and `task mobile:map-proxy`.** A fresh
+    Pixel_9a (API 36) AVD has outbound TCP and DNS (ICMP to public IPs still
+    fails and is misleading). The app defaults to OpenFreeMap liberty over
+    HTTPS. Decisions 54–55 are historical only.
 
 ---
 
