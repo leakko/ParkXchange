@@ -51,8 +51,10 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
     headers.set("Authorization", `Bearer ${token}`);
   }
   const res = await fetch(`${apiUrl}${path}`, { ...init, headers });
-  // Drop a stale access token so the next ensure/login can recover.
-  if (res.status === 401) {
+  // Wrong current password on POST /v1/me/password returns 401 Unauthenticated
+  // without meaning the access token is dead — keep the session so the form
+  // can show the error. Other 401s still clear so silent re-login can recover.
+  if (res.status === 401 && path !== "/v1/me/password") {
     await clearSession();
   }
   return res;

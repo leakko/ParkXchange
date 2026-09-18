@@ -3,8 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 
 import { fetchSpots, type SpotFeature } from "@/api/client";
 import { applySpotEvent, SpotSocket, type BBox } from "@/api/ws";
+import type { components } from "@parkxchange/api-contract";
 
 const EMPTY: SpotFeature[] = [];
+
+/** Debounce REST refetch after WS events that lack a real vehicle summary. */
+const VEHICLE_REFETCH_MS = 400;
+
+type SpotEventMessage = components["schemas"]["SpotEventMessage"];
 
 export type Viewport = {
   bbox: BBox;
@@ -20,9 +26,24 @@ export function defaultTimeWindow(now = new Date()): { from: string; to: string 
   return { from, to };
 }
 
+function vehicleIncomplete(feature: SpotFeature | undefined): boolean {
+  const v = feature?.properties.vehicle;
+  return !v?.id || !v.plate;
+}
+
+function eventNeedsVehicleRefetch(event: SpotEventMessage, features: SpotFeature[]): boolean {
+  if (event.type !== "spot.added" && event.type !== "spot.updated") {
+    return false;
+  }
+  const feature = features.find((f) => String(f.id) === event.id);
+  return vehicleIncomplete(feature);
+}
+
 export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) {
   const [liveFeatures, setLiveFeatures] = useState<SpotFeature[] | null>(null);
   const socketRef = useRef<SpotSocket | null>(null);
+  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refetchRef = useRef<() => void>(() => {});
 
   const query = useQuery({
     queryKey: ["spots", viewport],
@@ -36,6 +57,20 @@ export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) 
       }),
     staleTime: 15_000,
   });
+
+  refetchRef.current = () => {
+    void query.refetch();
+  };
+
+  const scheduleVehicleRefetch = useCallback(() => {
+    if (refetchTimerRef.current) {
+      clearTimeout(refetchTimerRef.current);
+    }
+    refetchTimerRef.current = setTimeout(() => {
+      refetchTimerRef.current = null;
+      refetchRef.current();
+    }, VEHICLE_REFETCH_MS);
+  }, []);
 
   // REST snapshot wins whenever it refreshes; WS patches apply on top until then.
   useEffect(() => {
@@ -51,7 +86,15 @@ export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) 
     const socket = new SpotSocket({
       onSnapshot: (features) => setLiveFeatures(features),
       onSpotEvent: (event) => {
-        setLiveFeatures((prev) => applySpotEvent(prev ?? EMPTY, event));
+        setLiveFeatures((prev) => {
+          const next = applySpotEvent(prev ?? EMPTY, event);
+          // WS spot events omit the joined vehicle summary; a placeholder would
+          // blank the sheet until the next viewport poll — refetch discovery.
+          if (eventNeedsVehicleRefetch(event, next)) {
+            scheduleVehicleRefetch();
+          }
+          return next;
+        });
       },
     });
     socketRef.current = socket;
@@ -61,8 +104,12 @@ export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) 
     return () => {
       socket.close();
       socketRef.current = null;
+      if (refetchTimerRef.current) {
+        clearTimeout(refetchTimerRef.current);
+        refetchTimerRef.current = null;
+      }
     };
-  }, [socketEnabled]);
+  }, [socketEnabled, scheduleVehicleRefetch]);
 
   useEffect(() => {
     if (!viewport || !socketRef.current) {
