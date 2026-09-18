@@ -54,7 +54,7 @@ func (s *Service) Create(ctx context.Context, viewer domain.Claims, in domain.Ne
 
 	created, err := s.store.Create(ctx, draft)
 	if err != nil {
-		return domain.Vehicle{}, domain.Internal(err)
+		return domain.Vehicle{}, fromStore(err)
 	}
 	return created, nil
 }
@@ -91,9 +91,19 @@ func (s *Service) Update(ctx context.Context, viewer domain.Claims, id string, i
 
 	updated, err := s.store.Update(ctx, draft)
 	if err != nil {
-		return domain.Vehicle{}, domain.Internal(err)
+		return domain.Vehicle{}, fromStore(err)
 	}
 	return updated, nil
+}
+
+// fromStore keeps typed domain failures (Conflict, NotFound, …) intact so the
+// HTTP adapter can map them to the right status. Only unclassified faults
+// become Internal.
+func fromStore(err error) error {
+	if de, ok := domain.AsError(err); ok {
+		return de
+	}
+	return domain.Internal(err)
 }
 
 // Delete removes a vehicle the caller owns, unless it is still tied to an

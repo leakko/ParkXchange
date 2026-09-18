@@ -16,6 +16,7 @@ import (
 	"github.com/marco/parkxchange/services/api/internal/realtime"
 	"github.com/marco/parkxchange/services/api/internal/reservations"
 	"github.com/marco/parkxchange/services/api/internal/spots"
+	"github.com/marco/parkxchange/services/api/internal/vehicles"
 	"github.com/marco/parkxchange/services/api/internal/web"
 )
 
@@ -40,6 +41,7 @@ type API struct {
 	accounts *accounts.Service
 	spots    *spots.Service
 	reserves *reservations.Service
+	vehicles *vehicles.Service
 
 	health Pinger
 	limit  *web.RateLimiter
@@ -54,6 +56,7 @@ type Deps struct {
 	Accounts     *accounts.Service
 	Spots        *spots.Service
 	Reservations *reservations.Service
+	Vehicles     *vehicles.Service
 	Health       Pinger
 	Hub          *realtime.Hub
 }
@@ -72,6 +75,7 @@ func New(deps Deps) (*API, error) {
 		accounts: deps.Accounts,
 		spots:    deps.Spots,
 		reserves: deps.Reservations,
+		vehicles: deps.Vehicles,
 		health:   deps.Health,
 		limit:    web.NewRateLimiter(deps.Config.RateLimitRPS, deps.Config.RateLimitBurst),
 		hub:      hub,
@@ -103,6 +107,14 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("GET /v1/me", a.requireAuth(a.handleMe))
 	mux.Handle("PATCH /v1/me", a.requireAuth(a.handleUpdateMe))
 	mux.Handle("POST /v1/me/password", a.requireAuth(a.handleChangePassword))
+
+	mux.Handle("GET /v1/vehicles", a.requireAuth(a.handleListVehicles))
+	mux.Handle("POST /v1/vehicles", a.requireAuth(a.handleCreateVehicle))
+	mux.Handle("GET /v1/vehicles/{id}", a.requireAuth(a.handleGetVehicle))
+	mux.Handle("PATCH /v1/vehicles/{id}", a.requireAuth(a.handleUpdateVehicle))
+	mux.Handle("DELETE /v1/vehicles/{id}", a.requireAuth(a.handleDeleteVehicle))
+	mux.Handle("PUT /v1/vehicles/{id}/photo", a.requireAuth(a.handlePutVehiclePhoto))
+	mux.Handle("GET /v1/vehicles/{id}/photo", a.requireAuth(a.handleGetVehiclePhoto))
 
 	// Discovery is readable without an account, but the caller's identity
 	// still matters when present: an owner sees their own spots at full

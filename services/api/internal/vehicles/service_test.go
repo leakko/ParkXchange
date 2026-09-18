@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/marco/parkxchange/services/api/internal/domain"
@@ -56,6 +57,13 @@ func (f *fakeStore) ListByOwner(_ context.Context, ownerID string) ([]domain.Veh
 }
 
 func (f *fakeStore) Create(_ context.Context, v domain.Vehicle) (domain.Vehicle, error) {
+	for _, existing := range f.vehicles {
+		if existing.OwnerID == v.OwnerID &&
+			strings.EqualFold(existing.Plate, v.Plate) {
+			return domain.Vehicle{}, domain.Conflict("plate_taken",
+				"that plate is already registered on this account")
+		}
+	}
 	v.ID = "vehicle-" + strconv.Itoa(f.nextID)
 	f.nextID++
 	f.vehicles[v.ID] = v
@@ -73,6 +81,16 @@ func (f *fakeStore) ByID(_ context.Context, id string) (domain.Vehicle, error) {
 func (f *fakeStore) Update(_ context.Context, v domain.Vehicle) (domain.Vehicle, error) {
 	if _, found := f.vehicles[v.ID]; !found {
 		return domain.Vehicle{}, domain.ErrNoRows
+	}
+	for _, existing := range f.vehicles {
+		if existing.ID == v.ID {
+			continue
+		}
+		if existing.OwnerID == v.OwnerID &&
+			strings.EqualFold(existing.Plate, v.Plate) {
+			return domain.Vehicle{}, domain.Conflict("plate_taken",
+				"that plate is already registered on this account")
+		}
 	}
 	f.vehicles[v.ID] = v
 	return v, nil
@@ -142,6 +160,31 @@ func TestCreatePersistsAVehicle(t *testing.T) {
 	}
 	if got.Plate != "B-1234-XYZ" {
 		t.Errorf("Plate = %q, want B-1234-XYZ", got.Plate)
+	}
+}
+
+// Duplicate plates must surface as Conflict, not Internal — otherwise the
+// HTTP adapter turns a uniqueness clash into a 500.
+func TestCreatePassesThroughPlateConflict(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	service := vehicles.NewService(store)
+	viewer := domain.Claims{UserID: "owner-1"}
+
+	if _, err := service.Create(context.Background(), viewer, validInput("owner-1")); err != nil {
+		t.Fatalf("first Create: %v", err)
+	}
+
+	dup := validInput("owner-1")
+	dup.Plate = "b-1234-xyz" // same plate, different case
+	_, err := service.Create(context.Background(), viewer, dup)
+	if domain.KindOf(err) != domain.KindConflict {
+		t.Fatalf("kind = %v, want KindConflict (err=%v)", domain.KindOf(err), err)
+	}
+	de, ok := domain.AsError(err)
+	if !ok || de.Code != "plate_taken" {
+		t.Errorf("code = %v, want plate_taken", err)
 	}
 }
 

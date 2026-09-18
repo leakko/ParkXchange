@@ -26,6 +26,7 @@ import (
 	"github.com/marco/parkxchange/services/api/internal/realtime"
 	"github.com/marco/parkxchange/services/api/internal/reservations"
 	"github.com/marco/parkxchange/services/api/internal/spots"
+	"github.com/marco/parkxchange/services/api/internal/vehicles"
 )
 
 func main() {
@@ -98,6 +99,7 @@ func run() error {
 		Accounts:     accountsService,
 		Spots:        spots.New(db),
 		Reservations: reservationsService,
+		Vehicles:     vehicles.NewService(db),
 		Health:       db,
 		Hub:          hub,
 	})

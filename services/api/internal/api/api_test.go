@@ -20,6 +20,7 @@ import (
 	"github.com/marco/parkxchange/services/api/internal/realtime"
 	"github.com/marco/parkxchange/services/api/internal/reservations"
 	"github.com/marco/parkxchange/services/api/internal/spots"
+	"github.com/marco/parkxchange/services/api/internal/vehicles"
 )
 
 func testConfig() config.Config {
@@ -113,6 +114,7 @@ func newServerFrom(t *testing.T, cfg config.Config) (*httptest.Server, *postgres
 		Accounts:     accountsService,
 		Spots:        spots.New(db),
 		Reservations: reservations.New(db),
+		Vehicles:     vehicles.NewService(db),
 		Health:       db,
 		Hub:          hub,
 	})
