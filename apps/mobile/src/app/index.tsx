@@ -8,6 +8,7 @@ import {
   type PressEvent,
   type ViewStateChangeEvent,
 } from "@maplibre/maplibre-react-native";
+import { type Href, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -61,6 +62,7 @@ async function firstVehicleId(): Promise<string> {
 }
 
 export default function MapScreen() {
+  const router = useRouter();
   const mapRef = useRef<MapRef>(null);
   const cameraRef = useRef<CameraRef>(null);
   const sheetRef = useRef<BottomSheet>(null);
@@ -402,6 +404,13 @@ export default function MapScreen() {
       ) : null}
 
       <Pressable
+        style={styles.accountFab}
+        onPress={() => router.push("/account" as Href)}
+      >
+        <Text style={styles.fabText}>Account</Text>
+      </Pressable>
+
+      <Pressable
         style={styles.locateFab}
         disabled={!follow.locationGranted}
         onPress={onRecenter}
@@ -457,6 +466,18 @@ const styles = StyleSheet.create({
   },
   bannerText: { color: "#F4F7FA", fontSize: 13 },
   link: { color: "#fff", fontWeight: "700", fontSize: 13 },
+  accountFab: {
+    position: "absolute",
+    right: 20,
+    bottom: 164,
+    backgroundColor: "#16324F",
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    elevation: 4,
+    minWidth: 56,
+    alignItems: "center",
+  },
   locateFab: {
     position: "absolute",
     right: 20,

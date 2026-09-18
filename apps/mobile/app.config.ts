@@ -3,6 +3,9 @@ import type { ExpoConfig } from "expo/config";
 const locationPermission =
   "ParkXchange uses your location to show nearby parking spots and to announce the one you are leaving.";
 
+const photoPermission =
+  "ParkXchange uses your photo library so you can attach a picture of your vehicle.";
+
 const config: ExpoConfig = {
   name: "ParkXchange",
   slug: "parkxchange",
@@ -36,6 +39,12 @@ const config: ExpoConfig = {
       "expo-location",
       {
         locationWhenInUsePermission: locationPermission,
+      },
+    ],
+    [
+      "expo-image-picker",
+      {
+        photosPermission: photoPermission,
       },
     ],
     "expo-secure-store",
