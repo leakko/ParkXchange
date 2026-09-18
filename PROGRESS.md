@@ -21,18 +21,19 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** none — MVP plan complete
-- **Last updated:** 2026-09-18
-- **Phases complete:** 12 of 12
+- **Phase in progress:** none — MVP plan complete; post-MVP account/profile
+  management delivered on `feature/account-profile-management`
+- **Last updated:** 2026-09-19
+- **Phases complete:** 12 of 12 (MVP)
 - **Blockers:** none open
 
 ---
 
 ## Next immediate step
 
-MVP phases 1–12 are done. Post-MVP work lives in `infra/pulumi/README.md`
-(EKS/Fargate, RDS, S3 PMTiles). Optional: push `main` and confirm GitHub
-Actions is green on the remote.
+Merge `feature/account-profile-management` when ready. Remaining post-MVP
+infra work lives in `infra/pulumi/README.md` (EKS/Fargate, RDS, S3 PMTiles).
+Optional: push and confirm GitHub Actions is green on the remote.
 
 ---
 
@@ -243,6 +244,25 @@ decisions 39–48 and ARCHITECTURE.md §3.13.
 - [x] **Demo:** local CI-equivalent suite green; `docker compose up` serves
       `/healthz` and `/readyz` from the distroless API image (self-migrates
       on boot). Remote PR CI pending a push.
+
+### Post-MVP — Account profile management (2026-09-19) — **complete**
+
+- [x] Domain + `internal/vehicles` use cases (max 10, photo ≤300KB BYTEA,
+      delete blocked while owner has active spots)
+- [x] Migration `00006_vehicles.sql`; spots require `vehicle_id`; seed
+      attaches a default vehicle per user
+- [x] Profile: PATCH display name / password (password change revokes all
+      refresh tokens)
+- [x] Spot PATCH while available; claimer vehicle summary + photo route
+- [x] OpenAPI + mobile client; account stack (Person FAB); announce vehicle
+      picker; SpotSheet vehicle / Edit / Withdraw
+- [x] **Verified (automated):** `task db:up` → `db:migrate:reset` →
+      `db:migrate` → `db:seed` (reset clean; version 6; 60 users / 5008
+      spots); `task api:test` green; `task contract:check` green;
+      `pnpm --filter @parkxchange/mobile test` 12/12; `task mobile:typecheck`
+      green
+- [ ] **Manual emulator smoke** for account UI / announce picker / sheet
+      photos not re-run in the verification session (left to merge review)
 
 ---
 
@@ -828,4 +848,13 @@ fields the source already accepts (`available_in_minutes`). Kill the PID from
 **Gotcha worth remembering:** the Docker build context must be the repo root
 so `replace ../../libs/go/geo` resolves. `libs/go/geo` has no `go.sum`; do not
 `COPY` one.
+
+### 2026-09-19 — Post-MVP account profile management
+
+- Shipped vehicles (CRUD + BYTEA photos), profile edits, spot `vehicle_id` /
+  PATCH, OpenAPI, and mobile account stack + announce picker + SpotSheet
+  vehicle display on `feature/account-profile-management`.
+- Verification session: full DB reset/migrate/seed, `api:test`,
+  `contract:check`, mobile unit tests and typecheck — all green. No
+  `migrate:reset` flakiness. Emulator UI smoke skipped this session.
 
