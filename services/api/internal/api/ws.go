@@ -83,7 +83,7 @@ func (a *API) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	client := a.hub.Connect(claims)
 	defer a.hub.Disconnect(client)
-	defer conn.Close(websocket.StatusNormalClosure, "")
+	defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
 
 	ctx := r.Context()
 	writeErr := make(chan error, 1)
@@ -91,7 +91,9 @@ func (a *API) handleWS(w http.ResponseWriter, r *http.Request) {
 		writeErr <- a.writeLoop(ctx, conn, client)
 	}()
 
-	readErr := a.readLoop(ctx, conn, client, claims)
+	// readLoop only returns when the socket read fails, so a nil check is
+	// always true and trips staticcheck SA4023.
+	_ = a.readLoop(ctx, conn, client, claims)
 
 	select {
 	case err := <-writeErr:
@@ -100,9 +102,7 @@ func (a *API) handleWS(w http.ResponseWriter, r *http.Request) {
 		}
 	default:
 	}
-	if readErr != nil {
-		_ = conn.Close(websocket.StatusGoingAway, "read")
-	}
+	_ = conn.Close(websocket.StatusGoingAway, "read")
 }
 
 func (a *API) readLoop(

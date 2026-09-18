@@ -80,7 +80,7 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.PingContext(ctx); err != nil {
 		return fmt.Errorf("connect to database (is 'task db:up' running?): %w", err)
@@ -145,7 +145,7 @@ func runSeed(ctx context.Context, cfg config.Config) error {
 	if err != nil {
 		return fmt.Errorf("connect to database (is 'task db:up' running?): %w", err)
 	}
-	defer conn.Close(ctx)
+	defer func() { _ = conn.Close(ctx) }()
 
 	// Seeding an unmigrated database produces a wall of "relation does not
 	// exist"; say what is actually wrong instead.

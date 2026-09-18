@@ -194,7 +194,7 @@ func migrateUp(ctx context.Context, databaseURL string) error {
 	if err != nil {
 		return fmt.Errorf("open database for migrations: %w", err)
 	}
-	defer sqlDB.Close()
+	defer func() { _ = sqlDB.Close() }()
 
 	if err := sqlDB.PingContext(ctx); err != nil {
 		return fmt.Errorf("connect for migrations: %w", err)

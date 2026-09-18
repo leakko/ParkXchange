@@ -49,7 +49,7 @@ func (db *DB) ListenSpotEvents(ctx context.Context) (<-chan domain.SpotEvent, er
 	out := make(chan domain.SpotEvent, 64)
 	go func() {
 		defer close(out)
-		defer pgConn.Close(context.Background())
+		defer func() { _ = pgConn.Close(context.Background()) }()
 
 		// WaitForNotification parks on a socket read. Cancelling the context
 		// is not enough on every platform; closing the connection is.

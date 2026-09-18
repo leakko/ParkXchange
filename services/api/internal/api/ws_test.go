@@ -48,7 +48,7 @@ func TestPublishingASpotAppearsOnASubscribedSocket(t *testing.T) {
 	at := uniqueLocation()
 
 	conn := dialWS(t, server, watcher.AccessToken)
-	defer conn.Close(websocket.StatusNormalClosure, "")
+	defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
 
 	sendViewport(t, conn, at)
 	readSnapshot(t, conn)
@@ -72,7 +72,7 @@ func TestUnrelatedViewportDoesNotReceiveTheSpot(t *testing.T) {
 	at := uniqueLocation()
 
 	conn := dialWS(t, server, watcher.AccessToken)
-	defer conn.Close(websocket.StatusNormalClosure, "")
+	defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
 
 	elsewhere := testLocation{Lon: at.Lon + 1, Lat: at.Lat + 1}
 	sendViewport(t, conn, elsewhere)

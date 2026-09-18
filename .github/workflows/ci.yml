@@ -55,17 +55,18 @@ jobs:
         working-directory: libs/go/geo
         run: go test ./...
 
+      # v2.9+ is built with Go 1.26; v2.1.6 aborts on go 1.26.3 modules.
       - name: golangci-lint (api)
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.1.6
+          version: v2.13.2
           working-directory: services/api
           args: ./...
 
       - name: golangci-lint (geo)
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.1.6
+          version: v2.13.2
           working-directory: libs/go/geo
           args: ./...
           # geo has no go.sum; do not fail the action on that alone.
