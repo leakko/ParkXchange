@@ -105,6 +105,9 @@ importers:
       '@parkxchange/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.4
       '@types/react':
         specifier: ~19.2.2
         version: 19.2.18
