@@ -80,6 +80,9 @@ func (e *Error) Error() string {
 // domain error.
 func (e *Error) Unwrap() error { return e.cause }
 
+// IsInvalid reports whether err is a validation failure.
+func IsInvalid(err error) bool { return KindOf(err) == KindInvalid }
+
 // KindOf reports how an error should be treated, walking the wrap chain.
 //
 // An unclassified error is internal, which is the conservative answer: a fault
