@@ -138,6 +138,7 @@ export async function announceHere(opts: {
   priceCents: number;
   durationMinutes: number;
   availableInMinutes?: number;
+  vehicleId: string;
 }): Promise<SpotFeature> {
   const permission = await Location.requestForegroundPermissionsAsync();
   if (!permission.granted) {
@@ -153,6 +154,7 @@ export async function announceHere(opts: {
     price_cents: opts.priceCents,
     duration_minutes: opts.durationMinutes,
     available_in_minutes: opts.availableInMinutes ?? 0,
+    vehicle_id: opts.vehicleId,
     notes: Platform.OS === "android" ? "Announced from Android" : "Announced from iOS",
   });
 }
@@ -160,7 +162,12 @@ export async function announceHere(opts: {
 export async function announceAt(
   lon: number,
   lat: number,
-  opts: { priceCents: number; durationMinutes: number; availableInMinutes?: number },
+  opts: {
+    priceCents: number;
+    durationMinutes: number;
+    availableInMinutes?: number;
+    vehicleId: string;
+  },
 ): Promise<SpotFeature> {
   return createSpot({
     lon,
@@ -169,6 +176,7 @@ export async function announceAt(
     price_cents: opts.priceCents,
     duration_minutes: opts.durationMinutes,
     available_in_minutes: opts.availableInMinutes ?? 0,
+    vehicle_id: opts.vehicleId,
     notes: "Announced from map long-press",
   });
 }

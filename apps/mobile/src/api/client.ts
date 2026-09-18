@@ -9,6 +9,11 @@ export type SessionResponse = components["schemas"]["SessionResponse"];
 export type TicketResponse = components["schemas"]["TicketResponse"];
 export type ReservationResponse = components["schemas"]["ReservationResponse"];
 export type CreateSpotRequest = components["schemas"]["CreateSpotRequest"];
+export type UpdateSpotRequest = components["schemas"]["UpdateSpotRequest"];
+export type UserResponse = components["schemas"]["UserResponse"];
+export type VehicleResponse = components["schemas"]["VehicleResponse"];
+export type CreateVehicleRequest = components["schemas"]["CreateVehicleRequest"];
+export type UpdateVehicleRequest = components["schemas"]["UpdateVehicleRequest"];
 
 export class ApiError extends Error {
   constructor(
@@ -104,6 +109,128 @@ export async function createSpot(body: CreateSpotRequest): Promise<SpotFeature> 
     throw await parseError(res);
   }
   return (await res.json()) as SpotFeature;
+}
+
+export async function getMe(): Promise<UserResponse> {
+  const res = await apiFetch("/v1/me");
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as UserResponse;
+}
+
+export async function updateMe(body: { display_name: string }): Promise<UserResponse> {
+  const res = await apiFetch("/v1/me", {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as UserResponse;
+}
+
+export async function changePassword(body: {
+  current_password: string;
+  new_password: string;
+}): Promise<void> {
+  const res = await apiFetch("/v1/me/password", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+}
+
+export async function listVehicles(): Promise<VehicleResponse[]> {
+  const res = await apiFetch("/v1/vehicles");
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as VehicleResponse[];
+}
+
+export async function createVehicle(body: CreateVehicleRequest): Promise<VehicleResponse> {
+  const res = await apiFetch("/v1/vehicles", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as VehicleResponse;
+}
+
+export async function updateVehicle(
+  id: string,
+  body: UpdateVehicleRequest,
+): Promise<VehicleResponse> {
+  const res = await apiFetch(`/v1/vehicles/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as VehicleResponse;
+}
+
+export async function deleteVehicle(id: string): Promise<void> {
+  const res = await apiFetch(`/v1/vehicles/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+}
+
+/** Raw JPEG/PNG body — Content-Type must be the image media type, not JSON. */
+export async function putVehiclePhoto(
+  id: string,
+  bytes: ArrayBuffer,
+  contentType: string,
+): Promise<void> {
+  const res = await apiFetch(`/v1/vehicles/${id}/photo`, {
+    method: "PUT",
+    headers: { "Content-Type": contentType },
+    body: bytes,
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+}
+
+export function vehiclePhotoUrl(id: string): string {
+  return `${apiUrl}/v1/vehicles/${id}/photo`;
+}
+
+export async function fetchMySpots(): Promise<SpotFeatureCollection> {
+  const res = await apiFetch("/v1/spots/mine");
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as SpotFeatureCollection;
+}
+
+export async function updateSpot(id: string, body: UpdateSpotRequest): Promise<SpotFeature> {
+  const res = await apiFetch(`/v1/spots/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as SpotFeature;
+}
+
+export async function withdrawSpot(id: string): Promise<void> {
+  const res = await apiFetch(`/v1/spots/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+}
+
+export function spotVehiclePhotoUrl(spotId: string): string {
+  return `${apiUrl}/v1/spots/${spotId}/vehicle/photo`;
 }
 
 export async function claimSpot(spotId: string): Promise<ReservationResponse> {

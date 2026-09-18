@@ -20,6 +20,7 @@ import {
 } from "react-native";
 
 import type { SpotFeature } from "@/api/client";
+import { listVehicles } from "@/api/client";
 import {
   defaultMapCenter,
   fallbackZoom,
@@ -48,6 +49,16 @@ import { SpotLayers } from "@/map/SpotLayers";
 import { SpotSheet } from "@/map/SpotSheet";
 
 const DEBOUNCE_MS = 350;
+
+/** Temporary until Task 11 adds a vehicle picker; uses the first registered vehicle. */
+async function firstVehicleId(): Promise<string> {
+  const vehicles = await listVehicles();
+  const id = vehicles[0]?.id;
+  if (!id) {
+    throw new Error("Register a vehicle in Account before announcing a spot");
+  }
+  return id;
+}
 
 export default function MapScreen() {
   const mapRef = useRef<MapRef>(null);
@@ -228,6 +239,7 @@ export default function MapScreen() {
                 priceCents: 150,
                 durationMinutes: 30,
                 availableInMinutes: 0,
+                vehicleId: await firstVehicleId(),
               });
               setSelected(spot);
               setSpotsArmed(true);
@@ -256,6 +268,7 @@ export default function MapScreen() {
                 priceCents: 150,
                 durationMinutes: 30,
                 availableInMinutes: 60,
+                vehicleId: await firstVehicleId(),
               });
               setSelected(spot);
               setSpotsArmed(true);
@@ -294,6 +307,7 @@ export default function MapScreen() {
                   const spot = await announceAt(lon, lat, {
                     priceCents: 150,
                     durationMinutes: 30,
+                    vehicleId: await firstVehicleId(),
                   });
                   setSelected(spot);
                   setSpotsArmed(true);
