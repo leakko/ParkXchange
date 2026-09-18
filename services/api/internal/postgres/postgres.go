@@ -31,6 +31,11 @@ import (
 type DB struct {
 	Pool *pgxpool.Pool
 
+	// tx, when set, routes vehicle queries through a single transaction so
+	// integration tests can roll back via testdb.Begin. Production always
+	// leaves this nil and uses the pool.
+	tx pgx.Tx
+
 	mu         sync.Mutex
 	stopListen context.CancelFunc
 }

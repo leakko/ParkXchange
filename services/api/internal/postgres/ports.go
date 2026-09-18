@@ -4,6 +4,7 @@ import (
 	"github.com/marco/parkxchange/services/api/internal/accounts"
 	"github.com/marco/parkxchange/services/api/internal/reservations"
 	"github.com/marco/parkxchange/services/api/internal/spots"
+	"github.com/marco/parkxchange/services/api/internal/vehicles"
 )
 
 // Compile-time proof that this adapter still satisfies every port it is wired
@@ -18,4 +19,5 @@ var (
 	_ accounts.Store     = (*DB)(nil)
 	_ spots.Store        = (*DB)(nil)
 	_ reservations.Store = (*DB)(nil)
+	_ vehicles.Store     = (*DB)(nil)
 )
