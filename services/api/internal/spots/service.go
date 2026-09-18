@@ -173,7 +173,14 @@ func (s *Service) Update(ctx context.Context, spotID string, viewer domain.Claim
 			availableFrom = now.Add(*patch.AvailableIn)
 		}
 		if patch.ExpiresIn != nil {
-			expiresAt = now.Add(*patch.ExpiresIn)
+			if patch.AvailableIn != nil {
+				// Both set: ExpiresIn is already lead time + duration from now.
+				expiresAt = now.Add(*patch.ExpiresIn)
+			} else {
+				// Duration alone: ExpiresIn is the offer length from the
+				// (unchanged) start, not from now.
+				expiresAt = availableFrom.Add(*patch.ExpiresIn)
+			}
 		}
 		in.AvailableFrom = &availableFrom
 		in.ExpiresAt = &expiresAt

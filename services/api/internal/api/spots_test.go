@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/marco/parkxchange/services/api/internal/postgres"
 )
@@ -53,16 +54,18 @@ type feature struct {
 		Coordinates []float64 `json:"coordinates"`
 	} `json:"geometry"`
 	Properties struct {
-		OwnerID       string   `json:"owner_id"`
-		OwnerName     string   `json:"owner_name"`
-		OwnerRating   *float64 `json:"owner_rating"`
-		Size          string   `json:"size_class"`
-		Status        string   `json:"status"`
-		PriceCents    int      `json:"price_cents"`
-		AddressHint   string   `json:"address_hint"`
-		Notes         string   `json:"notes"`
-		ExactLocation bool     `json:"exact_location"`
-		IsMine        bool     `json:"is_mine"`
+		OwnerID       string    `json:"owner_id"`
+		OwnerName     string    `json:"owner_name"`
+		OwnerRating   *float64  `json:"owner_rating"`
+		Size          string    `json:"size_class"`
+		Status        string    `json:"status"`
+		PriceCents    int       `json:"price_cents"`
+		AddressHint   string    `json:"address_hint"`
+		Notes         string    `json:"notes"`
+		AvailableFrom time.Time `json:"available_from"`
+		ExpiresAt     time.Time `json:"expires_at"`
+		ExactLocation bool      `json:"exact_location"`
+		IsMine        bool      `json:"is_mine"`
 		Vehicle       *struct {
 			ID        string `json:"id"`
 			Plate     string `json:"plate"`
@@ -744,6 +747,55 @@ func TestUpdateSpotEditsAnAvailableOffer(t *testing.T) {
 	}
 	if got.Properties.Vehicle == nil || got.Properties.Vehicle.ID != otherVehicle {
 		t.Errorf("vehicle = %+v, want %s", got.Properties.Vehicle, otherVehicle)
+	}
+}
+
+func TestUpdateSpotDurationAloneKeepsFutureStart(t *testing.T) {
+	server, db := newServer(t)
+
+	owner, _, _ := registerUser(t, server)
+	created := createSpot(t, server, db, owner, uniqueLocation(), map[string]any{
+		"available_in_minutes": 120,
+		"duration_minutes":     30,
+	})
+	start := created.Properties.AvailableFrom
+	if start.Before(time.Now().Add(90 * time.Minute)) {
+		t.Fatalf("available_from = %s, want roughly two hours ahead", start)
+	}
+
+	resp := authedRequest(t, server, http.MethodPatch, "/v1/spots/"+created.ID,
+		owner.AccessToken, map[string]any{"duration_minutes": 60})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH status = %d, want 200 (%s)", resp.StatusCode, errorCode(t, resp))
+	}
+
+	got := decode[feature](t, resp)
+	if diff := got.Properties.AvailableFrom.Sub(start); diff > 2*time.Second || diff < -2*time.Second {
+		t.Errorf("available_from moved from %s to %s (diff %s); duration-only must keep the start",
+			start, got.Properties.AvailableFrom, diff)
+	}
+	wantExpiry := got.Properties.AvailableFrom.Add(60 * time.Minute)
+	if diff := got.Properties.ExpiresAt.Sub(wantExpiry); diff > 2*time.Second || diff < -2*time.Second {
+		t.Errorf("expires_at = %s, want start+60m = %s (diff %s)",
+			got.Properties.ExpiresAt, wantExpiry, diff)
+	}
+}
+
+func TestUpdateSpotRefusesSomebodyElsesSpot(t *testing.T) {
+	server, db := newServer(t)
+
+	owner, _, _ := registerUser(t, server)
+	intruder, _, _ := registerUser(t, server)
+
+	created := createSpot(t, server, db, owner, uniqueLocation(), nil)
+
+	resp := authedRequest(t, server, http.MethodPatch, "/v1/spots/"+created.ID,
+		intruder.AccessToken, map[string]any{"price_cents": 300})
+
+	// 404 rather than 403: a 403 would confirm the identifier is real and let
+	// somebody enumerate other people's spots.
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", resp.StatusCode)
 	}
 }
 

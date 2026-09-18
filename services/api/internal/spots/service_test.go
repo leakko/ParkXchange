@@ -636,6 +636,35 @@ func TestUpdatePersistsAnOwnedAvailableSpot(t *testing.T) {
 	}
 }
 
+func TestUpdateDurationAloneKeepsFutureStart(t *testing.T) {
+	t.Parallel()
+
+	start := time.Now().Add(2 * time.Hour).Truncate(time.Second)
+	store := newFakeStore()
+	store.spots["spot-1"] = domain.Spot{
+		ID: "spot-1", OwnerID: "owner-1", VehicleID: "vehicle-1",
+		Status:        domain.SpotAvailable,
+		AvailableFrom: start,
+		ExpiresAt:     start.Add(30 * time.Minute),
+	}
+	service := spots.New(store)
+
+	duration := 60 * time.Minute
+	updated, err := service.Update(context.Background(), "spot-1",
+		domain.Claims{UserID: "owner-1"}, spots.SpotPatch{ExpiresIn: &duration})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if diff := updated.AvailableFrom.Sub(start); diff > 2*time.Second || diff < -2*time.Second {
+		t.Errorf("AvailableFrom moved from %s to %s (diff %s)", start, updated.AvailableFrom, diff)
+	}
+	wantExpiry := updated.AvailableFrom.Add(duration)
+	if diff := updated.ExpiresAt.Sub(wantExpiry); diff > 2*time.Second || diff < -2*time.Second {
+		t.Errorf("ExpiresAt = %s, want start+60m = %s (diff %s)",
+			updated.ExpiresAt, wantExpiry, diff)
+	}
+}
+
 func TestMineRequiresAuthentication(t *testing.T) {
 	t.Parallel()
 

@@ -268,12 +268,10 @@ func (a *API) handleUpdateSpot(w http.ResponseWriter, r *http.Request) error {
 	if req.DurationMinutes != nil && *req.DurationMinutes <= 0 {
 		fields["duration_minutes"] = "must be a positive number of minutes"
 	}
-	if (req.DurationMinutes == nil) != (req.AvailableInMinutes == nil) {
-		// Allow duration alone (keep current start) or both; available_in
-		// alone without a new duration is ambiguous against the existing end.
-		if req.DurationMinutes == nil {
-			fields["duration_minutes"] = "is required when available_in_minutes is set"
-		}
+	if req.AvailableInMinutes != nil && req.DurationMinutes == nil {
+		// available_in alone without a new duration is ambiguous against the
+		// existing end; duration alone keeps the current start.
+		fields["duration_minutes"] = "is required when available_in_minutes is set"
 	}
 	if len(fields) > 0 {
 		return domain.InvalidFields(fields)
@@ -285,13 +283,17 @@ func (a *API) handleUpdateSpot(w http.ResponseWriter, r *http.Request) error {
 		VehicleID:  req.VehicleID,
 	}
 	if req.DurationMinutes != nil {
-		availableIn := time.Duration(0)
+		duration := time.Duration(*req.DurationMinutes) * time.Minute
 		if req.AvailableInMinutes != nil {
-			availableIn = time.Duration(*req.AvailableInMinutes) * time.Minute
+			availableIn := time.Duration(*req.AvailableInMinutes) * time.Minute
+			expiresIn := availableIn + duration
+			patch.AvailableIn = &availableIn
+			patch.ExpiresIn = &expiresIn
+		} else {
+			// Duration alone: keep the offer's current available_from; ExpiresIn
+			// is the offer length measured from that start.
+			patch.ExpiresIn = &duration
 		}
-		expiresIn := availableIn + time.Duration(*req.DurationMinutes)*time.Minute
-		patch.AvailableIn = &availableIn
-		patch.ExpiresIn = &expiresIn
 	}
 
 	claims := claimsFrom(r.Context())
