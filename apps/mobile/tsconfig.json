@@ -1,7 +1,6 @@
 {
   "extends": "@parkxchange/tsconfig/react-native.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
       "@/*": [
         "./src/*"

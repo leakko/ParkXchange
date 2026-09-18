@@ -41,6 +41,15 @@ web-build/
 Pulumi.*.yaml
 !Pulumi.yaml
 
+# --- Scratch map tiles (local curl / proxy probes) --------------------------
+# Vector tile dumps and TileJSON snapshots left in the repo root while
+# debugging MapLibre / OpenFreeMap; never part of the product.
+*.pbf
+*.mvt
+/planet.json
+/tile_coords.txt
+/t[0-9]*.gz
+
 # --- Editors / OS -----------------------------------------------------------
 .idea/
 .vscode/*
