@@ -19,7 +19,7 @@ env:
 jobs:
   go:
     name: Go (test + lint)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgis/postgis:18-3.6
@@ -74,7 +74,7 @@ jobs:
 
   js:
     name: JS (lint + typecheck + contract)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
@@ -106,7 +106,7 @@ jobs:
 
   docker:
     name: API image build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: Build distroless API image
