@@ -236,6 +236,75 @@ func (s *Service) Profile(ctx context.Context, userID string) (domain.User, erro
 	return user, nil
 }
 
+// UpdateDisplayName changes the signed-in user's public name.
+func (s *Service) UpdateDisplayName(ctx context.Context, viewer domain.Claims, displayName string) (domain.User, error) {
+	if !viewer.Authenticated() {
+		return domain.User{}, domain.Unauthenticated("unauthorized", "an access token is required")
+	}
+
+	name, err := domain.ParseDisplayName(displayName)
+	if err != nil {
+		return domain.User{}, err
+	}
+
+	user, err := s.store.UpdateDisplayName(ctx, viewer.UserID, name)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			return domain.User{}, domain.Unauthenticated(
+				"unauthorized", "this account no longer exists")
+		}
+		return domain.User{}, domain.Internal(err)
+	}
+	return user, nil
+}
+
+// ChangePassword replaces the signed-in user's password after verifying the
+// current one, then revokes every refresh token so other sessions must sign in
+// again with the new credential.
+func (s *Service) ChangePassword(ctx context.Context, viewer domain.Claims, current, next string) error {
+	if !viewer.Authenticated() {
+		return domain.Unauthenticated("unauthorized", "an access token is required")
+	}
+
+	user, err := s.store.UserByID(ctx, viewer.UserID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			return domain.Unauthenticated("unauthorized", "this account no longer exists")
+		}
+		return domain.Internal(err)
+	}
+
+	// Same opaque failure shape as login: a wrong current password must not
+	// become a different error from a missing account.
+	rejected := domain.Unauthenticated("unauthorized", "email or password is incorrect")
+
+	matched, verifyErr := s.hasher.Verify(current, user.PasswordHash)
+	if verifyErr != nil {
+		return domain.Internal(verifyErr)
+	}
+	if !matched {
+		return rejected
+	}
+
+	if problem := domain.PasswordProblem(next); problem != "" {
+		return domain.InvalidFields(map[string]string{"new_password": problem})
+	}
+
+	hash, err := s.hasher.Hash(next)
+	if err != nil {
+		return domain.Internal(err)
+	}
+
+	if err := s.store.UpdatePasswordHash(ctx, viewer.UserID, hash); err != nil {
+		return domain.Internal(err)
+	}
+
+	if err := s.store.RevokeAllRefreshTokens(ctx, viewer.UserID); err != nil {
+		return domain.Internal(err)
+	}
+	return nil
+}
+
 // IssueSocketTicket mints the short-lived credential a client needs to
 // upgrade a WebSocket. The HTTP handler still extracts the query parameter;
 // this is the decision about whether the caller may have one.

@@ -212,6 +212,43 @@ func (db *DB) RevokeRefreshToken(ctx context.Context, tokenHash []byte) error {
 	return translate(err, "revoke refresh token")
 }
 
+// UpdateDisplayName changes the public name on an account.
+func (db *DB) UpdateDisplayName(ctx context.Context, userID, displayName string) (domain.User, error) {
+	return scanUser(db.Pool.QueryRow(ctx, `
+		UPDATE users
+		   SET display_name = $2
+		 WHERE id = $1
+		RETURNING `+userColumns, userID, displayName))
+}
+
+// UpdatePasswordHash replaces the stored password hash.
+func (db *DB) UpdatePasswordHash(ctx context.Context, userID, passwordHash string) error {
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE users
+		   SET password_hash = $2
+		 WHERE id = $1
+	`, userID, passwordHash)
+	if err != nil {
+		return translate(err, "update password hash")
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNoRows
+	}
+	return nil
+}
+
+// RevokeAllRefreshTokens removes every refresh token for the account.
+//
+// A password change uses DELETE rather than soft-revoke so a previously
+// rotated-away hash cannot be replayed against a family that no longer exists.
+func (db *DB) RevokeAllRefreshTokens(ctx context.Context, userID string) error {
+	_, err := db.Pool.Exec(ctx, `
+		DELETE FROM refresh_tokens
+		 WHERE user_id = $1
+	`, userID)
+	return translate(err, "revoke all refresh tokens")
+}
+
 // truncate bounds a value before it reaches a text column, so a client cannot
 // store an arbitrarily large User-Agent.
 func truncate(value string, limit int) string {

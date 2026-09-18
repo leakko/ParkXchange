@@ -101,6 +101,8 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("POST /v1/auth/logout", web.Handler(a.handleLogout))
 
 	mux.Handle("GET /v1/me", a.requireAuth(a.handleMe))
+	mux.Handle("PATCH /v1/me", a.requireAuth(a.handleUpdateMe))
+	mux.Handle("POST /v1/me/password", a.requireAuth(a.handleChangePassword))
 
 	// Discovery is readable without an account, but the caller's identity
 	// still matters when present: an owner sees their own spots at full

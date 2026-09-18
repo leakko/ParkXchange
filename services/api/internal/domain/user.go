@@ -153,6 +153,22 @@ func NewUser(in NewUserInput) (email Email, displayName string, err error) {
 	return parsedEmail, name, nil
 }
 
+// ParseDisplayName trims and validates a display name for create or update.
+func ParseDisplayName(raw string) (string, error) {
+	name := strings.TrimSpace(raw)
+	if problem := validateDisplayName(name); problem != "" {
+		return "", InvalidFields(map[string]string{"display_name": problem})
+	}
+	return name, nil
+}
+
+// PasswordProblem reports why a password fails the length rules, or "" if it
+// is acceptable. Callers choose the field name in InvalidFields so register
+// and password-change can disagree about the wire key.
+func PasswordProblem(password string) string {
+	return validatePassword(password)
+}
+
 func validatePassword(password string) string {
 	switch {
 	case password == "":

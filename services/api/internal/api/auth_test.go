@@ -542,3 +542,87 @@ func TestAccessTokenSignedWithAnotherKeyIsRejected(t *testing.T) {
 		t.Errorf("status = %d, want 401 for a token signed with another key", meResp.StatusCode)
 	}
 }
+
+func TestUpdateMeChangesTheDisplayName(t *testing.T) {
+	server, _ := newServer(t)
+
+	sess, _, _ := registerUser(t, server)
+
+	resp := authedRequest(t, server, http.MethodPatch, "/v1/me", sess.AccessToken, map[string]string{
+		"display_name": "Updated Name",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH /v1/me: status = %d, want 200", resp.StatusCode)
+	}
+
+	body := decode[map[string]any](t, resp)
+	if body["display_name"] != "Updated Name" {
+		t.Errorf("display_name = %v, want Updated Name", body["display_name"])
+	}
+
+	me := authedRequest(t, server, http.MethodGet, "/v1/me", sess.AccessToken, nil)
+	if me.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/me: status = %d, want 200", me.StatusCode)
+	}
+	if got := decode[map[string]any](t, me); got["display_name"] != "Updated Name" {
+		t.Errorf("persisted display_name = %v, want Updated Name", got["display_name"])
+	}
+}
+
+func TestUpdateMeRejectsAnInvalidDisplayName(t *testing.T) {
+	server, _ := newServer(t)
+
+	sess, _, _ := registerUser(t, server)
+
+	resp := authedRequest(t, server, http.MethodPatch, "/v1/me", sess.AccessToken, map[string]string{
+		"display_name": "",
+	})
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", resp.StatusCode)
+	}
+}
+
+func TestChangePasswordReturnsNoContentAndRevokesRefreshTokens(t *testing.T) {
+	server, _ := newServer(t)
+
+	sess, email, password := registerUser(t, server)
+	oldRefresh := sess.RefreshToken
+
+	resp := authedRequest(t, server, http.MethodPost, "/v1/me/password", sess.AccessToken, map[string]string{
+		"current_password": password,
+		"new_password":     "a-completely-new-password",
+	})
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("POST /v1/me/password: status = %d, want 204", resp.StatusCode)
+	}
+
+	// Old refresh tokens must be dead after a password change.
+	refresh := postJSON(t, server, "/v1/auth/refresh", map[string]string{
+		"refresh_token": oldRefresh,
+	})
+	if refresh.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("refresh after password change: status = %d, want 401", refresh.StatusCode)
+	}
+
+	// The new password must work for login.
+	login := postJSON(t, server, "/v1/auth/login", map[string]string{
+		"email": email, "password": "a-completely-new-password",
+	})
+	if login.StatusCode != http.StatusOK {
+		t.Fatalf("login with new password: status = %d, want 200", login.StatusCode)
+	}
+}
+
+func TestChangePasswordRejectsAWrongCurrentPassword(t *testing.T) {
+	server, _ := newServer(t)
+
+	sess, _, _ := registerUser(t, server)
+
+	resp := authedRequest(t, server, http.MethodPost, "/v1/me/password", sess.AccessToken, map[string]string{
+		"current_password": "definitely-not-the-password",
+		"new_password":     "a-completely-new-password",
+	})
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", resp.StatusCode)
+	}
+}

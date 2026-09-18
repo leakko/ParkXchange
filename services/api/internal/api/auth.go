@@ -145,3 +145,41 @@ func (a *API) handleMe(w http.ResponseWriter, r *http.Request) error {
 
 	return web.JSON(w, http.StatusOK, toUserResponse(user))
 }
+
+type updateMeRequest struct {
+	DisplayName string `json:"display_name"`
+}
+
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+func (a *API) handleUpdateMe(w http.ResponseWriter, r *http.Request) error {
+	var req updateMeRequest
+	if err := web.DecodeJSON(w, r, &req); err != nil {
+		return err
+	}
+
+	user, err := a.accounts.UpdateDisplayName(r.Context(), claimsFrom(r.Context()), req.DisplayName)
+	if err != nil {
+		return err
+	}
+
+	return web.JSON(w, http.StatusOK, toUserResponse(user))
+}
+
+func (a *API) handleChangePassword(w http.ResponseWriter, r *http.Request) error {
+	var req changePasswordRequest
+	if err := web.DecodeJSON(w, r, &req); err != nil {
+		return err
+	}
+
+	if err := a.accounts.ChangePassword(
+		r.Context(), claimsFrom(r.Context()), req.CurrentPassword, req.NewPassword,
+	); err != nil {
+		return err
+	}
+
+	return web.NoContent(w)
+}
