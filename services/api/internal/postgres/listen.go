@@ -41,20 +41,27 @@ func (db *DB) ListenSpotEvents(ctx context.Context) (<-chan domain.SpotEvent, er
 		return nil, translate(err, "listen "+spotEventsChannel)
 	}
 
+	// LISTEN needs a dedicated connection the pool must not recycle. Hijack
+	// also removes the race where AfterFunc's stop does not wait for the
+	// closer, so Release can nil the puddle resource while Conn() still runs.
+	pgConn := conn.Hijack()
+
 	out := make(chan domain.SpotEvent, 64)
 	go func() {
 		defer close(out)
-		defer conn.Release()
+		defer pgConn.Close(context.Background())
 
 		// WaitForNotification parks on a socket read. Cancelling the context
 		// is not enough on every platform; closing the connection is.
+		// AfterFunc's stop does not wait for this closer, so it must only
+		// touch the hijacked *pgx.Conn (Close is idempotent), never the pool wrapper.
 		stop := context.AfterFunc(ctx, func() {
-			_ = conn.Conn().Close(context.Background())
+			_ = pgConn.Close(context.Background())
 		})
 		defer stop()
 
 		for {
-			notification, err := conn.Conn().WaitForNotification(ctx)
+			notification, err := pgConn.WaitForNotification(ctx)
 			if err != nil {
 				return
 			}
