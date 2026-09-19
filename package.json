@@ -20,5 +20,10 @@
     "prettier": "catalog:",
     "turbo": "2.10.12",
     "typescript": "catalog:"
+  },
+  "pnpm": {
+    "overrides": {
+      "@expo/metro-runtime": "~57.0.16"
+    }
   }
 }

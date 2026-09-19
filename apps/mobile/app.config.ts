@@ -74,6 +74,9 @@ const config: ExpoConfig = {
   extra: {
     mapStyleUrl: process.env.EXPO_PUBLIC_MAP_STYLE_URL,
     apiUrl: process.env.EXPO_PUBLIC_API_URL,
+    eas: {
+      projectId: "6e924fb7-f674-48a0-9a3b-7df7400c1ba9",
+    },
   },
 };
 
