@@ -131,6 +131,9 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                 status: spot.properties.status,
               })}
             </Text>
+            {!exact && !spot.properties.is_mine ? (
+              <Text style={styles.approxNotice}>{t("spotSheet.approxLocation")}</Text>
+            ) : null}
             {spot.properties.address_hint ? (
               <Text style={styles.hint}>{spot.properties.address_hint}</Text>
             ) : null}
@@ -163,10 +166,6 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
               <Text style={styles.hint}>
                 {t("spotSheet.ownerPhone", { phone: ownerPhone })}
               </Text>
-            ) : null}
-
-            {!exact && !spot.properties.is_mine ? (
-              <Text style={styles.notes}>{t("spotSheet.approxLocation")}</Text>
             ) : null}
 
             <Text style={styles.freeAt}>
@@ -336,6 +335,17 @@ const styles = StyleSheet.create({
   meta: { color: "#9DB4C0", fontSize: 14 },
   hint: { color: "#D6E2E9", fontSize: 14, marginTop: 4 },
   notes: { color: "#D6E2E9", fontSize: 14 },
+  approxNotice: {
+    color: "#FFB4C8",
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: "#2A1520",
+    borderRadius: 10,
+    overflow: "hidden",
+  },
   vehicleBlock: { marginTop: 8, gap: 4 },
   vehicleTitle: { color: "#F4F7FA", fontSize: 15, fontWeight: "600" },
   vehicleMeta: { color: "#9DB4C0", fontSize: 13 },
