@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 
 
 import { resetPassword } from "@/api/client";
 import { accountColors, accountStyles } from "@/account/theme";
+import { authErrorMessage } from "@/auth/errors";
 import { useTranslation } from "@/i18n";
 
 export default function ResetPasswordScreen() {
@@ -27,7 +28,7 @@ export default function ResetPasswordScreen() {
       await resetPassword(token, password);
       router.replace("/auth/login" as Href);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("common.error"));
+      setError(authErrorMessage(err, t));
     } finally {
       setBusy(false);
     }

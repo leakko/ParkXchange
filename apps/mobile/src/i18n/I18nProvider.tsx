@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { ActivityIndicator, View } from "react-native";
 
 import { formatDateTime } from "./formatDateTime.ts";
 import { en } from "./locales/en.ts";
@@ -68,7 +69,11 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   // Avoid flashing the Spanish default before AsyncStorage / device locale resolve.
   if (!ready) {
-    return null;
+    return (
+      <View style={{ flex: 1, backgroundColor: "#0B1F33", justifyContent: "center" }}>
+        <ActivityIndicator color="#F4F7FA" />
+      </View>
+    );
   }
 
   return createElement(I18nContext.Provider, { value }, children);

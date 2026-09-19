@@ -11,6 +11,8 @@ import {
 
 import { register } from "@/api/client";
 import { accountColors, accountStyles } from "@/account/theme";
+import { authErrorMessage } from "@/auth/errors";
+import { GoogleButton } from "@/auth/GoogleButton";
 import { useGoogleSignIn, googleSignInConfigured } from "@/auth/google";
 import { applySession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
@@ -34,10 +36,13 @@ export default function RegisterScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const onGoogleError = useCallback((message: string) => {
-    setError(message);
-    setBusy(false);
-  }, []);
+  const onGoogleError = useCallback(
+    (err: unknown) => {
+      setError(authErrorMessage(err, t));
+      setBusy(false);
+    },
+    [t],
+  );
   const finish = useCallback(() => {
     router.replace(returnPath(params.returnTo));
   }, [params.returnTo, router]);
@@ -65,7 +70,7 @@ export default function RegisterScreen() {
       await applySession(session.access_token, session.refresh_token);
       finish();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("common.error"));
+      setError(authErrorMessage(err, t));
     } finally {
       setBusy(false);
     }
@@ -132,17 +137,14 @@ export default function RegisterScreen() {
       </Pressable>
 
       {googleSignInConfigured() ? (
-        <Pressable
-          style={[accountStyles.secondary, { marginTop: 8 }]}
+        <GoogleButton
           disabled={busy || !google.ready}
           onPress={() => {
             setBusy(true);
             setError(null);
             void google.prompt().finally(() => setBusy(false));
           }}
-        >
-          <Text style={accountStyles.secondaryText}>{t("auth.google")}</Text>
-        </Pressable>
+        />
       ) : null}
 
       <Pressable

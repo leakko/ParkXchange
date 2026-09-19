@@ -29,7 +29,12 @@ async function bootstrap(): Promise<void> {
   try {
     const existing = await getAccessToken();
     if (existing) {
-      const me = await apiFetch("/v1/me");
+      const me = await Promise.race([
+        apiFetch("/v1/me"),
+        new Promise<Response>((_, reject) =>
+          setTimeout(() => reject(new Error("session check timed out")), 8000),
+        ),
+      ]);
       if (me.ok) {
         publish({ ready: true, signedIn: true, error: null });
         return;
@@ -43,6 +48,7 @@ async function bootstrap(): Promise<void> {
     }
     publish({ ready: true, signedIn: false, error: null });
   } catch (err) {
+    await clearSession().catch(() => undefined);
     publish({
       ready: true,
       signedIn: false,

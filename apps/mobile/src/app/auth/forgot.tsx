@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 
 
 import { forgotPassword } from "@/api/client";
 import { accountColors, accountStyles } from "@/account/theme";
+import { authErrorMessage } from "@/auth/errors";
 import { useTranslation } from "@/i18n";
 
 export default function ForgotPasswordScreen() {
@@ -21,7 +22,7 @@ export default function ForgotPasswordScreen() {
       await forgotPassword(email.trim());
       setDone(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("common.error"));
+      setError(authErrorMessage(err, t));
     } finally {
       setBusy(false);
     }
