@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 # Build from the repository root so the local replace of libs/go/geo resolves:
 #   docker build -f services/api/Dockerfile .
 

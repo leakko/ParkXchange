@@ -71,7 +71,7 @@ func (m ResendMailer) SendPasswordReset(ctx context.Context, to domain.Email, re
 	if err != nil {
 		return fmt.Errorf("mailer: resend request: %w", err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	if res.StatusCode >= 200 && res.StatusCode < 300 {
 		return nil

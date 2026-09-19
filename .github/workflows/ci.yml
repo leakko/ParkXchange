@@ -110,5 +110,14 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+      # Docker Hub auth flakes (connection reset) are transient; retry a few times.
       - name: Build distroless API image
-        run: docker build -f services/api/Dockerfile -t parkxchange-api:ci .
+        run: |
+          for attempt in 1 2 3; do
+            if docker build -f services/api/Dockerfile -t parkxchange-api:ci .; then
+              exit 0
+            fi
+            echo "docker build failed (attempt ${attempt}/3); retrying in 15s..."
+            sleep 15
+          done
+          exit 1

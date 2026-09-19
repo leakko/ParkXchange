@@ -220,8 +220,7 @@ func (a *API) handleUpdateMe(w http.ResponseWriter, r *http.Request) error {
 
 	switch {
 	case req.DisplayName != nil && req.Phone != nil:
-		user, err = a.accounts.UpdateDisplayName(r.Context(), claims, *req.DisplayName)
-		if err != nil {
+		if _, err = a.accounts.UpdateDisplayName(r.Context(), claims, *req.DisplayName); err != nil {
 			return err
 		}
 		user, err = a.accounts.UpdatePhone(r.Context(), claims, *req.Phone)
