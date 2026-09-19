@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
-import { Alert, ScrollView } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { Alert, ScrollView, Text } from "react-native";
 
 import { createVehicle, putVehiclePhoto } from "@/api/client";
 import { VehicleForm, type VehicleFormValues } from "@/account/VehicleForm";
@@ -19,6 +19,8 @@ const empty: VehicleFormValues = {
 export default function NewVehicleScreen() {
   const { t } = useTranslation();
   const router = useRouter();
+  const params = useLocalSearchParams<{ from?: string }>();
+  const fromAnnounce = params.from === "announce";
   const queryClient = useQueryClient();
 
   const create = useMutation({
@@ -53,6 +55,11 @@ export default function NewVehicleScreen() {
       contentContainerStyle={accountStyles.scroll}
       keyboardShouldPersistTaps="handled"
     >
+      {fromAnnounce ? (
+        <Text style={[accountStyles.meta, { marginBottom: 8 }]}>
+          {t("account.vehicles.create.announceHint")}
+        </Text>
+      ) : null}
       <VehicleForm
         initial={empty}
         submitLabel={t("account.vehicles.create.submit")}

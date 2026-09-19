@@ -1,7 +1,12 @@
 import type { components } from "@parkxchange/api-contract";
 
 import { apiUrl } from "@/config";
-import { clearSession, getAccessToken } from "@/api/session";
+import {
+  clearSessionAndNotify,
+  getAccessToken,
+  getRefreshToken,
+  setSession,
+} from "@/api/session";
 
 export type SpotFeatureCollection = components["schemas"]["SpotFeatureCollection"];
 export type SpotFeature = components["schemas"]["SpotFeature"];
@@ -30,6 +35,41 @@ export class ApiError extends Error {
 
 type BBox = readonly [number, number, number, number];
 
+/** Auth endpoints where 401 means bad credentials, not a dead session. */
+const authCredentialPaths = new Set([
+  "/v1/auth/login",
+  "/v1/auth/register",
+  "/v1/auth/google",
+  "/v1/auth/refresh",
+  "/v1/auth/password/forgot",
+  "/v1/auth/password/reset",
+  "/v1/me/password",
+]);
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function tryRefreshTokens(): Promise<boolean> {
+  if (refreshInFlight) {
+    return refreshInFlight;
+  }
+  refreshInFlight = (async () => {
+    const refresh = await getRefreshToken();
+    if (!refresh) {
+      return false;
+    }
+    try {
+      const session = await refreshSession(refresh);
+      await setSession(session.access_token, session.refresh_token);
+      return true;
+    } catch {
+      return false;
+    }
+  })().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
 async function parseError(res: Response): Promise<ApiError> {
   try {
     const body = (await res.json()) as { error?: { code?: string; message?: string } };
@@ -43,7 +83,7 @@ async function parseError(res: Response): Promise<ApiError> {
   }
 }
 
-export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+async function rawFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   if (!headers.has("Content-Type") && init.body) {
     headers.set("Content-Type", "application/json");
@@ -52,13 +92,20 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
   }
-  const res = await fetch(`${apiUrl}${path}`, { ...init, headers });
-  // Wrong current password on POST /v1/me/password returns 401 Unauthenticated
-  // without meaning the access token is dead — keep the session so the form
-  // can show the error. Other 401s still clear so silent re-login can recover.
-  if (res.status === 401 && path !== "/v1/me/password") {
-    await clearSession();
+  return fetch(`${apiUrl}${path}`, { ...init, headers });
+}
+
+export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const res = await rawFetch(path, init);
+  if (res.status !== 401 || authCredentialPaths.has(path)) {
+    return res;
   }
+
+  // Access token missing/expired: try refresh once, then wipe UI session state.
+  if (await tryRefreshTokens()) {
+    return rawFetch(path, init);
+  }
+  await clearSessionAndNotify();
   return res;
 }
 

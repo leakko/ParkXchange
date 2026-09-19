@@ -22,7 +22,9 @@ import {
 } from "react-native";
 
 import type { SpotFeature, VehicleResponse } from "@/api/client";
-import { createOffer, listVehicles, withdrawSpot } from "@/api/client";
+import { ApiError, createOffer, listVehicles, withdrawSpot } from "@/api/client";
+import { apiErrorMessage } from "@/api/errors";
+import { getAccessToken } from "@/api/session";
 import {
   defaultMapCenter,
   fallbackZoom,
@@ -36,11 +38,7 @@ import {
 } from "@/hooks/useDiscovery";
 import { useSession } from "@/hooks/useSession";
 import { useMapLocation } from "@/hooks/useMapLocation";
-import {
-  announceAt,
-  announceHere,
-  useActiveReservation,
-} from "@/hooks/useSpotActions";
+import { announceAt, useActiveReservation } from "@/hooks/useSpotActions";
 import { useTranslation } from "@/i18n";
 import {
   followReducer,
@@ -50,14 +48,12 @@ import {
 import { MySpotLayers } from "@/map/MySpotLayers";
 import { UncertaintyCircle } from "@/map/UncertaintyCircle";
 import { partitionMapSpots } from "@/map/partitionMapSpots";
-import { pickAnnounceVehicle } from "@/map/pickAnnounceVehicle";
 import {
   AnnounceModal,
   type AnnounceValues,
 } from "@/map/AnnounceModal";
 import { SpotLayers } from "@/map/SpotLayers";
 import { SpotSheet } from "@/map/SpotSheet";
-import { VehiclePickModal } from "@/map/VehiclePickModal";
 
 const DEBOUNCE_MS = 350;
 
@@ -87,16 +83,13 @@ export default function MapScreen() {
   const [announcing, setAnnouncing] = useState(false);
   const [offerBusy, setOfferBusy] = useState(false);
   const [vehicles, setVehicles] = useState<VehicleResponse[]>([]);
-  const [announceDraft, setAnnounceDraft] = useState<{
-    vehicleId: string;
-    coordinates: [number, number] | null;
-  } | null>(null);
-  const [androidVehicles, setAndroidVehicles] = useState<VehicleResponse[] | null>(
+  const [announceOpen, setAnnounceOpen] = useState(false);
+  const [announceVehicles, setAnnounceVehicles] = useState<VehicleResponse[]>([]);
+  const [announceCoords, setAnnounceCoords] = useState<[number, number] | null>(
     null,
   );
-  const androidPickRef = useRef<{
-    resolve: (id: string | null) => void;
-  } | null>(null);
+  const [announceLabel, setAnnounceLabel] = useState<string | null>(null);
+  const [announcePickMode, setAnnouncePickMode] = useState(false);
 
   const puckReady = locationComponentReady(
     follow.locationGranted,
@@ -263,10 +256,26 @@ export default function MapScreen() {
     [featureById],
   );
 
-  const onPressMap = useCallback(() => {
-    setSelected(null);
-    sheetRef.current?.close();
-  }, []);
+  const onPressMap = useCallback(
+    (event: NativeSyntheticEvent<PressEvent>) => {
+      if (announcePickMode) {
+        const [lon, lat] = event.nativeEvent.lngLat;
+        setAnnounceCoords([lon, lat]);
+        setAnnounceLabel(
+          t("announce.location.coords", {
+            lat: lat.toFixed(5),
+            lon: lon.toFixed(5),
+          }),
+        );
+        setAnnouncePickMode(false);
+        setAnnounceOpen(true);
+        return;
+      }
+      setSelected(null);
+      sheetRef.current?.close();
+    },
+    [announcePickMode, t],
+  );
 
   const onRecenter = useCallback(() => {
     dispatchFollow({ type: "recenter" });
@@ -284,34 +293,6 @@ export default function MapScreen() {
     })();
   }, [location]);
 
-  const showAndroidVehicleList = useCallback(
-    (vehicles: VehicleResponse[]) =>
-      new Promise<string | null>((resolve) => {
-        androidPickRef.current = { resolve };
-        setAndroidVehicles(vehicles);
-      }),
-    [],
-  );
-
-  const closeAndroidVehiclePicker = useCallback((id: string | null) => {
-    setAndroidVehicles(null);
-    const pending = androidPickRef.current;
-    androidPickRef.current = null;
-    pending?.resolve(id);
-  }, []);
-
-  const resolveVehicleId = useCallback(async () => {
-    try {
-      return await pickAnnounceVehicle(router, showAndroidVehicleList);
-    } catch (err) {
-      Alert.alert(
-        t("map.alert.announceFailed.title"),
-        err instanceof Error ? err.message : t("map.alert.announceFailed.loadVehicles"),
-      );
-      return null;
-    }
-  }, [router, showAndroidVehicleList, t]);
-
   const afterAnnounce = useCallback(
     async (spot: SpotFeature, message: string) => {
       setSelected(spot);
@@ -324,44 +305,75 @@ export default function MapScreen() {
     [refetch, t],
   );
 
-  const doAnnounceHere = useCallback(async () => {
-    const vehicleId = await resolveVehicleId();
-    if (!vehicleId) {
-      return;
-    }
-    setAnnounceDraft({ vehicleId, coordinates: null });
-  }, [resolveVehicleId]);
-
-  const submitAnnouncement = useCallback(
-    async (values: AnnounceValues) => {
-      if (!announceDraft) {
+  const openAnnounce = useCallback(
+    async (coords: [number, number] | null, label: string | null) => {
+      if (!signedIn || !(await getAccessToken())) {
+        requireSignIn("/");
         return;
       }
       setAnnouncing(true);
       try {
-        const opts = { ...values, vehicleId: announceDraft.vehicleId };
-        const spot = announceDraft.coordinates
-          ? await announceAt(
-              announceDraft.coordinates[0],
-              announceDraft.coordinates[1],
-              opts,
-            )
-          : await announceHere({
-              ...opts,
-              locationPermissionMessage: t("exchange.locationPermissionRequired"),
-            });
-        setAnnounceDraft(null);
-        await afterAnnounce(spot, t("map.alert.announced.message"));
+        const list = await listVehicles();
+        if (list.length === 0) {
+          Alert.alert(
+            t("announce.needVehicle.title"),
+            t("announce.needVehicle.message"),
+            [
+              { text: t("common.cancel"), style: "cancel" },
+              {
+                text: t("announce.needVehicle.add"),
+                onPress: () =>
+                  router.push("/account/vehicles/new?from=announce" as Href),
+              },
+            ],
+          );
+          return;
+        }
+        setAnnounceVehicles(list);
+        setAnnounceCoords(coords);
+        setAnnounceLabel(label);
+        setAnnouncePickMode(false);
+        setAnnounceOpen(true);
       } catch (err) {
+        if (err instanceof ApiError && err.code === "unauthorized") {
+          requireSignIn("/");
+          return;
+        }
         Alert.alert(
           t("map.alert.announceFailed.title"),
-          err instanceof Error ? err.message : t("common.error"),
+          apiErrorMessage(err, t),
         );
       } finally {
         setAnnouncing(false);
       }
     },
-    [afterAnnounce, announceDraft, t],
+    [requireSignIn, router, signedIn, t],
+  );
+
+  const submitAnnouncement = useCallback(
+    async (values: AnnounceValues) => {
+      setAnnouncing(true);
+      try {
+        const spot = await announceAt(values.lon, values.lat, {
+          guidePriceCents: values.guidePriceCents,
+          preferredDepartureAt: values.preferredDepartureAt,
+          autoCancelNoShow: values.autoCancelNoShow,
+          vehicleId: values.vehicleId,
+        });
+        setAnnounceOpen(false);
+        setAnnounceCoords(null);
+        setAnnounceLabel(null);
+        await afterAnnounce(spot, t("map.alert.announced.message"));
+      } catch (err) {
+        Alert.alert(
+          t("map.alert.announceFailed.title"),
+          apiErrorMessage(err, t),
+        );
+      } finally {
+        setAnnouncing(false);
+      }
+    },
+    [afterAnnounce, t],
   );
 
   const onLongPress = useCallback(
@@ -378,29 +390,19 @@ export default function MapScreen() {
           {
             text: t("map.alert.announceHere.confirm"),
             onPress: () => {
-              void (async () => {
-                setAnnouncing(true);
-                try {
-                  const vehicleId = await resolveVehicleId();
-                  if (!vehicleId) {
-                    return;
-                  }
-                  setAnnounceDraft({ vehicleId, coordinates: [lon, lat] });
-                } catch (err) {
-                  Alert.alert(
-                    t("map.alert.announceFailed.title"),
-                    err instanceof Error ? err.message : t("common.error"),
-                  );
-                } finally {
-                  setAnnouncing(false);
-                }
-              })();
+              void openAnnounce(
+                [lon, lat],
+                t("announce.location.coords", {
+                  lat: lat.toFixed(5),
+                  lon: lon.toFixed(5),
+                }),
+              );
             },
           },
         ],
       );
     },
-    [resolveVehicleId, t],
+    [openAnnounce, t],
   );
 
   const onEditSpot = useCallback(
@@ -530,6 +532,19 @@ export default function MapScreen() {
           </Pressable>
         </View>
       ) : null}
+      {announcePickMode ? (
+        <View style={[styles.banner, styles.pickBanner]}>
+          <Text style={styles.bannerText}>{t("announce.location.pickHint")}</Text>
+          <Pressable
+            onPress={() => {
+              setAnnouncePickMode(false);
+              setAnnounceOpen(true);
+            }}
+          >
+            <Text style={styles.link}>{t("common.cancel")}</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {error ? (
         <View style={[styles.banner, { top: active ? 128 : 88 }]}>
           <Text style={styles.bannerText}>
@@ -584,7 +599,7 @@ export default function MapScreen() {
             requireSignIn("/");
             return;
           }
-          void doAnnounceHere();
+          void openAnnounce(null, null);
         }}
       >
         {announcing ? (
@@ -634,17 +649,22 @@ export default function MapScreen() {
         onWithdraw={onWithdrawSpot}
       />
 
-      <VehiclePickModal
-        visible={androidVehicles != null}
-        vehicles={androidVehicles ?? []}
-        onPick={(id) => closeAndroidVehiclePicker(id)}
-        onCancel={() => closeAndroidVehiclePicker(null)}
-      />
-
       <AnnounceModal
-        visible={announceDraft != null}
+        visible={announceOpen}
         busy={announcing}
-        onCancel={() => setAnnounceDraft(null)}
+        vehicles={announceVehicles}
+        initialCoordinates={announceCoords}
+        initialAddressLabel={announceLabel}
+        onCancel={() => {
+          setAnnounceOpen(false);
+          setAnnouncePickMode(false);
+          setAnnounceCoords(null);
+          setAnnounceLabel(null);
+        }}
+        onPickOnMap={() => {
+          setAnnounceOpen(false);
+          setAnnouncePickMode(true);
+        }}
         onSubmit={submitAnnouncement}
       />
     </View>
@@ -668,6 +688,10 @@ const styles = StyleSheet.create({
   activeBanner: {
     top: 88,
     backgroundColor: "rgba(232,93,4,0.92)",
+  },
+  pickBanner: {
+    top: 88,
+    backgroundColor: "rgba(27,154,170,0.95)",
   },
   bannerText: { color: "#F4F7FA", fontSize: 13 },
   link: { color: "#fff", fontWeight: "700", fontSize: 13 },

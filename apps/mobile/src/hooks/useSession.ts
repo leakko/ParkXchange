@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { apiFetch, refreshSession } from "@/api/client";
-import { clearSession, getAccessToken, getRefreshToken, setSession } from "@/api/session";
+import {
+  clearSession,
+  getAccessToken,
+  getRefreshToken,
+  onSessionCleared,
+  setSession,
+} from "@/api/session";
 
 type SessionSnapshot = {
   /** True once the initial SecureStore / /v1/me check finished. */
@@ -88,11 +94,15 @@ export function useSession() {
   useEffect(() => {
     const onChange = () => setState({ ...snapshot });
     listeners.add(onChange);
+    const unsubscribeCleared = onSessionCleared(() => {
+      publish({ ready: true, signedIn: false, error: null });
+    });
     if (!snapshot.ready) {
       void bootstrap();
     }
     return () => {
       listeners.delete(onChange);
+      unsubscribeCleared();
     };
   }, []);
 
