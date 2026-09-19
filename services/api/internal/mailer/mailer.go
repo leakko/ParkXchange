@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log/slog"
 	"net/http"
@@ -49,12 +50,16 @@ func (m ResendMailer) SendPasswordReset(ctx context.Context, to domain.Email, re
 		client = &http.Client{Timeout: 15 * time.Second}
 	}
 
+	safeURL := html.EscapeString(resetURL)
 	body, err := json.Marshal(map[string]any{
 		"from":    m.From,
 		"to":      []string{to.String()},
 		"subject": "Reset your ParkXchange password",
 		"text": "Use this link to choose a new password. It expires in one hour.\n\n" +
 			resetURL + "\n\nIf you did not ask for this, you can ignore this email.\n",
+		"html": "<p>Use this link to choose a new password. It expires in one hour.</p>" +
+			`<p><a href="` + safeURL + `">Reset your password</a></p>` +
+			"<p>If you did not ask for this, you can ignore this email.</p>",
 	})
 	if err != nil {
 		return fmt.Errorf("mailer: encode resend body: %w", err)

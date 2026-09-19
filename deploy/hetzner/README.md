@@ -41,7 +41,7 @@ Repository → **Settings → Secrets and variables → Actions**.
 | `DEPLOY_LOCATION_FUZZ_SECRET` | ≥32 bytes, **different** from JWT (`openssl rand -base64 32`) |
 | `DEPLOY_RESEND_API_KEY` | optional; Resend API key (password-reset email). Empty → reset links only in API logs |
 | `DEPLOY_EMAIL_FROM` | required if Resend key set; e.g. `ParkXchange <noreply@mail.park-xchange.com>` |
-| `DEPLOY_PASSWORD_RESET_DEEP_LINK_BASE` | optional; default `parkxchange://auth/reset` |
+| `DEPLOY_PASSWORD_RESET_DEEP_LINK_BASE` | optional; default `https://<DOMAIN>/v1/auth/reset` (https landing → app deep link) |
 | `DEPLOY_GOOGLE_WEB_CLIENT_ID` | optional; Google OAuth **web** client ID (empty disables Google on API) |
 
 The workflow also writes `CORS_ALLOWED_ORIGINS=*` (required when

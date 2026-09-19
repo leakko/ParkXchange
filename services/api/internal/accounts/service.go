@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -317,7 +318,7 @@ func (s *Service) RequestPasswordReset(ctx context.Context, rawEmail string) err
 	if strings.Contains(s.resetLinkBase, "?") {
 		sep = "&"
 	}
-	resetURL := s.resetLinkBase + sep + "token=" + plaintext
+	resetURL := s.resetLinkBase + sep + "token=" + url.QueryEscape(plaintext)
 	if err := s.mailer.SendPasswordReset(ctx, email, resetURL); err != nil {
 		return domain.Internal(err)
 	}

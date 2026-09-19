@@ -1,7 +1,11 @@
 package api
 
 import (
+	"fmt"
+	"html"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/marco/parkxchange/services/api/internal/accounts"
@@ -206,6 +210,36 @@ func (a *API) handleResetPassword(w http.ResponseWriter, r *http.Request) error 
 		return err
 	}
 	return web.NoContent(w)
+}
+
+// handlePasswordResetOpen is the https landing page linked from reset emails.
+// Gmail (and most clients) will not turn parkxchange:// into a tappable link.
+func (a *API) handlePasswordResetOpen(w http.ResponseWriter, r *http.Request) error {
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	if token == "" {
+		return domain.Invalid("token", "token is required")
+	}
+	deep := "parkxchange://auth/reset?token=" + url.QueryEscape(token)
+	safeDeep := html.EscapeString(deep)
+	body := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta http-equiv="refresh" content="0;url=%s"/>
+<title>ParkXchange — reset password</title>
+</head>
+<body style="font-family:system-ui,sans-serif;padding:2rem;max-width:32rem;margin:auto">
+<p>Opening ParkXchange…</p>
+<p><a href="%s">Tap here if the app does not open</a></p>
+</body>
+</html>`, safeDeep, safeDeep)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, err := w.Write([]byte(body))
+	return err
 }
 
 func (a *API) handleUpdateMe(w http.ResponseWriter, r *http.Request) error {

@@ -82,8 +82,9 @@ type Config struct {
 	// Required only when ResendAPIKey is set.
 	EmailFrom string
 
-	// PasswordResetDeepLinkBase is the app deep link prefix for reset tokens,
-	// e.g. parkxchange://auth/reset
+	// PasswordResetDeepLinkBase is the public URL prefix put in reset emails,
+	// e.g. https://api.example.com/v1/auth/reset. Prefer https so mail clients
+	// make it tappable; the landing page opens parkxchange://auth/reset.
 	PasswordResetDeepLinkBase string
 
 	// SweepInterval is how often the expiry worker runs. Short enough that a

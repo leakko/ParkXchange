@@ -58,6 +58,8 @@ services:
       # Password-reset email (required when API_ENV=production).
       RESEND_API_KEY: ${RESEND_API_KEY}
       EMAIL_FROM: ${EMAIL_FROM}
+      # https URL for emails (Gmail only auto-links http/https). The GET landing
+      # page redirects into the parkxchange:// deep link.
       PASSWORD_RESET_DEEP_LINK_BASE: ${PASSWORD_RESET_DEEP_LINK_BASE:-parkxchange://auth/reset}
       # Optional: empty disables Google Sign-In on the API.
       GOOGLE_WEB_CLIENT_ID: ${GOOGLE_WEB_CLIENT_ID:-}

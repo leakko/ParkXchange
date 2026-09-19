@@ -115,7 +115,7 @@ jobs:
               "SWEEP_INTERVAL=15s" \
               "RESEND_API_KEY=${RESEND_API_KEY}" \
               "EMAIL_FROM=${EMAIL_FROM}" \
-              "PASSWORD_RESET_DEEP_LINK_BASE=${PASSWORD_RESET_DEEP_LINK_BASE:-parkxchange://auth/reset}" \
+              "PASSWORD_RESET_DEEP_LINK_BASE=${PASSWORD_RESET_DEEP_LINK_BASE:-https://${DOMAIN}/v1/auth/reset}" \
               "GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID:-}" \
               > deploy/hetzner/.env
 

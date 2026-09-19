@@ -108,6 +108,9 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("POST /v1/auth/google", web.Handler(a.handleGoogleLogin))
 	mux.Handle("POST /v1/auth/password/forgot", web.Handler(a.handleForgotPassword))
 	mux.Handle("POST /v1/auth/password/reset", web.Handler(a.handleResetPassword))
+	// Browser landing for reset emails: Gmail only auto-links https URLs, so
+	// the mail points here and this page hands off to the app deep link.
+	mux.Handle("GET /v1/auth/reset", web.Handler(a.handlePasswordResetOpen))
 	mux.Handle("POST /v1/auth/refresh", web.Handler(a.handleRefresh))
 	mux.Handle("POST /v1/auth/logout", web.Handler(a.handleLogout))
 
