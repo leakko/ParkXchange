@@ -181,7 +181,7 @@ SELECT o.id,
        (ARRAY['small', 'medium', 'large'])[1 + floor(gen.size_roll * 3)::int],
        CASE WHEN gen.status_roll < 0.85 THEN 'available' ELSE 'expired' END,
        50 + floor(gen.price_roll * 19)::int * 25,
-       CASE WHEN gen.status_roll < 0.85
+       CASE WHEN gen.status_roll < 0.85 AND gen.i % 3 <> 0
             THEN now() + make_interval(hours => 1 + floor(gen.ttl_roll * 48)::int)
             ELSE NULL
        END,
