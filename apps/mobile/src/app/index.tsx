@@ -445,7 +445,7 @@ export default function MapScreen() {
             ? { trackUserLocation: "default" as const }
             : {})}
         />
-        {puckReady ? <NativeUserLocation /> : null}
+        {puckReady ? <NativeUserLocation mode="default" /> : null}
         {spotsArmed ? (
           <SpotLayers data={spotData.others} onPressFeature={onPressFeature} />
         ) : null}

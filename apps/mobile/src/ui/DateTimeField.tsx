@@ -1,5 +1,5 @@
 import DateTimePicker, {
-  type DateTimePickerEvent,
+  type DateTimePickerChangeEvent,
 } from "@react-native-community/datetimepicker";
 import { useState } from "react";
 import {
@@ -32,13 +32,17 @@ export function DateTimeField({ value, onChange, minimumDate }: Props) {
     setOpen(true);
   };
 
-  const onPickerChange = (event: DateTimePickerEvent, selected?: Date) => {
+  const closePicker = () => {
+    setOpen(false);
+    setAndroidMode("date");
+  };
+
+  const onValueChange = (
+    _event: DateTimePickerChangeEvent,
+    selected: Date,
+  ) => {
     if (Platform.OS === "android") {
       setOpen(false);
-      if (event.type === "dismissed" || !selected) {
-        setAndroidMode("date");
-        return;
-      }
       if (androidMode === "date") {
         const next = new Date(value);
         next.setFullYear(
@@ -59,9 +63,7 @@ export function DateTimeField({ value, onChange, minimumDate }: Props) {
       return;
     }
 
-    if (selected) {
-      onChange(selected);
-    }
+    onChange(selected);
   };
 
   return (
@@ -79,14 +81,15 @@ export function DateTimeField({ value, onChange, minimumDate }: Props) {
           value={value}
           mode={Platform.OS === "ios" ? "datetime" : androidMode}
           display={Platform.OS === "ios" ? "spinner" : "default"}
-          onChange={onPickerChange}
+          onValueChange={onValueChange}
+          onDismiss={closePicker}
           {...(minimumDate ? { minimumDate } : {})}
           locale={locale === "en" ? "en-GB" : "es-ES"}
           themeVariant="dark"
         />
       ) : null}
       {Platform.OS === "ios" && open ? (
-        <Pressable style={styles.done} onPress={() => setOpen(false)}>
+        <Pressable style={styles.done} onPress={closePicker}>
           <Text style={styles.doneText}>{t("common.ok")}</Text>
         </Pressable>
       ) : null}

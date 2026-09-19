@@ -1,4 +1,5 @@
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import { LogManager } from "@maplibre/maplibre-react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -11,6 +12,10 @@ import { I18nProvider } from "@/i18n";
 // Intermittent MapLibre tile/glyph stream errors on emulators are noisy but
 // non-fatal; the map still renders.
 LogBox.ignoreLogs(["MapLibre Native", "unexpected end of stream"]);
+
+// OpenFreeMap vector tiles occasionally ship degenerate line features; MapLibre
+// logs them as WARN but still paints the rest of the style.
+LogManager.onLog(({ message }) => message.includes("Invalid geometry in line layer"));
 
 export default function RootLayout() {
   const [queryClient] = useState(
