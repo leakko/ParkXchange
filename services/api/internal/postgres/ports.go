@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"github.com/marco/parkxchange/services/api/internal/accounts"
+	"github.com/marco/parkxchange/services/api/internal/offers"
 	"github.com/marco/parkxchange/services/api/internal/reservations"
 	"github.com/marco/parkxchange/services/api/internal/spots"
 	"github.com/marco/parkxchange/services/api/internal/vehicles"
@@ -17,6 +18,7 @@ import (
 // than against the method that is actually wrong.
 var (
 	_ accounts.Store     = (*DB)(nil)
+	_ offers.Store       = (*DB)(nil)
 	_ spots.Store        = (*DB)(nil)
 	_ reservations.Store = (*DB)(nil)
 	_ vehicles.Store     = (*DB)(nil)

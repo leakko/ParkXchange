@@ -264,13 +264,9 @@ func TestSpotConstraintsRejectInvalidRows(t *testing.T) {
 			columns: "owner_id, vehicle_id, geom, size_class, status, price_cents, expires_at",
 			values:  "$1, $2, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'medium', 'haunted', 200, now() + interval '1 hour'",
 		},
-		"expiry before availability": {
-			columns: "owner_id, vehicle_id, geom, size_class, price_cents, available_from, expires_at",
-			values:  "$1, $2, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'medium', 200, now(), now() - interval '1 hour'",
-		},
-		"start more than a day away": {
-			columns: "owner_id, vehicle_id, geom, size_class, price_cents, available_from, expires_at",
-			values:  "$1, $2, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'medium', 200, now() + interval '25 hours', now() + interval '26 hours'",
+		"listing end before creation": {
+			columns: "owner_id, vehicle_id, geom, size_class, price_cents, expires_at",
+			values:  "$1, $2, ST_SetSRID(ST_MakePoint(2.16, 41.39), 4326), 'medium', 200, now() - interval '1 hour'",
 		},
 		"longitude off the planet": {
 			columns: "owner_id, vehicle_id, geom, size_class, price_cents, expires_at",
@@ -447,11 +443,11 @@ func insertReservationWindow(
 	err := tx.QueryRow(ctx, `
 		INSERT INTO reservations (
 			spot_id, driver_id, status, price_cents, expires_at,
-			starts_at, ends_at, reconfirm_by, reconfirmed_at
+			exchange_at, starts_at, ends_at, reconfirm_by, reconfirmed_at
 		)
 		VALUES (
 			$1, $2, $3, 200, `+ends+`,
-			`+starts+`, `+ends+`, `+starts+`,
+			`+starts+`, `+starts+`, `+ends+`, `+starts+`,
 			CASE WHEN $3 IN ('confirmed', 'arrived', 'completed') THEN now() END
 		)
 		RETURNING id
@@ -469,11 +465,11 @@ func tryInsertReservationWindow(
 	_, err := tx.Exec(ctx, `
 		INSERT INTO reservations (
 			spot_id, driver_id, status, price_cents, expires_at,
-			starts_at, ends_at, reconfirm_by, reconfirmed_at
+			exchange_at, starts_at, ends_at, reconfirm_by, reconfirmed_at
 		)
 		VALUES (
 			$1, $2, $3, 200, `+ends+`,
-			`+starts+`, `+ends+`, `+starts+`,
+			`+starts+`, `+starts+`, `+ends+`, `+starts+`,
 			CASE WHEN $3 IN ('confirmed', 'arrived', 'completed') THEN now() END
 		)
 	`, spotID, driverID, status)

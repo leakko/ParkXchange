@@ -1,0 +1,281 @@
+// Package offers holds the use cases for proposing and accepting dated
+// parking exchanges.
+package offers
+
+import (
+	"context"
+	"errors"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/marco/parkxchange/services/api/internal/domain"
+)
+
+// CreateInput is a driver's proposed exchange.
+type CreateInput struct {
+	VehicleID   string
+	ExchangeAt  time.Time
+	AmountCents int
+}
+
+// Service carries out offer use cases.
+type Service struct {
+	store Store
+	now   func() time.Time
+}
+
+// New builds the service.
+func New(store Store) *Service {
+	return &Service{store: store, now: time.Now}
+}
+
+// Create submits an offer without placing a hold. Funds are checked here for a
+// useful response and checked again by CreateOffer to close the race.
+func (s *Service) Create(ctx context.Context, spotID string, viewer domain.Claims, in CreateInput) (domain.Offer, error) {
+	if !viewer.Authenticated() {
+		return domain.Offer{}, unauthenticated()
+	}
+
+	spot, err := s.store.SpotForOffer(ctx, strings.TrimSpace(spotID))
+	if err != nil {
+		return domain.Offer{}, mapSpotLoad(err)
+	}
+	if spot.OwnedBy(viewer.UserID) {
+		return domain.Offer{}, domain.Invalid("own_spot", "you cannot make an offer on your own spot")
+	}
+	if !spot.Claimable(s.now()) {
+		return domain.Offer{}, domain.Conflict("spot_not_available", "that spot is no longer accepting offers")
+	}
+
+	draft, err := domain.NewOffer(domain.NewOfferInput{
+		SpotID:      spot.ID,
+		DriverID:    viewer.UserID,
+		VehicleID:   in.VehicleID,
+		ExchangeAt:  in.ExchangeAt,
+		AmountCents: in.AmountCents,
+	}, spot.ExpiresAt, s.now())
+	if err != nil {
+		return domain.Offer{}, err
+	}
+
+	owned, err := s.store.VehicleOwnedBy(ctx, draft.VehicleID, viewer.UserID)
+	if err != nil {
+		return domain.Offer{}, domain.Internal(err)
+	}
+	if !owned {
+		return domain.Offer{}, domain.NotFound("vehicle_not_found", "that vehicle does not exist")
+	}
+
+	balance, err := s.store.BalanceAvailable(ctx, viewer.UserID)
+	if err != nil {
+		return domain.Offer{}, domain.Internal(err)
+	}
+	if int64(draft.AmountCents) > balance {
+		return domain.Offer{}, insufficientBalance()
+	}
+
+	created, err := s.store.CreateOffer(ctx, draft)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrInsufficientFunds):
+			return domain.Offer{}, insufficientBalance()
+		case errors.Is(err, domain.ErrOwnResource):
+			return domain.Offer{}, domain.Invalid("own_spot", "you cannot make an offer on your own spot")
+		case errors.Is(err, domain.ErrDuplicate):
+			return domain.Offer{}, domain.Conflict("pending_offer_exists",
+				"you already have a pending offer for that spot")
+		case errors.Is(err, domain.ErrNoRows), errors.Is(err, domain.ErrConflict):
+			return domain.Offer{}, domain.Conflict("spot_not_available",
+				"that spot is no longer accepting offers")
+		default:
+			return domain.Offer{}, domain.Internal(err)
+		}
+	}
+	return created, nil
+}
+
+// ListForSpot returns a spot's offers to its owner, preferred-time matches
+// first, then amount descending, then oldest first.
+func (s *Service) ListForSpot(ctx context.Context, spotID string, viewer domain.Claims) ([]domain.Offer, error) {
+	if !viewer.Authenticated() {
+		return nil, unauthenticated()
+	}
+
+	spot, err := s.store.SpotForOffer(ctx, strings.TrimSpace(spotID))
+	if err != nil {
+		return nil, mapSpotLoad(err)
+	}
+	if !spot.OwnedBy(viewer.UserID) {
+		return nil, domain.NotFound("spot_not_found", "that spot does not exist")
+	}
+
+	found, err := s.store.OffersForSpot(ctx, spot.ID, viewer.UserID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			return nil, domain.NotFound("spot_not_found", "that spot does not exist")
+		}
+		return nil, domain.Internal(err)
+	}
+
+	sort.SliceStable(found, func(i, j int) bool {
+		leftPreferred := domain.MatchesPreferred(found[i].ExchangeAt, spot.PreferredDepartureAt)
+		rightPreferred := domain.MatchesPreferred(found[j].ExchangeAt, spot.PreferredDepartureAt)
+		if leftPreferred != rightPreferred {
+			return leftPreferred
+		}
+		if found[i].AmountCents != found[j].AmountCents {
+			return found[i].AmountCents > found[j].AmountCents
+		}
+		return found[i].CreatedAt.Before(found[j].CreatedAt)
+	})
+	return found, nil
+}
+
+// Accept chooses one pending offer. Occupancy, the hold, reservation creation
+// and sibling rejection are one Store operation.
+func (s *Service) Accept(ctx context.Context, offerID string, viewer domain.Claims) (domain.Reservation, error) {
+	if !viewer.Authenticated() {
+		return domain.Reservation{}, unauthenticated()
+	}
+
+	offer, spot, err := s.loadOfferAndSpot(ctx, offerID)
+	if err != nil {
+		return domain.Reservation{}, err
+	}
+	if !spot.OwnedBy(viewer.UserID) {
+		return domain.Reservation{}, offerNotFound()
+	}
+	if offer.Status != domain.OfferPending {
+		return domain.Reservation{}, offerNotPending()
+	}
+
+	reservation, err := s.store.AcceptOffer(ctx, offer.ID, viewer.UserID)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrNoRows):
+			return domain.Reservation{}, offerNotFound()
+		case errors.Is(err, domain.ErrInsufficientFunds):
+			return domain.Reservation{}, insufficientBalance()
+		case errors.Is(err, domain.ErrDuplicate):
+			return domain.Reservation{}, domain.Conflict("reservation_overlap",
+				"the driver already has a reservation that overlaps this exchange")
+		case errors.Is(err, domain.ErrConflict):
+			return domain.Reservation{}, domain.Conflict("offer_not_available",
+				"that offer or spot is no longer available")
+		default:
+			return domain.Reservation{}, domain.Internal(err)
+		}
+	}
+	return reservation, nil
+}
+
+// Reject declines one pending offer as the spot owner.
+func (s *Service) Reject(ctx context.Context, offerID string, viewer domain.Claims) error {
+	if !viewer.Authenticated() {
+		return unauthenticated()
+	}
+	offer, spot, err := s.loadOfferAndSpot(ctx, offerID)
+	if err != nil {
+		return err
+	}
+	if !spot.OwnedBy(viewer.UserID) {
+		return offerNotFound()
+	}
+	if offer.Status != domain.OfferPending {
+		return offerNotPending()
+	}
+
+	if err := s.store.RejectOffer(ctx, offer.ID, viewer.UserID); err != nil {
+		return mapOfferMutation(err)
+	}
+	return nil
+}
+
+// Withdraw retracts one pending offer as its driver.
+func (s *Service) Withdraw(ctx context.Context, offerID string, viewer domain.Claims) error {
+	if !viewer.Authenticated() {
+		return unauthenticated()
+	}
+	offer, _, err := s.loadOfferAndSpot(ctx, offerID)
+	if err != nil {
+		return err
+	}
+	if offer.DriverID != viewer.UserID {
+		return offerNotFound()
+	}
+	if offer.Status != domain.OfferPending {
+		return offerNotPending()
+	}
+
+	if err := s.store.WithdrawOffer(ctx, offer.ID, viewer.UserID); err != nil {
+		return mapOfferMutation(err)
+	}
+	return nil
+}
+
+// ExpirePending marks overdue offers expired. It is safe for a background
+// worker and intentionally has no Claims argument.
+func (s *Service) ExpirePending(ctx context.Context) (int, error) {
+	count, err := s.store.ExpirePendingOffers(ctx)
+	if err != nil {
+		return 0, domain.Internal(err)
+	}
+	return count, nil
+}
+
+func (s *Service) loadOfferAndSpot(ctx context.Context, offerID string) (domain.Offer, domain.Spot, error) {
+	id := strings.TrimSpace(offerID)
+	if id == "" {
+		return domain.Offer{}, domain.Spot{}, domain.Invalid("offer_required", "an offer id is required")
+	}
+	offer, err := s.store.OfferByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			return domain.Offer{}, domain.Spot{}, offerNotFound()
+		}
+		return domain.Offer{}, domain.Spot{}, domain.Internal(err)
+	}
+	spot, err := s.store.SpotForOffer(ctx, offer.SpotID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			return domain.Offer{}, domain.Spot{}, offerNotFound()
+		}
+		return domain.Offer{}, domain.Spot{}, domain.Internal(err)
+	}
+	return offer, spot, nil
+}
+
+func mapSpotLoad(err error) error {
+	if errors.Is(err, domain.ErrNoRows) {
+		return domain.NotFound("spot_not_found", "that spot does not exist")
+	}
+	return domain.Internal(err)
+}
+
+func mapOfferMutation(err error) error {
+	switch {
+	case errors.Is(err, domain.ErrNoRows):
+		return offerNotFound()
+	case errors.Is(err, domain.ErrConflict):
+		return offerNotPending()
+	default:
+		return domain.Internal(err)
+	}
+}
+
+func unauthenticated() error {
+	return domain.Unauthenticated("unauthorized", "an access token is required")
+}
+
+func offerNotFound() error {
+	return domain.NotFound("offer_not_found", "that offer does not exist")
+}
+
+func offerNotPending() error {
+	return domain.Conflict("offer_not_pending", "that offer is no longer pending")
+}
+
+func insufficientBalance() error {
+	return domain.Conflict("insufficient_balance", "your balance is too low for that offer")
+}

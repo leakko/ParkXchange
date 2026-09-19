@@ -14,6 +14,7 @@ tags:
   - name: auth
   - name: vehicles
   - name: spots
+  - name: offers
   - name: reservations
   - name: realtime
 
@@ -492,13 +493,61 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
 
-  /v1/spots/{id}/reservations:
+  /v1/spots/{id}/offers:
     post:
-      tags: [reservations]
-      operationId: claimSpot
-      summary: Atomically claim a spot
+      tags: [offers]
+      operationId: createOffer
+      summary: Propose a dated exchange for a listing
       parameters:
         - $ref: "#/components/parameters/SpotID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOfferRequest"
+      responses:
+        "201":
+          description: Offer created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OfferResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+    get:
+      tags: [offers]
+      operationId: listSpotOffers
+      summary: List offers for a listing owned by the caller
+      parameters:
+        - $ref: "#/components/parameters/SpotID"
+      responses:
+        "200":
+          description: Offers ordered by preferred-time match, then amount
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OfferResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /v1/offers/{id}/accept:
+    post:
+      tags: [offers]
+      operationId: acceptOffer
+      summary: Accept an offer and atomically create its reservation
+      parameters:
+        - $ref: "#/components/parameters/OfferID"
       responses:
         "201":
           description: Reservation created
@@ -506,6 +555,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReservationResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /v1/offers/{id}/reject:
+    post:
+      tags: [offers]
+      operationId: rejectOffer
+      summary: Reject a pending offer as listing owner
+      parameters:
+        - $ref: "#/components/parameters/OfferID"
+      responses:
+        "204":
+          description: Rejected
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /v1/offers/{id}/withdraw:
+    post:
+      tags: [offers]
+      operationId: withdrawOffer
+      summary: Withdraw a pending offer as its driver
+      parameters:
+        - $ref: "#/components/parameters/OfferID"
+      responses:
+        "204":
+          description: Withdrawn
         "401":
           $ref: "#/components/responses/Error"
         "404":
@@ -549,16 +632,50 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
 
-  /v1/reservations/{id}/reconfirm:
+  /v1/reservations/{id}/owner-ready:
     post:
       tags: [reservations]
-      operationId: reconfirmReservation
-      summary: Confirm the driver still intends to take the spot
+      operationId: markOwnerReady
+      summary: Mark the listing owner ready to leave
       parameters:
         - $ref: "#/components/parameters/ReservationID"
       responses:
         "204":
-          description: Reconfirmed
+          description: Owner ready recorded
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /v1/reservations/{id}/driver-arrived:
+    post:
+      tags: [reservations]
+      operationId: markDriverArrived
+      summary: Record the driver's early “I arrived” signal
+      parameters:
+        - $ref: "#/components/parameters/ReservationID"
+      responses:
+        "204":
+          description: Driver arrival recorded
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /v1/reservations/{id}/driver-ready:
+    post:
+      tags: [reservations]
+      operationId: markDriverReady
+      summary: Complete the handover once the owner is ready
+      parameters:
+        - $ref: "#/components/parameters/ReservationID"
+      responses:
+        "204":
+          description: Handover completed
         "401":
           $ref: "#/components/responses/Error"
         "404":
@@ -576,23 +693,6 @@ paths:
       responses:
         "204":
           description: Cancelled
-        "401":
-          $ref: "#/components/responses/Error"
-        "404":
-          $ref: "#/components/responses/Error"
-        "409":
-          $ref: "#/components/responses/Error"
-
-  /v1/reservations/{id}/complete:
-    post:
-      tags: [reservations]
-      operationId: completeReservation
-      summary: Confirm handover
-      parameters:
-        - $ref: "#/components/parameters/ReservationID"
-      responses:
-        "204":
-          description: Completed
         "401":
           $ref: "#/components/responses/Error"
         "404":
@@ -657,6 +757,13 @@ components:
         type: string
         format: uuid
     ReservationID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    OfferID:
       name: id
       in: path
       required: true
@@ -930,7 +1037,7 @@ components:
 
     CreateSpotRequest:
       type: object
-      required: [lon, lat, size_class, price_cents, duration_minutes, vehicle_id]
+      required: [lon, lat, size_class, price_cents, vehicle_id]
       properties:
         lon:
           type: number
@@ -950,19 +1057,19 @@ components:
           type: string
           format: uuid
           description: One of the caller's vehicles; required so claimers know which car to meet
-        duration_minutes:
-          type: integer
-          minimum: 1
-        available_in_minutes:
-          type: integer
-          minimum: 0
-          description: Delay until the offer starts. Zero means immediately. Capped at 24 hours.
+        preferred_departure_at:
+          type: string
+          format: date-time
+          nullable: true
+        auto_cancel_no_show:
+          type: boolean
+          default: true
 
     UpdateSpotRequest:
       type: object
       description: |
-        Partial edit of an available offer. Location and spot size_class are not
-        editable. When available_in_minutes is set, duration_minutes is required.
+        Partial edit of an available listing. Location, listing lifetime, and
+        spot size_class are not editable.
       properties:
         price_cents:
           type: integer
@@ -971,13 +1078,12 @@ components:
         vehicle_id:
           type: string
           format: uuid
-        duration_minutes:
-          type: integer
-          minimum: 1
-        available_in_minutes:
-          type: integer
-          minimum: 0
-          description: Delay until the offer starts. Requires duration_minutes.
+        preferred_departure_at:
+          type: string
+          format: date-time
+          nullable: true
+        auto_cancel_no_show:
+          type: boolean
 
     SpotProperties:
       type: object
@@ -987,8 +1093,8 @@ components:
         - size_class
         - status
         - price_cents
-        - available_from
-        - expires_at
+        - listed_until
+        - auto_cancel_no_show
         - exact_location
         - is_mine
         - vehicle
@@ -1012,12 +1118,15 @@ components:
           type: string
         notes:
           type: string
-        available_from:
+        preferred_departure_at:
           type: string
           format: date-time
-        expires_at:
+          nullable: true
+        listed_until:
           type: string
           format: date-time
+        auto_cancel_no_show:
+          type: boolean
         exact_location:
           type: boolean
         is_mine:
@@ -1067,6 +1176,61 @@ components:
           items:
             $ref: "#/components/schemas/SpotFeature"
 
+    CreateOfferRequest:
+      type: object
+      required: [vehicle_id, exchange_at, amount_cents]
+      properties:
+        vehicle_id:
+          type: string
+          format: uuid
+        exchange_at:
+          type: string
+          format: date-time
+        amount_cents:
+          type: integer
+          minimum: 0
+          maximum: 2000
+
+    OfferResponse:
+      type: object
+      required:
+        - id
+        - spot_id
+        - driver_id
+        - vehicle_id
+        - exchange_at
+        - amount_cents
+        - status
+        - created_at
+        - expires_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        spot_id:
+          type: string
+          format: uuid
+        driver_id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        exchange_at:
+          type: string
+          format: date-time
+        amount_cents:
+          type: integer
+        status:
+          type: string
+          enum: [pending, accepted, rejected, withdrawn, expired]
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
     ReservationResponse:
       type: object
       required:
@@ -1076,11 +1240,8 @@ components:
         - owner_id
         - status
         - price_cents
-        - starts_at
-        - ends_at
-        - reconfirm_by
+        - exchange_at
         - created_at
-        - expires_at
       properties:
         id:
           type: string
@@ -1098,23 +1259,28 @@ components:
           type: string
         price_cents:
           type: integer
-        starts_at:
+        offer_id:
+          type: string
+          format: uuid
+        driver_vehicle_id:
+          type: string
+          format: uuid
+        exchange_at:
           type: string
           format: date-time
-        ends_at:
+        owner_ready_at:
           type: string
           format: date-time
-        reconfirm_by:
+          nullable: true
+        driver_arrived_at:
           type: string
           format: date-time
-        reconfirmed_at:
+          nullable: true
+        driver_ready_at:
           type: string
           format: date-time
           nullable: true
         created_at:
-          type: string
-          format: date-time
-        expires_at:
           type: string
           format: date-time
 

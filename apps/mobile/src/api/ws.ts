@@ -133,8 +133,8 @@ export function applySpotEvent(
         size_class: props?.size_class ?? "medium",
         status: event.status ?? props?.status ?? "available",
         price_cents: event.price_cents ?? props?.price_cents ?? 0,
-        available_from: props?.available_from ?? new Date().toISOString(),
-        expires_at: props?.expires_at ?? new Date().toISOString(),
+        listed_until: props?.listed_until ?? new Date().toISOString(),
+        auto_cancel_no_show: props?.auto_cancel_no_show ?? true,
         exact_location: event.exact_location,
         is_mine: props?.is_mine ?? false,
         vehicle: props?.vehicle ?? {
@@ -149,6 +149,9 @@ export function applySpotEvent(
         ...(props?.owner_rating != null ? { owner_rating: props.owner_rating } : {}),
         ...(props?.address_hint != null ? { address_hint: props.address_hint } : {}),
         ...(props?.notes != null ? { notes: props.notes } : {}),
+        ...(props?.preferred_departure_at != null
+          ? { preferred_departure_at: props.preferred_departure_at }
+          : {}),
       },
     };
     if (existing) {

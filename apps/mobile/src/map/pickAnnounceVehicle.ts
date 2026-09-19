@@ -23,7 +23,7 @@ function chooseVehicle(
       ActionSheetIOS.showActionSheetWithOptions(
         {
           title: "Which vehicle?",
-          message: "Claimers will see this car at the spot.",
+          message: "Drivers will see this car at the exchange.",
           options,
           cancelButtonIndex: options.length - 1,
         },

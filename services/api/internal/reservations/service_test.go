@@ -3,6 +3,7 @@ package reservations_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/marco/parkxchange/services/api/internal/domain"
 	"github.com/marco/parkxchange/services/api/internal/reservations"
@@ -14,10 +15,15 @@ type fakeStore struct {
 	claimErr error
 	claim    domain.Reservation
 
-	reconfirmCalls int
-	cancelCalls    int
-	completeCalls  int
-	sweepResult    reservations.SweepResult
+	reconfirmCalls     int
+	cancelCalls        int
+	completeCalls      int
+	ownerReadyCalls    int
+	driverArrivedCalls int
+	driverReadyCalls   int
+	cancelActor        string
+	cancelAt           time.Time
+	sweepResult        reservations.SweepResult
 }
 
 func newFakeStore() *fakeStore {
@@ -78,6 +84,55 @@ func (f *fakeStore) Complete(_ context.Context, id, actorID string) error {
 		return domain.ErrConflict
 	}
 	res.Status = domain.ResCompleted
+	f.reservations[id] = res
+	return nil
+}
+
+func (f *fakeStore) MarkOwnerReady(_ context.Context, id, ownerID string, at time.Time) error {
+	f.ownerReadyCalls++
+	res, ok := f.reservations[id]
+	if !ok || res.OwnerID != ownerID || !res.Status.Live() || res.OwnerReadyAt != nil {
+		return domain.ErrConflict
+	}
+	res.OwnerReadyAt = &at
+	f.reservations[id] = res
+	return nil
+}
+
+func (f *fakeStore) MarkDriverArrived(_ context.Context, id, driverID string, at time.Time) error {
+	f.driverArrivedCalls++
+	res, ok := f.reservations[id]
+	if !ok || res.DriverID != driverID || !res.Status.Live() || res.DriverArrivedAt != nil {
+		return domain.ErrConflict
+	}
+	res.DriverArrivedAt = &at
+	res.Status = domain.ResArrived
+	f.reservations[id] = res
+	return nil
+}
+
+func (f *fakeStore) MarkDriverReady(_ context.Context, id, driverID string, at time.Time) error {
+	f.driverReadyCalls++
+	res, ok := f.reservations[id]
+	if !ok || res.DriverID != driverID || res.OwnerReadyAt == nil ||
+		at.After(domain.DriverNoShowDeadline(*res.OwnerReadyAt, res.ExchangeAt)) {
+		return domain.ErrConflict
+	}
+	res.DriverReadyAt = &at
+	res.Status = domain.ResCompleted
+	f.reservations[id] = res
+	return nil
+}
+
+func (f *fakeStore) Cancel(_ context.Context, id, actorID string, at time.Time) error {
+	f.cancelCalls++
+	f.cancelActor = actorID
+	f.cancelAt = at
+	res, ok := f.reservations[id]
+	if !ok || !res.Involves(actorID) || !res.Status.Live() {
+		return domain.ErrConflict
+	}
+	res.Status = domain.ResCancelled
 	f.reservations[id] = res
 	return nil
 }
@@ -163,7 +218,7 @@ func TestReconfirmOnlyTheDriverOfAPendingReservation(t *testing.T) {
 	}
 }
 
-func TestCompleteAcceptsEitherParty(t *testing.T) {
+func TestLegacyCompleteAcceptsEitherParty(t *testing.T) {
 	t.Parallel()
 
 	store := newFakeStore()
@@ -209,5 +264,128 @@ func TestClaimSucceeds(t *testing.T) {
 	}
 	if got.ID != "r1" {
 		t.Errorf("id = %q, want r1", got.ID)
+	}
+}
+
+func TestMarkOwnerReadyOnlyAllowsOwner(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	store.reservations["r1"] = domain.Reservation{
+		ID: "r1", DriverID: "d1", OwnerID: "o1", Status: domain.ResConfirmed,
+	}
+	now := time.Date(2026, 9, 19, 18, 0, 0, 0, time.UTC)
+	service := reservations.NewWithClock(store, func() time.Time { return now })
+
+	if err := service.MarkOwnerReady(
+		context.Background(), "r1", domain.Claims{UserID: "d1"},
+	); domain.KindOf(err) != domain.KindNotFound {
+		t.Fatalf("driver mark owner ready kind = %v, want not found", domain.KindOf(err))
+	}
+	if err := service.MarkOwnerReady(
+		context.Background(), "r1", domain.Claims{UserID: "o1"},
+	); err != nil {
+		t.Fatalf("owner mark ready: %v", err)
+	}
+	if store.ownerReadyCalls != 1 {
+		t.Errorf("ownerReadyCalls = %d, want 1", store.ownerReadyCalls)
+	}
+}
+
+func TestMarkDriverArrivedAllowedBeforeExchange(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 9, 19, 17, 50, 0, 0, time.UTC)
+	store := newFakeStore()
+	store.reservations["r1"] = domain.Reservation{
+		ID: "r1", DriverID: "d1", OwnerID: "o1", Status: domain.ResConfirmed,
+		ExchangeAt: now.Add(10 * time.Minute),
+	}
+	service := reservations.NewWithClock(store, func() time.Time { return now })
+
+	if err := service.MarkDriverArrived(
+		context.Background(), "r1", domain.Claims{UserID: "d1"},
+	); err != nil {
+		t.Fatalf("MarkDriverArrived: %v", err)
+	}
+	if store.driverArrivedCalls != 1 {
+		t.Errorf("driverArrivedCalls = %d, want 1", store.driverArrivedCalls)
+	}
+}
+
+func TestMarkDriverReadyRequiresOwnerReadyAndDeadline(t *testing.T) {
+	t.Parallel()
+
+	exchangeAt := time.Date(2026, 9, 19, 18, 0, 0, 0, time.UTC)
+	store := newFakeStore()
+	store.reservations["r1"] = domain.Reservation{
+		ID: "r1", DriverID: "d1", OwnerID: "o1", Status: domain.ResConfirmed,
+		ExchangeAt: exchangeAt,
+	}
+	now := exchangeAt
+	service := reservations.NewWithClock(store, func() time.Time { return now })
+
+	err := service.MarkDriverReady(
+		context.Background(), "r1", domain.Claims{UserID: "d1"})
+	if domain.KindOf(err) != domain.KindConflict {
+		t.Fatalf("without owner ready kind = %v, want conflict", domain.KindOf(err))
+	}
+
+	ownerReady := exchangeAt.Add(-5 * time.Minute)
+	res := store.reservations["r1"]
+	res.OwnerReadyAt = &ownerReady
+	store.reservations["r1"] = res
+	now = domain.DriverNoShowDeadline(ownerReady, exchangeAt).Add(time.Nanosecond)
+	err = service.MarkDriverReady(
+		context.Background(), "r1", domain.Claims{UserID: "d1"})
+	if domain.KindOf(err) != domain.KindConflict {
+		t.Fatalf("after deadline kind = %v, want conflict", domain.KindOf(err))
+	}
+	if store.driverReadyCalls != 0 {
+		t.Errorf("driverReadyCalls = %d, want 0", store.driverReadyCalls)
+	}
+
+	now = exchangeAt.Add(5 * time.Minute)
+	if err := service.MarkDriverReady(
+		context.Background(), "r1", domain.Claims{UserID: "d1"},
+	); err != nil {
+		t.Fatalf("within deadline: %v", err)
+	}
+	if store.reservations["r1"].Status != domain.ResCompleted {
+		t.Errorf("status = %s, want completed", store.reservations["r1"].Status)
+	}
+}
+
+func TestCancelSupportsOwnerAndDriverFairnessBoundary(t *testing.T) {
+	t.Parallel()
+
+	exchangeAt := time.Date(2026, 9, 19, 18, 0, 0, 0, time.UTC)
+	for name, actorID := range map[string]string{
+		"owner releases":      "o1",
+		"fair driver release": "d1",
+		"late driver forfeit": "d1",
+	} {
+		t.Run(name, func(t *testing.T) {
+			store := newFakeStore()
+			store.reservations["r1"] = domain.Reservation{
+				ID: "r1", DriverID: "d1", OwnerID: "o1",
+				Status: domain.ResConfirmed, ExchangeAt: exchangeAt,
+			}
+			now := exchangeAt.Add(-domain.DriverFairCancelWindow)
+			if name == "late driver forfeit" {
+				now = now.Add(time.Nanosecond)
+			}
+			service := reservations.NewWithClock(store, func() time.Time { return now })
+
+			if err := service.Cancel(
+				context.Background(), "r1", domain.Claims{UserID: actorID},
+			); err != nil {
+				t.Fatalf("Cancel: %v", err)
+			}
+			if store.cancelActor != actorID || !store.cancelAt.Equal(now) {
+				t.Errorf("cancel call = (%q, %s), want (%q, %s)",
+					store.cancelActor, store.cancelAt, actorID, now)
+			}
+		})
 	}
 }

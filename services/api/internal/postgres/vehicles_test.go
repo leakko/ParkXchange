@@ -167,9 +167,9 @@ func TestDeleteVehicleNullifiesTerminalSpotRefs(t *testing.T) {
 	var spotID string
 	err = tx.QueryRow(ctx, `
 		INSERT INTO spots (owner_id, vehicle_id, geom, size_class, status, price_cents,
-		                   available_from, expires_at)
+		                   expires_at, created_at)
 		VALUES ($1, $2, ST_SetSRID(ST_MakePoint(2.17, 41.39), 4326), 'medium', 'cancelled', 100,
-		        now() - interval '2 hours', now() - interval '1 hour')
+		        now() - interval '1 hour', now() - interval '2 hours')
 		RETURNING id
 	`, owner, vehicle.ID).Scan(&spotID)
 	if err != nil {

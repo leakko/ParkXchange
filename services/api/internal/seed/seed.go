@@ -172,7 +172,8 @@ generated AS (
       JOIN districts d ON d.rn = g.i % 10
 )
 INSERT INTO spots (owner_id, vehicle_id, geom, address_hint, size_class, status,
-                   price_cents, available_from, expires_at)
+                   price_cents, preferred_departure_at, auto_cancel_no_show,
+                   expires_at, created_at)
 SELECT o.id,
        o.vehicle_id,
        ST_SetSRID(ST_MakePoint(gen.lon, gen.lat), 4326),
@@ -180,13 +181,19 @@ SELECT o.id,
        (ARRAY['small', 'medium', 'large'])[1 + floor(gen.size_roll * 3)::int],
        CASE WHEN gen.status_roll < 0.85 THEN 'available' ELSE 'expired' END,
        50 + floor(gen.price_roll * 19)::int * 25,
+       CASE WHEN gen.status_roll < 0.85 AND gen.i % 3 <> 0
+            THEN now() + make_interval(hours => 1 + floor(gen.ttl_roll * 48)::int)
+            ELSE NULL
+       END,
+       gen.i % 2 = 0,
+       CASE WHEN gen.status_roll < 0.85
+            THEN now() + interval '7 days'
+            ELSE now() - interval '30 minutes'
+       END
+       ,
        CASE WHEN gen.status_roll < 0.85
             THEN now()
-            ELSE now() - interval '120 minutes'
-       END,
-       CASE WHEN gen.status_roll < 0.85
-            THEN now() + make_interval(mins => 5 + floor(gen.ttl_roll * 55)::int)
-            ELSE now() - interval '30 minutes'
+            ELSE now() - interval '8 days'
        END
   FROM generated gen
   JOIN owners o ON o.rn = gen.i % o.total
@@ -205,7 +212,7 @@ SELECT u.id,
        s.size_class,
        'available',
        s.price_cents,
-       now() + interval '45 minutes'
+       now() + interval '7 days'
   FROM users u
   JOIN vehicles v ON v.owner_id = u.id
   CROSS JOIN (VALUES

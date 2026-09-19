@@ -131,16 +131,16 @@ func TestReservationActorRules(t *testing.T) {
 func TestFairCancelVersusForfeit(t *testing.T) {
 	t.Parallel()
 
-	now := time.Date(2026, 9, 14, 18, 0, 0, 0, time.UTC)
+	exchange := time.Date(2026, 9, 14, 19, 0, 0, 0, time.UTC)
 	res := domain.Reservation{
-		StartsAt: now.Add(time.Hour),
-		Status:   domain.ResPending,
+		ExchangeAt: exchange,
+		Status:     domain.ResPending,
 	}
 
-	if !res.FairCancel(now) {
+	if !res.FairCancel(exchange.Add(-time.Hour)) {
 		t.Error("cancelling an hour before the handover should release the deposit")
 	}
-	if res.FairCancel(res.StartsAt.Add(time.Minute)) {
-		t.Error("cancelling after the handover has started is a no-show, not a fair cancel")
+	if res.FairCancel(exchange.Add(-29 * time.Minute)) {
+		t.Error("cancelling inside 30 minutes before exchange should forfeit")
 	}
 }

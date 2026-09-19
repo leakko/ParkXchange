@@ -2,6 +2,7 @@ package reservations
 
 import (
 	"context"
+	"time"
 
 	"github.com/marco/parkxchange/services/api/internal/domain"
 )
@@ -42,6 +43,21 @@ type Store interface {
 	// the owner; the adapter enforces that in the WHERE clause.
 	Complete(ctx context.Context, id, actorID string) error
 
+	// MarkOwnerReady and MarkDriverArrived record one side of the dated
+	// handover. The adapter repeats ownership and live-state checks atomically.
+	MarkOwnerReady(ctx context.Context, id, ownerID string, at time.Time) error
+	MarkDriverArrived(ctx context.Context, id, driverID string, at time.Time) error
+
+	// MarkDriverReady completes and settles the handover. It must require an
+	// owner-ready timestamp and reject writes after the driver no-show
+	// deadline in the same transaction that credits the owner.
+	MarkDriverReady(ctx context.Context, id, driverID string, at time.Time) error
+
+	// Cancel ends a live reservation for either party. Owner cancellation
+	// always releases the hold and removes the listing; driver cancellation
+	// releases or forfeits according to FairCancel at the supplied instant.
+	Cancel(ctx context.Context, id, actorID string, at time.Time) error
+
 	// Sweep expires overdue spots and reservations, settling their ledger
 	// entries. It is the use case the background worker runs.
 	Sweep(ctx context.Context) (SweepResult, error)
@@ -49,6 +65,10 @@ type Store interface {
 
 // SweepResult is what one pass of the sweeper did, for logs and tests.
 type SweepResult struct {
+	ExpiredOffers       int
 	ExpiredSpots        int
+	DriverNoShows       int
+	OwnerNoShows        int
+	SafetyNetReleases   int
 	ExpiredReservations int
 }

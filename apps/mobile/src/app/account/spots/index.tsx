@@ -70,8 +70,7 @@ export default function MySpotsScreen() {
                 {item.properties.vehicle.plate} · {item.properties.vehicle.make_model}
               </Text>
               <Text style={accountStyles.rowMeta}>
-                From {new Date(item.properties.available_from).toLocaleString()} · to{" "}
-                {new Date(item.properties.expires_at).toLocaleString()}
+                Listed until {new Date(item.properties.listed_until).toLocaleString()}
               </Text>
               <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
                 {canEdit ? (

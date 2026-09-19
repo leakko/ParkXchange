@@ -32,6 +32,7 @@ const (
 	pkgAccounts     = "internal/accounts"
 	pkgSpots        = "internal/spots"
 	pkgVehicles     = "internal/vehicles"
+	pkgOffers       = "internal/offers"
 	pkgReservations = "internal/reservations"
 	pkgAuth         = "internal/auth"
 	pkgWeb          = "internal/web"
@@ -104,6 +105,12 @@ var rules = map[string]rule{
 		packages: []string{pkgDomain},
 	},
 
+	pkgOffers: {
+		why: "a use case package declares the ports it needs and depends only " +
+			"on the domain, so it can be tested without a database",
+		packages: []string{pkgDomain},
+	},
+
 	pkgVehicles: {
 		why: "a use case package declares the ports it needs and depends only " +
 			"on the domain, so it can be tested without a database",
@@ -128,7 +135,7 @@ var rules = map[string]rule{
 		why: "postgres is the database adapter: it implements the ports the " +
 			"use cases declare, which is why it may import them, and it is " +
 			"the only package allowed to speak SQL",
-		packages:   []string{pkgDomain, pkgAccounts, pkgSpots, pkgVehicles, pkgReservations, geoModule},
+		packages:   []string{pkgDomain, pkgAccounts, pkgSpots, pkgVehicles, pkgOffers, pkgReservations, geoModule},
 		thirdParty: []string{"github.com/jackc/pgx"},
 	},
 
@@ -136,7 +143,7 @@ var rules = map[string]rule{
 		why: "api is the HTTP adapter: it decodes requests, calls use cases " +
 			"and serialises results, and must reach the database only " +
 			"through a port",
-		packages:   []string{pkgDomain, pkgAccounts, pkgSpots, pkgVehicles, pkgReservations, pkgWeb, pkgConfig, pkgRealtime, geoModule},
+		packages:   []string{pkgDomain, pkgAccounts, pkgSpots, pkgVehicles, pkgOffers, pkgReservations, pkgWeb, pkgConfig, pkgRealtime, geoModule},
 		thirdParty: []string{"github.com/coder/websocket"},
 	},
 
@@ -240,6 +247,12 @@ var forbidden = []struct {
 			"the Store interface in reservations/ports.go instead",
 	},
 	{
+		importer: pkgOffers,
+		imported: pkgPostgres,
+		because: "a use case must not depend on an adapter. Add the method to " +
+			"the Store interface in offers/ports.go instead",
+	},
+	{
 		importer: pkgVehicles,
 		imported: pkgPostgres,
 		because: "a use case must not depend on an adapter. Add the method to " +
@@ -250,6 +263,12 @@ var forbidden = []struct {
 		imported: "net/http",
 		because: "a use case must work without a request. The expiry sweeper " +
 			"and the WebSocket hub call these same rules with no HTTP in sight",
+	},
+	{
+		importer: pkgOffers,
+		imported: "net/http",
+		because: "a use case must work without a request. If you need " +
+			"something from the request, pass it as an argument",
 	},
 	{
 		importer: pkgAccounts,
