@@ -33,8 +33,8 @@ func TestDiscoveryQueryUsesThePartialSpatialIndex(t *testing.T) {
 	)
 
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO users (email, password_hash, display_name)
-		VALUES ('planner@parkxchange.test', 'x', 'Planner')
+		INSERT INTO users (email, password_hash, display_name, phone)
+		VALUES ('planner@parkxchange.test', 'x', 'Planner', '+34600999001')
 	`); err != nil {
 		t.Fatalf("insert owner: %v", err)
 	}

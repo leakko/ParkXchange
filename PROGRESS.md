@@ -21,8 +21,8 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** none — mobile i18n (ES/EN) implemented on `main`
-  (local AsyncStorage preference; emulator smoke optional)
+- **Phase in progress:** none — location privacy reveal implemented on `main`
+  (annulus fuzz 12–30 m, gated vehicle/phone, mobile uncertainty circle)
 - **Last updated:** 2026-09-19
 - **Phases complete:** 12 of 12 (MVP)
 - **Blockers:** none open
@@ -31,9 +31,9 @@ If that test fails, fix the code, not the test.
 
 ## Next immediate step
 
-Smoke the mobile ES/EN language toggle on an emulator (Profile → Idioma). Optionally
-merge leftover post-MVP polish. Remaining infra work lives in
-`infra/pulumi/README.md` (EKS/Fargate, RDS, S3 PMTiles).
+Smoke the map: select a stranger spot → 30 m circle, no car/phone; after
+accepted reservation → exact pin + vehicle + phone. Then BlaBlaCar-style rating
+spec (follow-up). Remaining infra: `infra/pulumi/README.md`.
 
 ---
 

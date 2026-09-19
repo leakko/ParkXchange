@@ -70,7 +70,7 @@ export default function EditSpotScreen() {
     }
     setPrice((spot.properties.price_cents / 100).toFixed(2));
     setNotes(spot.properties.notes ?? "");
-    setVehicleId(spot.properties.vehicle.id);
+    setVehicleId(spot.properties.vehicle?.id ?? "");
     setHasPreferredTime(!!spot.properties.preferred_departure_at);
     setPreferredTime(
       spot.properties.preferred_departure_at

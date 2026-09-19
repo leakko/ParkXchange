@@ -29,12 +29,13 @@ func newFakeStore() *fakeStore {
 	}
 }
 
-func (f *fakeStore) CreateUser(_ context.Context, email domain.Email, passwordHash, displayName string) (domain.User, error) {
+func (f *fakeStore) CreateUser(_ context.Context, email domain.Email, passwordHash, displayName string, phone domain.Phone) (domain.User, error) {
 	user := domain.User{
 		ID:           "user-1",
 		Email:        email,
 		PasswordHash: passwordHash,
 		DisplayName:  displayName,
+		Phone:        phone,
 	}
 	f.users[user.ID] = user
 	return user, nil

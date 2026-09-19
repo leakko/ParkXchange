@@ -48,6 +48,7 @@ import {
   locationComponentReady,
 } from "@/map/followUser";
 import { MySpotLayers } from "@/map/MySpotLayers";
+import { UncertaintyCircle } from "@/map/UncertaintyCircle";
 import { partitionMapSpots } from "@/map/partitionMapSpots";
 import { pickAnnounceVehicle } from "@/map/pickAnnounceVehicle";
 import {
@@ -125,6 +126,25 @@ export default function MapScreen() {
     }
     void listVehicles().then(setVehicles).catch(() => setVehicles([]));
   }, [ready]);
+
+  // Keep the sheet in sync when the viewport fetch flips exact_location
+  // (e.g. after an offer is accepted and the driver becomes the holder).
+  useEffect(() => {
+    if (!selected?.id) {
+      return;
+    }
+    const live = featureById(String(selected.id));
+    if (!live) {
+      return;
+    }
+    if (
+      live.properties.exact_location !== selected.properties.exact_location ||
+      live.geometry.coordinates[0] !== selected.geometry.coordinates[0] ||
+      live.geometry.coordinates[1] !== selected.geometry.coordinates[1]
+    ) {
+      setSelected(live);
+    }
+  }, [featureById, selected]);
 
   const spotData = useMemo(() => {
     const features = collection.features.map((feature) => ({
@@ -452,6 +472,15 @@ export default function MapScreen() {
         {mineArmed ? (
           <MySpotLayers data={spotData.mine} onPressFeature={onPressFeature} />
         ) : null}
+        {selected &&
+        !selected.properties.exact_location &&
+        selected.geometry.coordinates[0] != null &&
+        selected.geometry.coordinates[1] != null ? (
+          <UncertaintyCircle
+            lon={selected.geometry.coordinates[0]}
+            lat={selected.geometry.coordinates[1]}
+          />
+        ) : null}
       </Map>
 
       {signedOut ? (
@@ -566,6 +595,7 @@ export default function MapScreen() {
               amount_cents: amountCents,
             });
             Alert.alert(t("map.alert.offerSent.title"), t("map.alert.offerSent.message"));
+            await refetch();
           } catch (err) {
             Alert.alert(
               t("map.alert.offerFailed.title"),

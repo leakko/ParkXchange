@@ -309,15 +309,15 @@ func TestUserEmailUniquenessIsCaseInsensitive(t *testing.T) {
 	ctx, tx := testdb.Begin(t)
 
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO users (email, password_hash, display_name)
-		VALUES ('Marco@ParkXchange.test', 'x', 'Marco')
+		INSERT INTO users (email, password_hash, display_name, phone)
+		VALUES ('Marco@ParkXchange.test', 'x', 'Marco', '+34600999002')
 	`); err != nil {
 		t.Fatalf("insert first user: %v", err)
 	}
 
 	_, err := tx.Exec(ctx, `
-		INSERT INTO users (email, password_hash, display_name)
-		VALUES ('marco@parkxchange.test', 'x', 'Marco Again')
+		INSERT INTO users (email, password_hash, display_name, phone)
+		VALUES ('marco@parkxchange.test', 'x', 'Marco Again', '+34600999003')
 	`)
 	if err == nil {
 		t.Fatal("two users differing only by email case were accepted")

@@ -36,6 +36,7 @@ func testConfig() config.Config {
 		RateLimitRPS:       1000,
 		RateLimitBurst:     1000,
 		JWTSecret:          []byte("test-secret-that-is-long-enough-for-hs256"),
+		LocationFuzzSecret: []byte("test-location-fuzz-secret-32bytes!!"),
 		AccessTokenTTL:     15 * time.Minute,
 		RefreshTokenTTL:    30 * 24 * time.Hour,
 	}
@@ -95,7 +96,7 @@ func newServerFrom(t *testing.T, cfg config.Config) (*httptest.Server, *postgres
 	}
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	hub := realtime.NewHub(realtime.DefaultSendBuffer)
+	hub := realtime.NewHub(realtime.DefaultSendBuffer, []byte("test-location-fuzz-secret-32bytes!!"))
 
 	listenCtx, stopListen := context.WithCancel(context.Background())
 	t.Cleanup(stopListen)
@@ -113,7 +114,7 @@ func newServerFrom(t *testing.T, cfg config.Config) (*httptest.Server, *postgres
 		Config:       cfg,
 		Logger:       log,
 		Accounts:     accountsService,
-		Spots:        spots.New(db),
+		Spots:        spots.New(db, []byte("test-location-fuzz-secret-32bytes!!")),
 		Offers:       offers.New(db),
 		Reservations: reservations.New(db),
 		Vehicles:     vehicles.NewService(db),

@@ -842,7 +842,7 @@ components:
 
     RegisterRequest:
       type: object
-      required: [email, password, display_name]
+      required: [email, password, display_name, phone]
       properties:
         email:
           type: string
@@ -854,6 +854,10 @@ components:
           type: string
           minLength: 2
           maxLength: 60
+        phone:
+          type: string
+          description: E.164 phone number (required at registration)
+          example: "+34600111222"
 
     LoginRequest:
       type: object
@@ -891,7 +895,7 @@ components:
 
     UserResponse:
       type: object
-      required: [id, email, display_name, rating_count, balance_cents]
+      required: [id, email, display_name, phone, rating_count, balance_cents]
       properties:
         id:
           type: string
@@ -901,6 +905,9 @@ components:
           format: email
         display_name:
           type: string
+        phone:
+          type: string
+          description: E.164 phone number of this account
         rating:
           type: number
           format: double
@@ -1097,7 +1104,6 @@ components:
         - auto_cancel_no_show
         - exact_location
         - is_mine
-        - vehicle
       properties:
         owner_id:
           type: string
@@ -1108,6 +1114,9 @@ components:
           type: number
           format: double
           nullable: true
+        owner_phone:
+          type: string
+          description: Owner E.164 phone; only present when exact_location is true
         size_class:
           type: string
         status:
@@ -1133,6 +1142,7 @@ components:
           type: boolean
         vehicle:
           $ref: "#/components/schemas/VehicleSummary"
+          description: Omitted until exact_location is true
 
     GeoJSONPoint:
       type: object

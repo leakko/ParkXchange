@@ -64,7 +64,7 @@ type Session struct {
 
 // Register creates an account and signs it in.
 func (s *Service) Register(ctx context.Context, in domain.NewUserInput, userAgent string) (Session, error) {
-	email, displayName, err := domain.NewUser(in)
+	email, displayName, phone, err := domain.NewUser(in)
 	if err != nil {
 		return Session{}, err
 	}
@@ -74,7 +74,7 @@ func (s *Service) Register(ctx context.Context, in domain.NewUserInput, userAgen
 		return Session{}, domain.Internal(err)
 	}
 
-	user, err := s.store.CreateUser(ctx, email, hash, displayName)
+	user, err := s.store.CreateUser(ctx, email, hash, displayName, phone)
 	if err != nil {
 		if errors.Is(err, domain.ErrDuplicate) {
 			// This does confirm that an address is registered, and there is no

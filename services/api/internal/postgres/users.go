@@ -11,16 +11,17 @@ import (
 
 // userColumns is shared by every user query so the scan order cannot drift
 // between them.
-const userColumns = `id, email, password_hash, display_name,
+const userColumns = `id, email, password_hash, display_name, phone,
                      rating_sum, rating_count, balance_cents, created_at`
 
 func scanUser(row pgx.Row) (domain.User, error) {
 	var (
 		user  domain.User
 		email string
+		phone string
 	)
 
-	err := row.Scan(&user.ID, &email, &user.PasswordHash, &user.DisplayName,
+	err := row.Scan(&user.ID, &email, &user.PasswordHash, &user.DisplayName, &phone,
 		&user.RatingSum, &user.RatingCount, &user.BalanceCents, &user.CreatedAt)
 	if err != nil {
 		return domain.User{}, translate(err, "scan user")
@@ -30,6 +31,7 @@ func scanUser(row pgx.Row) (domain.User, error) {
 	// written, and re-validating on read would make a row unreadable if the
 	// rules were ever tightened.
 	user.Email = domain.NewEmail(email)
+	user.Phone = domain.NewPhone(phone)
 	return user, nil
 }
 
@@ -38,6 +40,7 @@ func (db *DB) CreateUser(
 	ctx context.Context,
 	email domain.Email,
 	passwordHash, displayName string,
+	phone domain.Phone,
 ) (domain.User, error) {
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
@@ -46,10 +49,10 @@ func (db *DB) CreateUser(
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	user, err := scanUser(tx.QueryRow(ctx, `
-		INSERT INTO users (email, password_hash, display_name)
-		VALUES ($1, $2, $3)
+		INSERT INTO users (email, password_hash, display_name, phone)
+		VALUES ($1, $2, $3, $4)
 		RETURNING `+userColumns,
-		email.String(), passwordHash, displayName))
+		email.String(), passwordHash, displayName, phone.String()))
 	if err != nil {
 		return domain.User{}, err
 	}

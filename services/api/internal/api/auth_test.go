@@ -32,6 +32,7 @@ type session struct {
 		ID          string   `json:"id"`
 		Email       string   `json:"email"`
 		DisplayName string   `json:"display_name"`
+		Phone       string   `json:"phone"`
 		Rating      *float64 `json:"rating"`
 	} `json:"user"`
 }
@@ -79,6 +80,7 @@ func registerUser(t *testing.T, server *httptest.Server) (session, string, strin
 		"email":        email,
 		"password":     password,
 		"display_name": "Test User",
+		"phone": "+34600111222",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("register: status = %d, want 201 (body: %s)", resp.StatusCode, errorCode(t, resp))
@@ -138,6 +140,7 @@ func TestSessionResponseNeverLeaksTheHash(t *testing.T) {
 		"email":        email,
 		"password":     "a-perfectly-fine-password",
 		"display_name": "Leak Check",
+		"phone": "+34600111222",
 	})
 
 	var raw bytes.Buffer
@@ -160,27 +163,46 @@ func TestRegisterRejectsInvalidInput(t *testing.T) {
 		wantField string
 	}{
 		"missing email": {
-			body:      map[string]string{"password": "a-perfectly-fine-password", "display_name": "Nobody"},
+			body: map[string]string{
+				"password": "a-perfectly-fine-password", "display_name": "Nobody",
+				"phone": "+34600111222",
+			},
 			wantField: "email",
 		},
 		"malformed email": {
-			body:      map[string]string{"email": "not-an-address", "password": "a-perfectly-fine-password", "display_name": "Nobody"},
+			body: map[string]string{
+				"email": "not-an-address", "password": "a-perfectly-fine-password",
+				"display_name": "Nobody", "phone": "+34600111222",
+			},
 			wantField: "email",
 		},
 		"short password": {
-			body:      map[string]string{"email": uniqueEmail("short"), "password": "hunter2", "display_name": "Nobody"},
+			body: map[string]string{
+				"email": uniqueEmail("short"), "password": "hunter2",
+				"display_name": "Nobody", "phone": "+34600111222",
+			},
 			wantField: "password",
 		},
 		"empty display name": {
-			body:      map[string]string{"email": uniqueEmail("noname"), "password": "a-perfectly-fine-password", "display_name": ""},
+			body: map[string]string{
+				"email": uniqueEmail("noname"), "password": "a-perfectly-fine-password",
+				"display_name": "", "phone": "+34600111222",
+			},
 			wantField: "display_name",
 		},
 		"display name too long": {
 			body: map[string]string{
 				"email": uniqueEmail("longname"), "password": "a-perfectly-fine-password",
-				"display_name": strings.Repeat("x", 61),
+				"display_name": strings.Repeat("x", 61), "phone": "+34600111222",
 			},
 			wantField: "display_name",
+		},
+		"missing phone": {
+			body: map[string]string{
+				"email": uniqueEmail("nophone"), "password": "a-perfectly-fine-password",
+				"display_name": "Nobody",
+			},
+			wantField: "phone",
 		},
 	}
 
@@ -221,6 +243,7 @@ func TestRegisterRejectsDuplicateEmail(t *testing.T) {
 		"email":        email,
 		"password":     "a-completely-different-password",
 		"display_name": "Impostor",
+		"phone": "+34600111222",
 	})
 
 	if resp.StatusCode != http.StatusConflict {
@@ -241,6 +264,7 @@ func TestRegisterIsCaseInsensitiveOnEmail(t *testing.T) {
 		"email":        strings.ToUpper(email),
 		"password":     "a-completely-different-password",
 		"display_name": "Impostor",
+		"phone": "+34600111222",
 	})
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("status = %d, want 409 for the same address in a different case", resp.StatusCode)
@@ -482,6 +506,7 @@ func TestExpiredAccessTokenIsReportedAsExpired(t *testing.T) {
 		"email":        email,
 		"password":     "a-perfectly-fine-password",
 		"display_name": "Expiring User",
+		"phone": "+34600111222",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("register: status = %d, want 201", resp.StatusCode)
@@ -523,6 +548,7 @@ func TestAccessTokenSignedWithAnotherKeyIsRejected(t *testing.T) {
 		"email":        email,
 		"password":     "a-perfectly-fine-password",
 		"display_name": "Cross Key",
+		"phone": "+34600111222",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("register on B: status = %d, want 201", resp.StatusCode)

@@ -74,6 +74,9 @@ export default function AccountHubScreen() {
     <ScrollView style={accountStyles.screen} contentContainerStyle={accountStyles.scroll}>
       <Text style={accountStyles.title}>{user.display_name}</Text>
       <Text style={accountStyles.subtitle}>{user.email}</Text>
+      {user.phone ? (
+        <Text style={accountStyles.subtitle}>{user.phone}</Text>
+      ) : null}
       <Text style={accountStyles.meta}>
         {rating} · {t("account.balance", { amount: balance })}
       </Text>

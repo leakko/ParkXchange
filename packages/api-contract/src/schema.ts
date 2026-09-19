@@ -518,6 +518,11 @@ export interface components {
             email: string;
             password: string;
             display_name: string;
+            /**
+             * @description E.164 phone number (required at registration)
+             * @example +34600111222
+             */
+            phone: string;
         };
         LoginRequest: {
             /** Format: email */
@@ -542,6 +547,8 @@ export interface components {
             /** Format: email */
             email: string;
             display_name: string;
+            /** @description E.164 phone number of this account */
+            phone: string;
             /** Format: double */
             rating?: number | null;
             rating_count: number;
@@ -636,6 +643,8 @@ export interface components {
             owner_name: string;
             /** Format: double */
             owner_rating?: number | null;
+            /** @description Owner E.164 phone; only present when exact_location is true */
+            owner_phone?: string;
             size_class: string;
             status: string;
             price_cents: number;
@@ -648,7 +657,8 @@ export interface components {
             auto_cancel_no_show: boolean;
             exact_location: boolean;
             is_mine: boolean;
-            vehicle: components["schemas"]["VehicleSummary"];
+            /** @description Omitted until exact_location is true */
+            vehicle?: components["schemas"]["VehicleSummary"];
         };
         GeoJSONPoint: {
             /** @enum {string} */

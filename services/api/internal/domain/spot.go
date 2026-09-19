@@ -119,6 +119,10 @@ type Spot struct {
 	OwnerName   string
 	OwnerRating *float64
 
+	// OwnerPhone is the owner's E.164 number. Joined on read paths but only
+	// serialised when the viewer may see exact meeting details.
+	OwnerPhone string
+
 	// HolderID is the driver with a live reservation on this spot, if any.
 	// Empty means the spot is unclaimed. Carried on the spot so the privacy
 	// rule can disclose exact coordinates to that driver without a second
@@ -201,18 +205,21 @@ type Viewer struct {
 // CoordinatesFor returns the position to disclose to a viewer, and whether it
 // is the exact one.
 //
-// While a spot is merely on offer, everyone sees a coordinate snapped to a
-// ~30 m grid. Publishing the exact position of an unclaimed space would tell
-// anybody with the app precisely where a specific car is about to leave, which
-// is a surveillance feature nobody asked for. The owner always sees their own
-// spot exactly, and the driver who holds the reservation gets the exact
-// position because they have to find it.
-func (s Spot) CoordinatesFor(viewer Viewer) (lon, lat float64, exact bool) {
+// While a spot is merely on offer, strangers see a deterministic centre offset
+// into a 12–30 m annulus around the true point (see geo.Fuzz). Publishing the
+// exact position of an unclaimed space would tell anybody with the app where a
+// specific car is about to leave. The owner always sees their own spot
+// exactly, and the driver who holds the reservation gets the exact position
+// because they have to find it.
+//
+// fuzzSeed is normally HMAC-SHA256(LOCATION_FUZZ_SECRET, spot_id). An empty
+// seed must not be used in production: geo.Fuzz treats it as the identity.
+func (s Spot) CoordinatesFor(viewer Viewer, fuzzSeed []byte) (lon, lat float64, exact bool) {
 	if s.OwnedBy(viewer.UserID) || viewer.HoldsReservation {
 		return s.Lon, s.Lat, true
 	}
 
-	fuzzedLon, fuzzedLat := geo.Fuzz(s.Lon, s.Lat)
+	fuzzedLon, fuzzedLat := geo.Fuzz(s.Lon, s.Lat, fuzzSeed)
 	return fuzzedLon, fuzzedLat, false
 }
 

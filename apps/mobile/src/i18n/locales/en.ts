@@ -148,6 +148,10 @@ export const en: Record<TranslationKey, string> = {
 
   "spotSheet.yourListing": "Your listing",
   "spotSheet.meta": "{sizeClass} · €{price} · {status}",
+  "spotSheet.rating": "{score} ★",
+  "spotSheet.ownerPhone": "Owner: {phone}",
+  "spotSheet.approxLocation":
+    "Exact location, car details, and phone unlock after the offer is accepted.",
   "spotSheet.flexibleDeparture": "Flexible departure time",
   "spotSheet.freeAt": "Free at {datetime}",
   "spotSheet.listedUntil": "Listed until {datetime}",

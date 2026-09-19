@@ -75,7 +75,9 @@ export default function MySpotsScreen() {
             >
               <Text style={accountStyles.rowTitle}>{spotTitle(item, t)}</Text>
               <Text style={accountStyles.rowMeta}>
-                {item.properties.vehicle.plate} · {item.properties.vehicle.make_model}
+                {item.properties.vehicle
+                  ? `${item.properties.vehicle.plate} · ${item.properties.vehicle.make_model}`
+                  : item.properties.size_class}
               </Text>
               <Text style={accountStyles.rowMeta}>
                 {t("account.spots.listedUntil", {

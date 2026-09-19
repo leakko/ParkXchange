@@ -105,16 +105,17 @@ SELECT id, 'credit', $1::bigint, 'signup grant'
 // Two named accounts for manual testing, plus $2 generated ones so spots have
 // a realistic spread of owners.
 const insertUsersSQL = `
-INSERT INTO users (email, password_hash, display_name, rating_sum, rating_count)
-SELECT email, $1::text, display_name, rating_sum, rating_count
+INSERT INTO users (email, password_hash, display_name, phone, rating_sum, rating_count)
+SELECT email, $1::text, display_name, phone, rating_sum, rating_count
   FROM (VALUES
-           ('owner@parkxchange.test',  'Owner Demo',  27, 6),
-           ('driver@parkxchange.test', 'Driver Demo', 22, 5)
-       ) AS demo(email, display_name, rating_sum, rating_count)
+           ('owner@parkxchange.test',  'Owner Demo',  '+34600111001', 27, 6),
+           ('driver@parkxchange.test', 'Driver Demo', '+34600111002', 22, 5)
+       ) AS demo(email, display_name, phone, rating_sum, rating_count)
 UNION ALL
 SELECT 'driver' || lpad(g.i::text, 2, '0') || '@parkxchange.test',
        $1::text,
        'Driver ' || lpad(g.i::text, 2, '0'),
+       '+34600' || lpad((100000 + g.i)::text, 6, '0'),
        (12 + (g.i % 8))::int,
        (3 + (g.i % 5))::int
   FROM generate_series(1, $2::int) AS g(i)

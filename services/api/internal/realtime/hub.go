@@ -23,7 +23,8 @@ const DefaultSendBuffer = 16
 // the point. Matching is O(connections) per event, which is the documented
 // MVP cost; the upgrade path is a tile index, not a different bus.
 type Hub struct {
-	buffer int
+	buffer             int
+	locationFuzzSecret []byte
 
 	mu      sync.Mutex
 	clients map[*Client]struct{}
@@ -42,13 +43,14 @@ type Client struct {
 }
 
 // NewHub builds a hub. buffer is the per-client send queue length.
-func NewHub(buffer int) *Hub {
+func NewHub(buffer int, locationFuzzSecret []byte) *Hub {
 	if buffer < 1 {
 		buffer = DefaultSendBuffer
 	}
 	return &Hub{
-		buffer:  buffer,
-		clients: make(map[*Client]struct{}),
+		buffer:             buffer,
+		locationFuzzSecret: locationFuzzSecret,
+		clients:            make(map[*Client]struct{}),
 	}
 }
 
@@ -99,7 +101,7 @@ func (h *Hub) Publish(ev domain.SpotEvent) {
 		if !client.watches(ev.Lon, ev.Lat) {
 			continue
 		}
-		payload, err := encodeFor(client.claims, ev)
+		payload, err := encodeFor(client.claims, ev, h.locationFuzzSecret)
 		if err != nil {
 			continue
 		}
@@ -110,7 +112,7 @@ func (h *Hub) Publish(ev domain.SpotEvent) {
 	}
 }
 
-func encodeFor(viewer domain.Claims, ev domain.SpotEvent) ([]byte, error) {
+func encodeFor(viewer domain.Claims, ev domain.SpotEvent, fuzzSecret []byte) ([]byte, error) {
 	lon, lat, exact := domain.Spot{
 		OwnerID:  ev.OwnerID,
 		Lon:      ev.Lon,
@@ -119,7 +121,7 @@ func encodeFor(viewer domain.Claims, ev domain.SpotEvent) ([]byte, error) {
 	}.CoordinatesFor(domain.Viewer{
 		UserID:           viewer.UserID,
 		HoldsReservation: ev.HolderID != "" && ev.HolderID == viewer.UserID,
-	})
+	}, geo.FuzzSeed(fuzzSecret, ev.SpotID))
 
 	wire := struct {
 		Type       string  `json:"type"`

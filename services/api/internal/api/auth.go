@@ -18,6 +18,7 @@ type registerRequest struct {
 	Email       string `json:"email"`
 	Password    string `json:"password"`
 	DisplayName string `json:"display_name"`
+	Phone       string `json:"phone"`
 }
 
 type loginRequest struct {
@@ -41,6 +42,7 @@ type userResponse struct {
 	ID           string   `json:"id"`
 	Email        string   `json:"email"`
 	DisplayName  string   `json:"display_name"`
+	Phone        string   `json:"phone"`
 	Rating       *float64 `json:"rating"`
 	RatingCount  int      `json:"rating_count"`
 	BalanceCents int64    `json:"balance_cents"`
@@ -51,6 +53,7 @@ func toUserResponse(u domain.User) userResponse {
 		ID:           u.ID,
 		Email:        u.Email.String(),
 		DisplayName:  u.DisplayName,
+		Phone:        u.Phone.String(),
 		RatingCount:  u.RatingCount,
 		BalanceCents: u.BalanceCents,
 	}
@@ -86,6 +89,7 @@ func (a *API) handleRegister(w http.ResponseWriter, r *http.Request) error {
 		Email:       req.Email,
 		Password:    req.Password,
 		DisplayName: req.DisplayName,
+		Phone:       req.Phone,
 	}, r.UserAgent())
 	if err != nil {
 		return err

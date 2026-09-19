@@ -184,7 +184,7 @@ var barcelona = geo.BBox{MinLon: 2.15, MinLat: 41.38, MaxLon: 2.19, MaxLat: 41.4
 func TestInViewportRejectsAnUnusableBBox(t *testing.T) {
 	t.Parallel()
 
-	service := spots.New(newFakeStore())
+	service := spots.New(newFakeStore(), []byte("test-location-fuzz-secret-32bytes!!"))
 
 	tests := map[string]geo.BBox{
 		"the whole planet": {MinLon: -180, MinLat: -85, MaxLon: 180, MaxLat: 85},
@@ -210,7 +210,7 @@ func TestInViewportRejectsAnUnusableBBox(t *testing.T) {
 func TestInViewportRejectsAZoomBelowTheMinimum(t *testing.T) {
 	t.Parallel()
 
-	service := spots.New(newFakeStore())
+	service := spots.New(newFakeStore(), []byte("test-location-fuzz-secret-32bytes!!"))
 
 	_, err := service.InViewport(context.Background(), spots.ViewportQuery{
 		BBox: barcelona,
@@ -226,7 +226,7 @@ func TestInViewportRejectsAZoomBelowTheMinimum(t *testing.T) {
 func TestInViewportAllowsAnUnspecifiedZoom(t *testing.T) {
 	t.Parallel()
 
-	service := spots.New(newFakeStore())
+	service := spots.New(newFakeStore(), []byte("test-location-fuzz-secret-32bytes!!"))
 
 	if _, err := service.InViewport(context.Background(), spots.ViewportQuery{
 		BBox: barcelona,
@@ -241,7 +241,7 @@ func TestInViewportSplitsAWrappingViewport(t *testing.T) {
 	t.Parallel()
 
 	store := newFakeStore()
-	service := spots.New(store)
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
 
 	fiji := geo.BBox{MinLon: 179.9, MinLat: -16.6, MaxLon: -179.9, MaxLat: -16.4}
 
@@ -263,7 +263,7 @@ func TestInViewportCapsTheResultCount(t *testing.T) {
 	t.Parallel()
 
 	store := newFakeStore()
-	service := spots.New(store)
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
 
 	if _, err := service.InViewport(context.Background(), spots.ViewportQuery{
 		BBox: barcelona,
@@ -289,7 +289,7 @@ func TestInViewportAppliesThePrivacyRule(t *testing.T) {
 		Lon: exactLon, Lat: exactLat, Status: domain.SpotAvailable,
 	}}
 
-	service := spots.New(store)
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
 
 	t.Run("a stranger gets snapped coordinates", func(t *testing.T) {
 		visible, err := service.InViewport(context.Background(), spots.ViewportQuery{
@@ -336,7 +336,7 @@ func TestInViewportAppliesThePrivacyRule(t *testing.T) {
 func TestWithdrawRequiresAuthentication(t *testing.T) {
 	t.Parallel()
 
-	service := spots.New(newFakeStore())
+	service := spots.New(newFakeStore(), []byte("test-location-fuzz-secret-32bytes!!"))
 
 	err := service.Withdraw(context.Background(), "spot-1", domain.Claims{})
 	if domain.KindOf(err) != domain.KindUnauthenticated {
@@ -354,7 +354,7 @@ func TestWithdrawReportsSomebodyElsesSpotAsMissing(t *testing.T) {
 		ID: "spot-1", OwnerID: "owner-1", Status: domain.SpotAvailable,
 	}
 
-	service := spots.New(store)
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
 
 	err := service.Withdraw(context.Background(), "spot-1", domain.Claims{UserID: "intruder"})
 	if domain.KindOf(err) != domain.KindNotFound {
@@ -375,7 +375,7 @@ func TestWithdrawOfAReservedSpotSucceeds(t *testing.T) {
 		ID: "spot-1", OwnerID: "owner-1", Status: domain.SpotReserved,
 	}
 
-	service := spots.New(store)
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
 
 	if err := service.Withdraw(context.Background(), "spot-1", domain.Claims{UserID: "owner-1"}); err != nil {
 		t.Fatalf("Withdraw: %v", err)
@@ -396,7 +396,7 @@ func TestWithdrawReportsALostRaceAsConflict(t *testing.T) {
 	}
 	store.cancelErr = domain.ErrConflict
 
-	service := spots.New(store)
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
 
 	err := service.Withdraw(context.Background(), "spot-1", domain.Claims{UserID: "owner-1"})
 	if domain.KindOf(err) != domain.KindConflict {
@@ -412,7 +412,7 @@ func TestWithdrawSucceedsForTheOwner(t *testing.T) {
 		ID: "spot-1", OwnerID: "owner-1", Status: domain.SpotAvailable,
 	}
 
-	service := spots.New(store)
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
 
 	if err := service.Withdraw(
 		context.Background(), "spot-1", domain.Claims{UserID: "owner-1"},
@@ -428,7 +428,7 @@ func TestWithdrawSucceedsForTheOwner(t *testing.T) {
 func TestWithdrawReportsAMissingSpot(t *testing.T) {
 	t.Parallel()
 
-	service := spots.New(newFakeStore())
+	service := spots.New(newFakeStore(), []byte("test-location-fuzz-secret-32bytes!!"))
 
 	err := service.Withdraw(context.Background(), "nope", domain.Claims{UserID: "owner-1"})
 	if domain.KindOf(err) != domain.KindNotFound {
@@ -448,7 +448,7 @@ func TestGetHidesAnExpiredSpotFromStrangers(t *testing.T) {
 		ExpiresAt:     time.Now().Add(-time.Hour),
 	}
 
-	service := spots.New(store)
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
 
 	_, err := service.Get(context.Background(), "spot-1", domain.Claims{UserID: "stranger"})
 	if domain.KindOf(err) != domain.KindNotFound {
@@ -466,7 +466,7 @@ func TestGetHidesAnExpiredSpotFromStrangers(t *testing.T) {
 func TestOfferValidatesThroughTheDomain(t *testing.T) {
 	t.Parallel()
 
-	service := spots.New(newFakeStore())
+	service := spots.New(newFakeStore(), []byte("test-location-fuzz-secret-32bytes!!"))
 
 	_, err := service.Offer(context.Background(), domain.NewSpotInput{
 		OwnerID:    "owner-1",
@@ -485,7 +485,7 @@ func TestOfferValidatesThroughTheDomain(t *testing.T) {
 func TestOfferRejectsAMissingVehicle(t *testing.T) {
 	t.Parallel()
 
-	service := spots.New(newFakeStore())
+	service := spots.New(newFakeStore(), []byte("test-location-fuzz-secret-32bytes!!"))
 
 	_, err := service.Offer(context.Background(), domain.NewSpotInput{
 		OwnerID:    "owner-1",
@@ -507,7 +507,7 @@ func TestOfferRejectsAVehicleTheCallerDoesNotOwn(t *testing.T) {
 	store.ownedVehicles = map[string]map[string]bool{
 		"owner-1": {"mine": true},
 	}
-	service := spots.New(store)
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
 
 	_, err := service.Offer(context.Background(), domain.NewSpotInput{
 		OwnerID:    "owner-1",
@@ -530,7 +530,7 @@ func TestOfferPersistsAnAvailableSpot(t *testing.T) {
 	store.ownedVehicles = map[string]map[string]bool{
 		"owner-1": {"vehicle-1": true},
 	}
-	service := spots.New(store)
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
 
 	spot, err := service.Offer(context.Background(), domain.NewSpotInput{
 		OwnerID:    "owner-1",
@@ -568,7 +568,7 @@ func TestUpdateRequiresAnAvailableOwnedSpot(t *testing.T) {
 	store.ownedVehicles = map[string]map[string]bool{
 		"owner-1": {"vehicle-1": true, "vehicle-2": true},
 	}
-	service := spots.New(store)
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
 
 	price := 200
 	_, err := service.Update(context.Background(), "spot-1",
@@ -608,7 +608,7 @@ func TestUpdatePersistsAnOwnedAvailableSpot(t *testing.T) {
 	store.ownedVehicles = map[string]map[string]bool{
 		"owner-1": {"vehicle-1": true, "vehicle-2": true},
 	}
-	service := spots.New(store)
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
 
 	price := 250
 	notes := "behind the blue van"
@@ -646,7 +646,7 @@ func TestUpdateExpiresInExtendsFromNow(t *testing.T) {
 		AvailableFrom: time.Now(),
 		ExpiresAt:     time.Now().Add(30 * time.Minute),
 	}
-	service := spots.New(store)
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
 
 	before := time.Now()
 	duration := 60 * time.Minute
@@ -664,7 +664,7 @@ func TestUpdateExpiresInExtendsFromNow(t *testing.T) {
 func TestMineRequiresAuthentication(t *testing.T) {
 	t.Parallel()
 
-	service := spots.New(newFakeStore())
+	service := spots.New(newFakeStore(), []byte("test-location-fuzz-secret-32bytes!!"))
 
 	_, err := service.Mine(context.Background(), domain.Claims{})
 	if domain.KindOf(err) != domain.KindUnauthenticated {
@@ -682,7 +682,7 @@ func TestStoreFailuresBecomeInternalErrors(t *testing.T) {
 	}
 	store.cancelErr = errors.New("connection reset by peer")
 
-	service := spots.New(store)
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
 
 	err := service.Withdraw(context.Background(), "spot-1", domain.Claims{UserID: "owner-1"})
 	if domain.KindOf(err) != domain.KindInternal {

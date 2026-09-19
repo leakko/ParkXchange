@@ -57,6 +57,7 @@ type feature struct {
 		OwnerID       string     `json:"owner_id"`
 		OwnerName     string     `json:"owner_name"`
 		OwnerRating   *float64   `json:"owner_rating"`
+		OwnerPhone    string     `json:"owner_phone"`
 		Size          string     `json:"size_class"`
 		Status        string     `json:"status"`
 		PriceCents    int        `json:"price_cents"`
@@ -478,6 +479,12 @@ func TestListSpotsFuzzesCoordinatesForStrangers(t *testing.T) {
 		if got.Geometry.Coordinates[0] == at.Lon && got.Geometry.Coordinates[1] == at.Lat {
 			t.Error("an anonymous viewer received the exact coordinates")
 		}
+		if got.Properties.Vehicle != nil {
+			t.Error("anonymous viewer received vehicle details")
+		}
+		if got.Properties.OwnerPhone != "" {
+			t.Error("anonymous viewer received owner phone")
+		}
 	})
 
 	t.Run("another signed-in user", func(t *testing.T) {
@@ -843,12 +850,18 @@ func TestSpotVehiclePhotoReturnsBytes(t *testing.T) {
 	}
 
 	resp := authedRequest(t, server, http.MethodGet,
-		"/v1/spots/"+created.ID+"/vehicle/photo", driver.AccessToken, nil)
+		"/v1/spots/"+created.ID+"/vehicle/photo", owner.AccessToken, nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET photo status = %d, want 200 (%s)", resp.StatusCode, errorCode(t, resp))
 	}
 	if ct := resp.Header.Get("Content-Type"); ct != "image/jpeg" {
 		t.Errorf("Content-Type = %q, want image/jpeg", ct)
+	}
+
+	denied := authedRequest(t, server, http.MethodGet,
+		"/v1/spots/"+created.ID+"/vehicle/photo", driver.AccessToken, nil)
+	if denied.StatusCode != http.StatusNotFound {
+		t.Errorf("stranger photo status = %d, want 404", denied.StatusCode)
 	}
 }
 

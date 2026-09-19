@@ -57,6 +57,11 @@ type Config struct {
 	// makes it harder to log by accident.
 	JWTSecret []byte
 
+	// LocationFuzzSecret keys the deterministic offset applied to unclaimed
+	// spot coordinates. Kept separate from JWTSecret so rotating auth does
+	// not reshuffle every map pin.
+	LocationFuzzSecret []byte
+
 	// AccessTokenTTL is how long an access token stays valid. Access tokens
 	// cannot be revoked, so this is the window a stolen one is useful for.
 	AccessTokenTTL time.Duration
@@ -155,6 +160,16 @@ func Load() (Config, error) {
 		problems = append(problems, fmt.Sprintf(
 			"JWT_SECRET must be at least %d bytes outside development "+
 				"(generate one with 'task auth:secret')", minJWTSecretBytes))
+	}
+
+	cfg.LocationFuzzSecret = []byte(os.Getenv("LOCATION_FUZZ_SECRET"))
+	switch {
+	case len(cfg.LocationFuzzSecret) == 0:
+		problems = append(problems, "LOCATION_FUZZ_SECRET is required")
+	case len(cfg.LocationFuzzSecret) < minJWTSecretBytes && cfg.Env != defaultEnv:
+		problems = append(problems, fmt.Sprintf(
+			"LOCATION_FUZZ_SECRET must be at least %d bytes outside development",
+			minJWTSecretBytes))
 	}
 
 	// In development an empty allowlist means "anything", which is convenient

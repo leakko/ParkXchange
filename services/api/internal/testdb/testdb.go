@@ -76,8 +76,8 @@ func InsertUser(t *testing.T, ctx context.Context, tx pgx.Tx, label string) stri
 
 	var id string
 	err := tx.QueryRow(ctx, `
-		INSERT INTO users (email, password_hash, display_name)
-		VALUES ($1 || '@test.invalid', 'x', $2)
+		INSERT INTO users (email, password_hash, display_name, phone)
+		VALUES ($1 || '@test.invalid', 'x', $2, '+34600111222')
 		RETURNING id
 	`, label, label).Scan(&id)
 	if err != nil {

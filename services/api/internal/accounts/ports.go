@@ -22,7 +22,7 @@ import (
 type Store interface {
 	// CreateUser registers an account, reporting domain.ErrDuplicate if the
 	// address is taken.
-	CreateUser(ctx context.Context, email domain.Email, passwordHash, displayName string) (domain.User, error)
+	CreateUser(ctx context.Context, email domain.Email, passwordHash, displayName string, phone domain.Phone) (domain.User, error)
 
 	// UserByEmail finds an account for login, reporting domain.ErrNoRows when
 	// there is none.

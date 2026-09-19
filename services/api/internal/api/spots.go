@@ -25,6 +25,7 @@ type spotProperties struct {
 	OwnerID     string   `json:"owner_id"`
 	OwnerName   string   `json:"owner_name"`
 	OwnerRating *float64 `json:"owner_rating"`
+	OwnerPhone  string   `json:"owner_phone,omitempty"`
 
 	Size       string `json:"size_class"`
 	Status     string `json:"status"`
@@ -38,15 +39,17 @@ type spotProperties struct {
 	AutoCancelNoShow     bool       `json:"auto_cancel_no_show"`
 
 	// ExactLocation tells the client whether the geometry is the real position
-	// or a point snapped to the privacy grid, so it can draw a pin or an area
-	// accordingly instead of implying precision it does not have.
+	// or an offset privacy centre, so it can draw a pin or an uncertainty
+	// circle instead of implying precision it does not have.
 	ExactLocation bool `json:"exact_location"`
 
 	// IsMine saves the client from comparing owner ids against its own token
 	// to decide whether to offer a withdraw button.
 	IsMine bool `json:"is_mine"`
 
-	Vehicle vehicleSummaryJSON `json:"vehicle"`
+	// Vehicle is omitted for strangers: the car identity is part of what is
+	// sold with the reservation.
+	Vehicle *vehicleSummaryJSON `json:"vehicle,omitempty"`
 }
 
 type vehicleSummaryJSON struct {
@@ -74,7 +77,7 @@ func toVehicleSummary(v domain.VehicleSummary) vehicleSummaryJSON {
 func toFeature(visible spots.VisibleSpot, viewer domain.Claims) geo.Feature[spotProperties] {
 	spot := visible.Spot
 
-	return geo.NewFeature(spot.ID, visible.Lon, visible.Lat, spotProperties{
+	props := spotProperties{
 		OwnerID:              spot.OwnerID,
 		OwnerName:            spot.OwnerName,
 		OwnerRating:          spot.OwnerRating,
@@ -88,8 +91,15 @@ func toFeature(visible spots.VisibleSpot, viewer domain.Claims) geo.Feature[spot
 		AutoCancelNoShow:     spot.AutoCancelNoShow,
 		ExactLocation:        visible.Exact,
 		IsMine:               spot.OwnedBy(viewer.UserID),
-		Vehicle:              toVehicleSummary(spot.Vehicle),
-	})
+	}
+	if visible.Exact {
+		props.OwnerPhone = spot.OwnerPhone
+		if spot.Vehicle.ID != "" {
+			v := toVehicleSummary(spot.Vehicle)
+			props.Vehicle = &v
+		}
+	}
+	return geo.NewFeature(spot.ID, visible.Lon, visible.Lat, props)
 }
 
 func toFeatureCollection(

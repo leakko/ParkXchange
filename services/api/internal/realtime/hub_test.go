@@ -12,7 +12,7 @@ import (
 func TestHubDeliversOnlyToMatchingViewports(t *testing.T) {
 	t.Parallel()
 
-	hub := NewHub(8)
+	hub := NewHub(8, []byte("test-location-fuzz-secret-32bytes!!"))
 	inside := hub.Connect(domain.Claims{})
 	outside := hub.Connect(domain.Claims{})
 
@@ -48,7 +48,7 @@ func TestHubDeliversOnlyToMatchingViewports(t *testing.T) {
 func TestHubIgnoresClientsWithNoViewport(t *testing.T) {
 	t.Parallel()
 
-	hub := NewHub(8)
+	hub := NewHub(8, []byte("test-location-fuzz-secret-32bytes!!"))
 	idle := hub.Connect(domain.Claims{})
 
 	hub.Publish(domain.SpotEvent{
@@ -68,7 +68,7 @@ func TestHubIgnoresClientsWithNoViewport(t *testing.T) {
 func TestHubDropsASlowClient(t *testing.T) {
 	t.Parallel()
 
-	hub := NewHub(1)
+	hub := NewHub(1, []byte("test-location-fuzz-secret-32bytes!!"))
 	slow := hub.Connect(domain.Claims{})
 	hub.SetViewport(slow, barcelonaCentre())
 
@@ -89,7 +89,7 @@ func TestHubDropsASlowClient(t *testing.T) {
 func TestHubStopsSendingAfterDisconnect(t *testing.T) {
 	t.Parallel()
 
-	hub := NewHub(8)
+	hub := NewHub(8, []byte("test-location-fuzz-secret-32bytes!!"))
 	client := hub.Connect(domain.Claims{})
 	hub.SetViewport(client, barcelonaCentre())
 	hub.Disconnect(client)

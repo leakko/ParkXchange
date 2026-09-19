@@ -325,6 +325,9 @@ type RegisterRequest struct {
 	DisplayName string              `json:"display_name"`
 	Email       openapi_types.Email `json:"email"`
 	Password    string              `json:"password"`
+
+	// Phone E.164 phone number (required at registration)
+	Phone string `json:"phone"`
 }
 
 // ReservationResponse defines model for ReservationResponse.
@@ -400,22 +403,25 @@ type SpotFeatureCollectionType string
 
 // SpotProperties defines model for SpotProperties.
 type SpotProperties struct {
-	AddressHint          *string            `json:"address_hint,omitempty"`
-	AutoCancelNoShow     bool               `json:"auto_cancel_no_show"`
-	ExactLocation        bool               `json:"exact_location"`
-	IsMine               bool               `json:"is_mine"`
-	ListedUntil          time.Time          `json:"listed_until"`
-	Notes                *string            `json:"notes,omitempty"`
-	OwnerId              openapi_types.UUID `json:"owner_id"`
-	OwnerName            string             `json:"owner_name"`
-	OwnerRating          *float64           `json:"owner_rating,omitempty"`
-	PreferredDepartureAt *time.Time         `json:"preferred_departure_at,omitempty"`
-	PriceCents           int                `json:"price_cents"`
-	SizeClass            string             `json:"size_class"`
-	Status               string             `json:"status"`
+	AddressHint      *string            `json:"address_hint,omitempty"`
+	AutoCancelNoShow bool               `json:"auto_cancel_no_show"`
+	ExactLocation    bool               `json:"exact_location"`
+	IsMine           bool               `json:"is_mine"`
+	ListedUntil      time.Time          `json:"listed_until"`
+	Notes            *string            `json:"notes,omitempty"`
+	OwnerId          openapi_types.UUID `json:"owner_id"`
+	OwnerName        string             `json:"owner_name"`
 
-	// Vehicle Claimer-visible car identity embedded on spot features
-	Vehicle VehicleSummary `json:"vehicle"`
+	// OwnerPhone Owner E.164 phone; only present when exact_location is true
+	OwnerPhone           *string    `json:"owner_phone,omitempty"`
+	OwnerRating          *float64   `json:"owner_rating,omitempty"`
+	PreferredDepartureAt *time.Time `json:"preferred_departure_at,omitempty"`
+	PriceCents           int        `json:"price_cents"`
+	SizeClass            string     `json:"size_class"`
+	Status               string     `json:"status"`
+
+	// Vehicle Omitted until exact_location is true
+	Vehicle *VehicleSummary `json:"vehicle,omitempty"`
 }
 
 // TicketResponse defines model for TicketResponse.
@@ -457,8 +463,11 @@ type UserResponse struct {
 	DisplayName  string              `json:"display_name"`
 	Email        openapi_types.Email `json:"email"`
 	Id           openapi_types.UUID  `json:"id"`
-	Rating       *float64            `json:"rating,omitempty"`
-	RatingCount  int                 `json:"rating_count"`
+
+	// Phone E.164 phone number of this account
+	Phone       string   `json:"phone"`
+	Rating      *float64 `json:"rating,omitempty"`
+	RatingCount int      `json:"rating_count"`
 }
 
 // VehicleResponse defines model for VehicleResponse.

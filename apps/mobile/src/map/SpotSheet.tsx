@@ -68,9 +68,11 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
   const [amount, setAmount] = useState("");
   const price = spot ? (spot.properties.price_cents / 100).toFixed(2) : "";
   const coords = spot?.geometry.coordinates;
+  const exact = !!spot?.properties.exact_location;
   const isActiveForSpot =
     !!active && !!spot && String(active.spot_id) === String(spot.id);
-  const vehicle = spot?.properties.vehicle;
+  const vehicle = exact ? spot?.properties.vehicle : undefined;
+  const ownerPhone = exact ? spot?.properties.owner_phone : undefined;
   const photoUrl =
     vehicle?.has_photo && spot?.id
       ? spotVehiclePhotoUrl(String(spot.id))
@@ -112,6 +114,13 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
         {spot ? (
           <>
             <Text style={styles.title}>{spot.properties.owner_name}</Text>
+            {spot.properties.owner_rating != null ? (
+              <Text style={styles.meta}>
+                {t("spotSheet.rating", {
+                  score: spot.properties.owner_rating.toFixed(1),
+                })}
+              </Text>
+            ) : null}
             {spot.properties.is_mine ? (
               <Text style={styles.mineBadge}>{t("spotSheet.yourListing")}</Text>
             ) : null}
@@ -148,6 +157,16 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                   />
                 ) : null}
               </View>
+            ) : null}
+
+            {ownerPhone ? (
+              <Text style={styles.hint}>
+                {t("spotSheet.ownerPhone", { phone: ownerPhone })}
+              </Text>
+            ) : null}
+
+            {!exact && !spot.properties.is_mine ? (
+              <Text style={styles.notes}>{t("spotSheet.approxLocation")}</Text>
             ) : null}
 
             <Text style={styles.freeAt}>
@@ -282,7 +301,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                 </>
               ) : null}
 
-              {coords && coords[0] != null && coords[1] != null ? (
+              {exact && coords && coords[0] != null && coords[1] != null ? (
                 <Pressable
                   style={styles.secondary}
                   onPress={() =>

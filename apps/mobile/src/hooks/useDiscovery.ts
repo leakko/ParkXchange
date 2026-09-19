@@ -27,7 +27,11 @@ export function defaultTimeWindow(now = new Date()): { from: string; to: string 
 }
 
 function vehicleIncomplete(feature: SpotFeature | undefined): boolean {
-  const v = feature?.properties.vehicle;
+  if (!feature?.properties.exact_location) {
+    // Pre-reservation payloads omit the car on purpose; do not refetch forever.
+    return false;
+  }
+  const v = feature.properties.vehicle;
   return !v?.id || !v.plate;
 }
 

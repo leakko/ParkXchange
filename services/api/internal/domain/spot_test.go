@@ -89,6 +89,7 @@ func TestUnknownStatusIsInvalid(t *testing.T) {
 func TestCoordinatesForHidesExactPositionFromStrangers(t *testing.T) {
 	t.Parallel()
 
+	seed := []byte("0123456789abcdef0123456789abcdef")
 	spot := domain.Spot{
 		ID:      "spot-1",
 		OwnerID: "owner-1",
@@ -97,10 +98,10 @@ func TestCoordinatesForHidesExactPositionFromStrangers(t *testing.T) {
 		Status:  domain.SpotAvailable,
 	}
 
-	t.Run("a stranger sees a snapped coordinate", func(t *testing.T) {
+	t.Run("a stranger sees an offset coordinate", func(t *testing.T) {
 		t.Parallel()
 
-		lon, lat, exact := spot.CoordinatesFor(domain.Viewer{UserID: "someone-else"})
+		lon, lat, exact := spot.CoordinatesFor(domain.Viewer{UserID: "someone-else"}, seed)
 
 		if exact {
 			t.Error("exact = true for a stranger, want false")
@@ -110,10 +111,10 @@ func TestCoordinatesForHidesExactPositionFromStrangers(t *testing.T) {
 		}
 	})
 
-	t.Run("an anonymous viewer sees a snapped coordinate", func(t *testing.T) {
+	t.Run("an anonymous viewer sees an offset coordinate", func(t *testing.T) {
 		t.Parallel()
 
-		_, _, exact := spot.CoordinatesFor(domain.Viewer{})
+		_, _, exact := spot.CoordinatesFor(domain.Viewer{}, seed)
 		if exact {
 			t.Error("exact = true for an anonymous viewer, want false")
 		}
@@ -122,7 +123,7 @@ func TestCoordinatesForHidesExactPositionFromStrangers(t *testing.T) {
 	t.Run("the owner sees the exact coordinate", func(t *testing.T) {
 		t.Parallel()
 
-		lon, lat, exact := spot.CoordinatesFor(domain.Viewer{UserID: "owner-1"})
+		lon, lat, exact := spot.CoordinatesFor(domain.Viewer{UserID: "owner-1"}, seed)
 
 		if !exact {
 			t.Error("exact = false for the owner, want true")
@@ -137,19 +138,19 @@ func TestCoordinatesForHidesExactPositionFromStrangers(t *testing.T) {
 
 		_, _, exact := spot.CoordinatesFor(domain.Viewer{
 			UserID: "driver-1", HoldsReservation: true,
-		})
+		}, seed)
 		if !exact {
 			t.Error("exact = false for the reservation holder, want true; they have to find the space")
 		}
 	})
 
-	// The snapped coordinate must be the same for every stranger, or two
-	// clients comparing notes would narrow the position down.
-	t.Run("every stranger sees the same snapped coordinate", func(t *testing.T) {
+	// The offset centre must be the same for every stranger, or two clients
+	// comparing notes would narrow the position down.
+	t.Run("every stranger sees the same offset coordinate", func(t *testing.T) {
 		t.Parallel()
 
-		firstLon, firstLat, _ := spot.CoordinatesFor(domain.Viewer{UserID: "stranger-a"})
-		secondLon, secondLat, _ := spot.CoordinatesFor(domain.Viewer{UserID: "stranger-b"})
+		firstLon, firstLat, _ := spot.CoordinatesFor(domain.Viewer{UserID: "stranger-a"}, seed)
+		secondLon, secondLat, _ := spot.CoordinatesFor(domain.Viewer{UserID: "stranger-b"}, seed)
 
 		if firstLon != secondLon || firstLat != secondLat {
 			t.Error("two strangers were given different coordinates for the same spot")
@@ -499,10 +500,11 @@ func TestDomainPriceCeilingMatchesTheSchema(t *testing.T) {
 func TestPrivacyRadiusIsTheGeoPackages(t *testing.T) {
 	t.Parallel()
 
+	seed := []byte("0123456789abcdef0123456789abcdef")
 	spot := domain.Spot{Lon: testLon, Lat: testLat}
 
-	gotLon, gotLat, _ := spot.CoordinatesFor(domain.Viewer{})
-	wantLon, wantLat := geo.Fuzz(testLon, testLat)
+	gotLon, gotLat, _ := spot.CoordinatesFor(domain.Viewer{}, seed)
+	wantLon, wantLat := geo.Fuzz(testLon, testLat, seed)
 
 	if gotLon != wantLon || gotLat != wantLat {
 		t.Errorf("CoordinatesFor = (%v, %v), want geo.Fuzz's (%v, %v)",

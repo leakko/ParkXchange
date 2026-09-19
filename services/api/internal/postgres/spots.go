@@ -20,7 +20,7 @@ import (
 // summary is joined for the same reason: a claimer has to see which car to
 // meet without a second request per pin.
 const spotColumns = `
-	s.id, s.owner_id, u.display_name, u.rating_sum, u.rating_count,
+	s.id, s.owner_id, u.display_name, u.rating_sum, u.rating_count, u.phone,
 	ST_X(s.geom), ST_Y(s.geom),
 	s.address_hint, s.size_class, s.status, s.price_cents, s.notes,
 	s.preferred_departure_at, s.auto_cancel_no_show,
@@ -80,7 +80,7 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 	)
 
 	err := row.Scan(
-		&spot.ID, &spot.OwnerID, &spot.OwnerName, &ratingSum, &ratingCount,
+		&spot.ID, &spot.OwnerID, &spot.OwnerName, &ratingSum, &ratingCount, &spot.OwnerPhone,
 		&spot.Lon, &spot.Lat,
 		&addressHint, &size, &status, &spot.PriceCents, &notes,
 		&spot.PreferredDepartureAt, &spot.AutoCancelNoShow,

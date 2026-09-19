@@ -28,14 +28,22 @@ const OwnSpotsLimit = 100
 type Service struct {
 	store Store
 
+	// locationFuzzSecret keys geo.FuzzSeed so strangers see a stable offset
+	// centre rather than the true coordinates.
+	locationFuzzSecret []byte
+
 	// now is injected so the expiry rules can be tested without sleeping.
 	// Production passes time.Now.
 	now func() time.Time
 }
 
 // New builds the service.
-func New(store Store) *Service {
-	return &Service{store: store, now: time.Now}
+func New(store Store, locationFuzzSecret []byte) *Service {
+	return &Service{
+		store:              store,
+		locationFuzzSecret: locationFuzzSecret,
+		now:                time.Now,
+	}
 }
 
 // VisibleSpot is a spot as one particular viewer is allowed to see it.
@@ -47,13 +55,13 @@ func New(store Store) *Service {
 type VisibleSpot struct {
 	Spot domain.Spot
 
-	// Lon and Lat are the coordinates this viewer may see, which are snapped
-	// to a privacy grid unless Exact is true.
+	// Lon and Lat are the coordinates this viewer may see, which are offset
+	// into the privacy annulus unless Exact is true.
 	Lon float64
 	Lat float64
 
 	// Exact says whether the coordinates are the real ones. Clients use it to
-	// decide whether to show a precise pin or an area.
+	// decide whether to show a precise pin or an uncertainty circle.
 	Exact bool
 }
 
@@ -204,14 +212,19 @@ func (s *Service) Update(ctx context.Context, spotID string, viewer domain.Claim
 }
 
 // VehiclePhoto returns the image bytes for the vehicle linked to a spot the
-// viewer is allowed to see.
+// viewer is allowed to see. Strangers who only see the approximate location
+// get a 404 so the photo cannot bypass the reservation gate.
 func (s *Service) VehiclePhoto(ctx context.Context, spotID string, viewer domain.Claims) ([]byte, string, error) {
 	if !viewer.Authenticated() {
 		return nil, "", domain.Unauthenticated("unauthorized", "an access token is required")
 	}
 
-	if _, err := s.Get(ctx, spotID, viewer); err != nil {
+	visible, err := s.Get(ctx, spotID, viewer)
+	if err != nil {
 		return nil, "", err
+	}
+	if !visible.Exact {
+		return nil, "", domain.NotFound("spot_not_found", "that spot does not exist")
 	}
 
 	photo, contentType, err := s.store.SpotVehiclePhoto(ctx, spotID)
@@ -310,15 +323,20 @@ func (s *Service) visible(found []domain.Spot, viewer domain.Claims) []VisibleSp
 }
 
 func (s *Service) visibleOne(spot domain.Spot, viewer domain.Claims) VisibleSpot {
-	// HoldsReservation stays false until reservations exist. Once they do,
-	// this is where the driver holding the booking starts getting the exact
-	// coordinates.
+	holds := spot.HolderID != "" && spot.HolderID == viewer.UserID
 	lon, lat, exact := spot.CoordinatesFor(domain.Viewer{
 		UserID:           viewer.UserID,
-		HoldsReservation: spot.HolderID != "" && spot.HolderID == viewer.UserID,
-	})
+		HoldsReservation: holds,
+	}, geo.FuzzSeed(s.locationFuzzSecret, spot.ID))
 
-	return VisibleSpot{Spot: spot, Lon: lon, Lat: lat, Exact: exact}
+	visible := VisibleSpot{Spot: spot, Lon: lon, Lat: lat, Exact: exact}
+	if !exact {
+		// Meeting details are the product: strangers must not see the car or
+		// the owner's phone on the map payload.
+		visible.Spot.Vehicle = domain.VehicleSummary{}
+		visible.Spot.OwnerPhone = ""
+	}
+	return visible
 }
 
 func windowOrDefault(from, to, now time.Time) (time.Time, time.Time, error) {

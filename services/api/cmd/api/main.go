@@ -82,7 +82,7 @@ func run() error {
 	}
 
 	reservationsService := reservations.New(db)
-	hub := realtime.NewHub(realtime.DefaultSendBuffer)
+	hub := realtime.NewHub(realtime.DefaultSendBuffer, cfg.LocationFuzzSecret)
 
 	events, err := db.ListenSpotEvents(ctx)
 	if err != nil {
@@ -98,7 +98,7 @@ func run() error {
 		Config:       cfg,
 		Logger:       log,
 		Accounts:     accountsService,
-		Spots:        spots.New(db),
+		Spots:        spots.New(db, cfg.LocationFuzzSecret),
 		Offers:       offers.New(db),
 		Reservations: reservationsService,
 		Vehicles:     vehicles.NewService(db),

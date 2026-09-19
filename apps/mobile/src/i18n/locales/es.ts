@@ -146,6 +146,10 @@ export const es = {
 
   "spotSheet.yourListing": "Tu anuncio",
   "spotSheet.meta": "{sizeClass} · €{price} · {status}",
+  "spotSheet.rating": "{score} ★",
+  "spotSheet.ownerPhone": "Dueño: {phone}",
+  "spotSheet.approxLocation":
+    "La ubicación exacta, el coche y el teléfono se revelan cuando aceptan tu oferta.",
   "spotSheet.flexibleDeparture": "Hora de salida flexible",
   "spotSheet.freeAt": "Se queda libre a {datetime}",
   "spotSheet.listedUntil": "Publicada hasta {datetime}",

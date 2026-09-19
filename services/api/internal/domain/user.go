@@ -2,6 +2,7 @@ package domain
 
 import (
 	"net/mail"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -77,11 +78,49 @@ type User struct {
 	Email        Email
 	PasswordHash string
 	DisplayName  string
+	Phone        Phone
 	RatingSum    int
 	RatingCount  int
 	BalanceCents int64
 	CreatedAt    time.Time
 }
+
+// Phone is a normalised E.164 number (+ and 8–15 digits, first digit 1–9).
+type Phone string
+
+var e164Pattern = regexp.MustCompile(`^\+[1-9]\d{7,14}$`)
+
+// ParsePhone normalises and validates an E.164 phone number.
+func ParsePhone(raw string) (Phone, error) {
+	normalised := strings.TrimSpace(raw)
+	// Allow spaces/dashes in input; strip to digits and leading +.
+	if normalised != "" && !strings.HasPrefix(normalised, "+") {
+		return "", Invalid("phone_invalid", "phone must be E.164, starting with +")
+	}
+	var b strings.Builder
+	for i, r := range normalised {
+		if r == '+' && i == 0 {
+			b.WriteRune(r)
+			continue
+		}
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	normalised = b.String()
+	switch {
+	case normalised == "" || normalised == "+":
+		return "", Invalid("phone_required", "a phone number is required")
+	case !e164Pattern.MatchString(normalised):
+		return "", Invalid("phone_invalid", "phone must be E.164 (+ and 8–15 digits)")
+	}
+	return Phone(normalised), nil
+}
+
+// NewPhone trusts a number that has already been persisted.
+func NewPhone(stored string) Phone { return Phone(stored) }
+
+func (p Phone) String() string { return string(p) }
 
 // Rating returns the average rating and whether the user has been rated.
 //
@@ -118,6 +157,7 @@ type NewUserInput struct {
 	Email       string
 	Password    string
 	DisplayName string
+	Phone       string
 }
 
 // NewUser validates a registration and returns the accepted values.
@@ -125,7 +165,7 @@ type NewUserInput struct {
 // Every field is checked before returning, rather than failing on the first
 // problem, so a client can show all of them at once instead of making the user
 // resubmit three times to discover three mistakes.
-func NewUser(in NewUserInput) (email Email, displayName string, err error) {
+func NewUser(in NewUserInput) (email Email, displayName string, phone Phone, err error) {
 	fields := make(map[string]string)
 
 	parsedEmail, emailErr := ParseEmail(in.Email)
@@ -146,11 +186,20 @@ func NewUser(in NewUserInput) (email Email, displayName string, err error) {
 		fields["display_name"] = problem
 	}
 
-	if len(fields) > 0 {
-		return "", "", InvalidFields(fields)
+	parsedPhone, phoneErr := ParsePhone(in.Phone)
+	if phoneErr != nil {
+		if domainErr, ok := AsError(phoneErr); ok {
+			fields["phone"] = domainErr.Message
+		} else {
+			fields["phone"] = "is not valid"
+		}
 	}
 
-	return parsedEmail, name, nil
+	if len(fields) > 0 {
+		return "", "", "", InvalidFields(fields)
+	}
+
+	return parsedEmail, name, parsedPhone, nil
 }
 
 // ParseDisplayName trims and validates a display name for create or update.

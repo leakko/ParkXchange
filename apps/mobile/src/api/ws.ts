@@ -137,16 +137,11 @@ export function applySpotEvent(
         auto_cancel_no_show: props?.auto_cancel_no_show ?? true,
         exact_location: event.exact_location,
         is_mine: props?.is_mine ?? false,
-        vehicle: props?.vehicle ?? {
-          id: "",
-          plate: "",
-          make_model: "",
-          color: "",
-          year: 0,
-          size_class: "medium",
-          has_photo: false,
-        },
+        ...(event.exact_location && props?.vehicle ? { vehicle: props.vehicle } : {}),
         ...(props?.owner_rating != null ? { owner_rating: props.owner_rating } : {}),
+        ...(event.exact_location && props?.owner_phone
+          ? { owner_phone: props.owner_phone }
+          : {}),
         ...(props?.address_hint != null ? { address_hint: props.address_hint } : {}),
         ...(props?.notes != null ? { notes: props.notes } : {}),
         ...(props?.preferred_departure_at != null

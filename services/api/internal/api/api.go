@@ -69,7 +69,7 @@ type Deps struct {
 func New(deps Deps) (*API, error) {
 	hub := deps.Hub
 	if hub == nil {
-		hub = realtime.NewHub(realtime.DefaultSendBuffer)
+		hub = realtime.NewHub(realtime.DefaultSendBuffer, deps.Config.LocationFuzzSecret)
 	}
 
 	return &API{

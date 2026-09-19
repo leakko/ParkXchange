@@ -1,7 +1,7 @@
 # Location privacy reveal — design
 
 Date: 2026-09-19  
-Status: approved (pending user review of this file)  
+Status: approved  
 Scope: approximate map presentation, server-side location fuzz, pre/post-reservation
 field redaction, phone required at registration  
 Out of scope: BlaBlaCar-style rating submission flow (separate spec); payment
