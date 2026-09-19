@@ -39,8 +39,8 @@ Repository → **Settings → Secrets and variables → Actions**.
 | `DEPLOY_POSTGRES_DB` | e.g. `parkxchange` |
 | `DEPLOY_JWT_SECRET` | ≥32 bytes (`openssl rand -base64 32`) |
 | `DEPLOY_LOCATION_FUZZ_SECRET` | ≥32 bytes, **different** from JWT (`openssl rand -base64 32`) |
-| `DEPLOY_RESEND_API_KEY` | Resend API key (password-reset email) |
-| `DEPLOY_EMAIL_FROM` | e.g. `ParkXchange <noreply@mail.park-xchange.com>` (domain verified in Resend) |
+| `DEPLOY_RESEND_API_KEY` | optional; Resend API key (password-reset email). Empty → reset links only in API logs |
+| `DEPLOY_EMAIL_FROM` | required if Resend key set; e.g. `ParkXchange <noreply@mail.park-xchange.com>` |
 | `DEPLOY_PASSWORD_RESET_DEEP_LINK_BASE` | optional; default `parkxchange://auth/reset` |
 | `DEPLOY_GOOGLE_WEB_CLIENT_ID` | optional; Google OAuth **web** client ID (empty disables Google on API) |
 

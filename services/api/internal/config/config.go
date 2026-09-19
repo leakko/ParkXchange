@@ -74,11 +74,12 @@ type Config struct {
 	// verifying Google ID tokens. Empty disables Google Sign-In.
 	GoogleWebClientID string
 
-	// ResendAPIKey sends password-reset email in non-development environments.
-	// When empty in development, reset links are written to the application log.
+	// ResendAPIKey sends password-reset email when set. When empty, reset
+	// links are written to the application log (family beta / early prod).
 	ResendAPIKey string
 
 	// EmailFrom is the Resend From header, e.g. ParkXchange <noreply@mail.example.com>.
+	// Required only when ResendAPIKey is set.
 	EmailFrom string
 
 	// PasswordResetDeepLinkBase is the app deep link prefix for reset tokens,
@@ -171,13 +172,9 @@ func Load() (Config, error) {
 	cfg.PasswordResetDeepLinkBase = orDefault(
 		"PASSWORD_RESET_DEEP_LINK_BASE", "parkxchange://auth/reset")
 
-	if cfg.Env != defaultEnv {
-		if cfg.ResendAPIKey == "" {
-			problems = append(problems, "RESEND_API_KEY is required outside development")
-		}
-		if cfg.EmailFrom == "" {
-			problems = append(problems, "EMAIL_FROM is required outside development")
-		}
+	// Resend is optional: empty key → LogMailer. If a key is set, From is required.
+	if cfg.ResendAPIKey != "" && cfg.EmailFrom == "" {
+		problems = append(problems, "EMAIL_FROM is required when RESEND_API_KEY is set")
 	}
 
 	cfg.JWTSecret = []byte(os.Getenv("JWT_SECRET"))
