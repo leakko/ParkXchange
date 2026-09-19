@@ -30,6 +30,11 @@ func New(store Store) *Service {
 	return &Service{store: store, now: time.Now}
 }
 
+// NewWithClock builds the service with an explicit clock.
+func NewWithClock(store Store, now func() time.Time) *Service {
+	return &Service{store: store, now: now}
+}
+
 // Create submits an offer without placing a hold. Funds are checked here for a
 // useful response and checked again by CreateOffer to close the race.
 func (s *Service) Create(ctx context.Context, spotID string, viewer domain.Claims, in CreateInput) (domain.Offer, error) {

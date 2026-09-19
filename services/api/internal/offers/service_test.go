@@ -128,7 +128,7 @@ func newFixture(now time.Time) (*offers.Service, *fakeStore) {
 		balance:  500,
 		vehicles: map[string]string{"driver-car": "driver-1"},
 	}
-	service := offers.New(store)
+	service := offers.NewWithClock(store, func() time.Time { return now })
 	return service, store
 }
 
