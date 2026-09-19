@@ -62,7 +62,6 @@ type feature struct {
 		PriceCents    int       `json:"price_cents"`
 		AddressHint   string    `json:"address_hint"`
 		Notes         string    `json:"notes"`
-		AvailableFrom time.Time `json:"available_from"`
 		ExpiresAt     time.Time `json:"expires_at"`
 		ExactLocation bool      `json:"exact_location"`
 		IsMine        bool      `json:"is_mine"`
@@ -289,7 +288,7 @@ func TestCreateSpotRejectsInvalidInput(t *testing.T) {
 			func(b map[string]any) { b["duration_minutes"] = 0 }, "duration_minutes",
 		},
 		"duration beyond the maximum": {
-			func(b map[string]any) { b["duration_minutes"] = 60 * 25 }, "expires_at",
+			func(b map[string]any) { b["duration_minutes"] = 60 * 24 * 8 }, "expires_at",
 		},
 		"notes too long": {
 			func(b map[string]any) { b["notes"] = strings.Repeat("x", 281) }, "notes",
@@ -707,8 +706,8 @@ func TestListSpotsExcludesExpiredSpots(t *testing.T) {
 	// without waiting. The API deliberately refuses to create a spot that has
 	// already expired.
 	_, err := db.Pool.Exec(t.Context(), `
-		UPDATE spots SET available_from = now() - interval '2 hours',
-		                 expires_at     = now() - interval '1 hour'
+		UPDATE spots SET created_at = now() - interval '2 hours',
+		                 expires_at = now() - interval '1 hour'
 		 WHERE id = $1`, created.ID)
 	if err != nil {
 		t.Fatalf("backdate the spot: %v", err)
@@ -750,7 +749,7 @@ func TestUpdateSpotEditsAnAvailableOffer(t *testing.T) {
 	}
 }
 
-func TestUpdateSpotDurationAloneKeepsFutureStart(t *testing.T) {
+func TestUpdateSpotDurationSetsListingEndFromNow(t *testing.T) {
 	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
@@ -758,11 +757,6 @@ func TestUpdateSpotDurationAloneKeepsFutureStart(t *testing.T) {
 		"available_in_minutes": 120,
 		"duration_minutes":     30,
 	})
-	start := created.Properties.AvailableFrom
-	if start.Before(time.Now().Add(90 * time.Minute)) {
-		t.Fatalf("available_from = %s, want roughly two hours ahead", start)
-	}
-
 	resp := authedRequest(t, server, http.MethodPatch, "/v1/spots/"+created.ID,
 		owner.AccessToken, map[string]any{"duration_minutes": 60})
 	if resp.StatusCode != http.StatusOK {
@@ -770,13 +764,9 @@ func TestUpdateSpotDurationAloneKeepsFutureStart(t *testing.T) {
 	}
 
 	got := decode[feature](t, resp)
-	if diff := got.Properties.AvailableFrom.Sub(start); diff > 2*time.Second || diff < -2*time.Second {
-		t.Errorf("available_from moved from %s to %s (diff %s); duration-only must keep the start",
-			start, got.Properties.AvailableFrom, diff)
-	}
-	wantExpiry := got.Properties.AvailableFrom.Add(60 * time.Minute)
+	wantExpiry := time.Now().Add(60 * time.Minute)
 	if diff := got.Properties.ExpiresAt.Sub(wantExpiry); diff > 2*time.Second || diff < -2*time.Second {
-		t.Errorf("expires_at = %s, want start+60m = %s (diff %s)",
+		t.Errorf("expires_at = %s, want now+60m = %s (diff %s)",
 			got.Properties.ExpiresAt, wantExpiry, diff)
 	}
 }

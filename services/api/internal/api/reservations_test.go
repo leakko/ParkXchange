@@ -83,7 +83,7 @@ func TestSecondClaimIsAConflict(t *testing.T) {
 	}
 }
 
-func TestFutureSpotIsVisibleAndClaimable(t *testing.T) {
+func TestLegacyAvailableInDoesNotDelayClaim(t *testing.T) {
 	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
@@ -106,8 +106,8 @@ func TestFutureSpotIsVisibleAndClaimable(t *testing.T) {
 	}
 
 	got := decode[reservationBody](t, resp)
-	if got.Status != string(domain.ResPending) {
-		t.Errorf("status = %q, want pending: a handover two hours away needs reconfirmation", got.Status)
+	if got.Status != string(domain.ResConfirmed) {
+		t.Errorf("status = %q, want confirmed: listings are visible immediately", got.Status)
 	}
 
 	listed = decode[featureCollection](t, get(t, server, "/v1/spots?bbox="+at.bbox()))
@@ -115,11 +115,6 @@ func TestFutureSpotIsVisibleAndClaimable(t *testing.T) {
 		t.Fatal("a claimed future spot was still on the map")
 	}
 
-	reconfirm := authedRequest(t, server, http.MethodPost,
-		"/v1/reservations/"+got.ID+"/reconfirm", driver.AccessToken, nil)
-	if reconfirm.StatusCode != http.StatusNoContent {
-		t.Fatalf("reconfirm status = %d (%s)", reconfirm.StatusCode, errorCode(t, reconfirm))
-	}
 }
 
 func TestImmediateClaimIsBornConfirmed(t *testing.T) {
@@ -216,8 +211,8 @@ func TestUnreconfirmedReservationReturnsTheSpotToTheMap(t *testing.T) {
 	driver, _, _ := registerUser(t, server)
 	at := uniqueLocation()
 	spot := createSpot(t, server, db, owner, at, map[string]any{
-		"available_in_minutes": 120,
-		"duration_minutes":     30,
+		"duration_minutes":       180,
+		"preferred_departure_at": time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
 	})
 
 	claimed := decode[reservationBody](t, authedRequest(t, server, http.MethodPost,

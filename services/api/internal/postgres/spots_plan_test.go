@@ -54,7 +54,7 @@ func TestDiscoveryQueryUsesThePartialSpatialIndex(t *testing.T) {
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO spots (
 			owner_id, vehicle_id, geom, size_class, status, price_cents,
-			available_from, expires_at
+			expires_at
 		)
 		SELECT
 			(SELECT id FROM users WHERE email = 'planner@parkxchange.test'),
@@ -64,7 +64,6 @@ func TestDiscoveryQueryUsesThePartialSpatialIndex(t *testing.T) {
 				41.3 + random() * 0.2
 			), 4326),
 			'medium', 'available', 100,
-			now() - interval '1 minute',
 			now() + interval '1 hour'
 		FROM generate_series(1, 5000)
 	`, vehicleID); err != nil {
@@ -79,7 +78,7 @@ func TestDiscoveryQueryUsesThePartialSpatialIndex(t *testing.T) {
 
 	rows, err := tx.Query(ctx,
 		"EXPLAIN (COSTS OFF) "+discoveryQuery,
-		minLon, minLat, maxLon, maxLat, time.Now(), time.Now().Add(24*time.Hour), 500)
+		minLon, minLat, maxLon, maxLat, time.Now(), 500)
 	if err != nil {
 		t.Fatalf("explain: %v", err)
 	}

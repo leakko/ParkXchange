@@ -12,24 +12,30 @@ import (
 
 const reservationColumns = `
 	r.id, r.spot_id, r.driver_id, s.owner_id,
-	r.status, r.price_cents,
-	r.starts_at, r.ends_at, r.reconfirm_by, r.reconfirmed_at,
+	r.offer_id, r.status, r.price_cents,
+	r.exchange_at, r.starts_at, r.ends_at,
+	r.owner_ready_at, r.driver_arrived_at, r.driver_ready_at,
+	r.driver_vehicle_id, r.reconfirm_by, r.reconfirmed_at,
 	r.created_at, r.expires_at, r.completed_at, r.cancelled_at, r.cancel_reason`
 
 func scanReservation(row pgx.Row) (domain.Reservation, error) {
 	var (
-		res          domain.Reservation
-		status       string
-		reconfirmed  *time.Time
-		completed    *time.Time
-		cancelled    *time.Time
-		cancelReason *string
+		res             domain.Reservation
+		status          string
+		reconfirmed     *time.Time
+		completed       *time.Time
+		cancelled       *time.Time
+		cancelReason    *string
+		offerID         *string
+		driverVehicleID *string
 	)
 
 	err := row.Scan(
 		&res.ID, &res.SpotID, &res.DriverID, &res.OwnerID,
-		&status, &res.PriceCents,
-		&res.StartsAt, &res.EndsAt, &res.ReconfirmBy, &reconfirmed,
+		&offerID, &status, &res.PriceCents,
+		&res.ExchangeAt, &res.StartsAt, &res.EndsAt,
+		&res.OwnerReadyAt, &res.DriverArrivedAt, &res.DriverReadyAt,
+		&driverVehicleID, &res.ReconfirmBy, &reconfirmed,
 		&res.CreatedAt, &res.ExpiresAt, &completed, &cancelled, &cancelReason,
 	)
 	if err != nil {
@@ -37,6 +43,8 @@ func scanReservation(row pgx.Row) (domain.Reservation, error) {
 	}
 
 	res.Status = domain.ReservationStatus(status)
+	res.OfferID = optional(offerID)
+	res.DriverVehicleID = optional(driverVehicleID)
 	res.ReconfirmedAt = reconfirmed
 	res.CompletedAt = completed
 	res.CancelledAt = cancelled
@@ -73,7 +81,8 @@ func (db *DB) Claim(ctx context.Context, spotID, driverID string) (domain.Reserv
 	var spot domain.Spot
 	var status string
 	err = tx.QueryRow(ctx, `
-		SELECT owner_id, status, price_cents, available_from, expires_at,
+		SELECT owner_id, status, price_cents,
+		       COALESCE(preferred_departure_at, now()), expires_at,
 		       ST_X(geom), ST_Y(geom)
 		  FROM spots
 		 WHERE id = $1
@@ -109,6 +118,7 @@ func (db *DB) Claim(ctx context.Context, spotID, driverID string) (domain.Reserv
 
 	initial := domain.InitialStatus(spot.AvailableFrom, dbNow)
 	reconfirmBy := domain.ReconfirmDeadline(spot.AvailableFrom, dbNow)
+	reservationEndsAt := spot.AvailableFrom.Add(time.Hour)
 
 	var reconfirmedAt *time.Time
 	if initial == domain.ResConfirmed {
@@ -120,13 +130,14 @@ func (db *DB) Claim(ctx context.Context, spotID, driverID string) (domain.Reserv
 	err = tx.QueryRow(ctx, `
 		INSERT INTO reservations (
 			spot_id, driver_id, status, price_cents,
-			starts_at, ends_at, reconfirm_by, reconfirmed_at, expires_at
+			exchange_at, starts_at, ends_at,
+			reconfirm_by, reconfirmed_at, expires_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $6)
+		VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, $6)
 		RETURNING id
 	`,
 		spotID, driverID, string(initial), spot.PriceCents,
-		spot.AvailableFrom, spot.ExpiresAt, reconfirmBy, reconfirmedAt,
+		spot.AvailableFrom, reservationEndsAt, reconfirmBy, reconfirmedAt,
 	).Scan(&id)
 	if err != nil {
 		return domain.Reservation{}, translate(err, "insert reservation")

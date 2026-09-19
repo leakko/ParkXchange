@@ -23,7 +23,8 @@ const spotColumns = `
 	s.id, s.owner_id, u.display_name, u.rating_sum, u.rating_count,
 	ST_X(s.geom), ST_Y(s.geom),
 	s.address_hint, s.size_class, s.status, s.price_cents, s.notes,
-	s.available_from, s.expires_at, s.created_at,
+	s.preferred_departure_at, s.auto_cancel_no_show,
+	s.expires_at, s.created_at,
 	(
 		SELECT r.driver_id
 		  FROM reservations r
@@ -55,10 +56,9 @@ const discoveryQuery = `
 	SELECT ` + spotColumns + spotFrom + `
 	 WHERE s.status = 'available'
 	   AND s.expires_at > $5
-	   AND s.available_from < $6
 	   AND s.geom && ST_MakeEnvelope($1, $2, $3, $4, 4326)
 	 ORDER BY s.created_at DESC
-	 LIMIT $7`
+	 LIMIT $6`
 
 func scanSpot(row pgx.Row) (domain.Spot, error) {
 	var (
@@ -83,7 +83,8 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 		&spot.ID, &spot.OwnerID, &spot.OwnerName, &ratingSum, &ratingCount,
 		&spot.Lon, &spot.Lat,
 		&addressHint, &size, &status, &spot.PriceCents, &notes,
-		&spot.AvailableFrom, &spot.ExpiresAt, &spot.CreatedAt,
+		&spot.PreferredDepartureAt, &spot.AutoCancelNoShow,
+		&spot.ExpiresAt, &spot.CreatedAt,
 		&holderID,
 		&vehicleID,
 		&plate, &makeModel, &color, &year, &vehicleSize, &hasPhoto,
@@ -145,7 +146,7 @@ func (db *DB) SpotsInBBox(ctx context.Context, boxes []geo.BBox, from, to time.T
 		}
 
 		rows, err := db.Pool.Query(ctx, discoveryQuery,
-			box.MinLon, box.MinLat, box.MaxLon, box.MaxLat, from, to, limit-len(spots))
+			box.MinLon, box.MinLat, box.MaxLon, box.MaxLat, from, limit-len(spots))
 		if err != nil {
 			return nil, translate(err, "query spots in bbox")
 		}
@@ -178,14 +179,9 @@ func (db *DB) SpotsInBBox(ctx context.Context, boxes []geo.BBox, from, to time.T
 
 // CreateSpot persists a new offer.
 //
-// The availability window is computed here, from now(), rather than being sent
-// as two timestamps from the API. The two clocks are not the same clock, and
-// the difference is not theoretical: with the database in a container its clock
-// was observed over a hundred milliseconds behind the host's, which is long
-// enough for a freshly created spot to be excluded by its own
-// "available_from <= now()" filter. Anchoring the window to the clock that
-// every read path and the expiry sweeper already use removes the class of bug
-// entirely.
+// The listing end is computed from the database clock rather than sent as an
+// absolute timestamp. Every read path and the expiry sweeper use that same
+// clock, so the lifetime cannot be shortened or extended by host/DB clock skew.
 func (db *DB) CreateSpot(ctx context.Context, draft domain.SpotDraft) (domain.Spot, error) {
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
@@ -202,19 +198,19 @@ func (db *DB) CreateSpot(ctx context.Context, draft domain.SpotDraft) (domain.Sp
 	err = tx.QueryRow(ctx, `
 		INSERT INTO spots (
 			owner_id, vehicle_id, geom, address_hint, size_class, status,
-			price_cents, notes, available_from, expires_at
+			price_cents, notes, preferred_departure_at, auto_cancel_no_show,
+			expires_at
 		)
 		VALUES (
 			$1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326), $5, $6, 'available',
-			$7, $8,
-			now() + make_interval(secs => $9),
-			now() + make_interval(secs => $10)
+			$7, $8, $9, $10,
+			now() + make_interval(secs => $11)
 		)
 		RETURNING id
 	`,
 		draft.OwnerID, draft.VehicleID, draft.Lon, draft.Lat, nullable(draft.AddressHint),
 		string(draft.Size), draft.PriceCents, nullable(draft.Notes),
-		draft.AvailableIn.Seconds(), draft.ExpiresIn.Seconds(),
+		draft.PreferredDepartureAt, draft.AutoCancelNoShow, draft.ExpiresIn.Seconds(),
 	).Scan(&id)
 	if err != nil {
 		return domain.Spot{}, translate(err, "insert spot")
@@ -302,14 +298,7 @@ func (db *DB) UpdateAvailableSpot(ctx context.Context, spotID, ownerID string, p
 		return domain.Spot{}, domain.ErrConflict
 	}
 
-	var (
-		availableSecs *float64
-		expiresSecs   *float64
-	)
-	if patch.AvailableIn != nil {
-		secs := patch.AvailableIn.Seconds()
-		availableSecs = &secs
-	}
+	var expiresSecs *float64
 	if patch.ExpiresIn != nil {
 		secs := patch.ExpiresIn.Seconds()
 		expiresSecs = &secs
@@ -319,21 +308,17 @@ func (db *DB) UpdateAvailableSpot(ctx context.Context, spotID, ownerID string, p
 		UPDATE spots SET
 			price_cents = COALESCE($3, price_cents),
 			notes = CASE WHEN $4::boolean THEN $5 ELSE notes END,
-			available_from = CASE
-				WHEN $6::float8 IS NULL THEN available_from
+			expires_at = CASE
+				WHEN $6::float8 IS NULL THEN expires_at
 				ELSE now() + make_interval(secs => $6::float8)
 			END,
-			expires_at = CASE
-				WHEN $7::float8 IS NULL THEN expires_at
-				ELSE now() + make_interval(secs => $7::float8)
-			END,
-			vehicle_id = COALESCE($8::uuid, vehicle_id)
+			vehicle_id = COALESCE($7::uuid, vehicle_id)
 		 WHERE id = $1 AND owner_id = $2 AND status = 'available'
 	`,
 		spotID, ownerID,
 		patch.PriceCents,
 		patch.Notes != nil, nullable(stringPtr(patch.Notes)),
-		availableSecs, expiresSecs,
+		expiresSecs,
 		patch.VehicleID,
 	)
 	if err != nil {
@@ -375,7 +360,7 @@ func stringPtr(p *string) string {
 // VehicleOwnedBy reports whether the vehicle belongs to the owner.
 func (db *DB) VehicleOwnedBy(ctx context.Context, vehicleID, ownerID string) (bool, error) {
 	var found bool
-	err := db.Pool.QueryRow(ctx, `
+	err := db.q().QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1 FROM vehicles WHERE id = $1 AND owner_id = $2
 		)`, vehicleID, ownerID).Scan(&found)

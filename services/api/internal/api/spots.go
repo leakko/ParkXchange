@@ -31,8 +31,7 @@ type spotProperties struct {
 	AddressHint string `json:"address_hint,omitempty"`
 	Notes       string `json:"notes,omitempty"`
 
-	AvailableFrom time.Time `json:"available_from"`
-	ExpiresAt     time.Time `json:"expires_at"`
+	ExpiresAt time.Time `json:"expires_at"`
 
 	// ExactLocation tells the client whether the geometry is the real position
 	// or a point snapped to the privacy grid, so it can draw a pin or an area
@@ -80,7 +79,6 @@ func toFeature(visible spots.VisibleSpot, viewer domain.Claims) geo.Feature[spot
 		PriceCents:    spot.PriceCents,
 		AddressHint:   spot.AddressHint,
 		Notes:         spot.Notes,
-		AvailableFrom: spot.AvailableFrom,
 		ExpiresAt:     spot.ExpiresAt,
 		ExactLocation: visible.Exact,
 		IsMine:        spot.OwnedBy(viewer.UserID),
@@ -178,11 +176,13 @@ type createSpotRequest struct {
 	Lon *float64 `json:"lon"`
 	Lat *float64 `json:"lat"`
 
-	Size        string `json:"size_class"`
-	PriceCents  int    `json:"price_cents"`
-	AddressHint string `json:"address_hint"`
-	Notes       string `json:"notes"`
-	VehicleID   string `json:"vehicle_id"`
+	Size                 string     `json:"size_class"`
+	PriceCents           int        `json:"price_cents"`
+	AddressHint          string     `json:"address_hint"`
+	Notes                string     `json:"notes"`
+	VehicleID            string     `json:"vehicle_id"`
+	PreferredDepartureAt *time.Time `json:"preferred_departure_at"`
+	AutoCancelNoShow     *bool      `json:"auto_cancel_no_show"`
 
 	// DurationMinutes is how long the offer stands after it becomes
 	// available, rather than an absolute expiry.
@@ -221,19 +221,20 @@ func (a *API) handleCreateSpot(w http.ResponseWriter, r *http.Request) error {
 
 	claims := claimsFrom(r.Context())
 	now := time.Now()
-	availableFrom := now.Add(time.Duration(req.AvailableInMinutes) * time.Minute)
+	expiresAt := now.Add(time.Duration(req.AvailableInMinutes+req.DurationMinutes) * time.Minute)
 
 	spot, err := a.spots.Offer(r.Context(), domain.NewSpotInput{
-		OwnerID:       claims.UserID,
-		VehicleID:     req.VehicleID,
-		Lon:           *req.Lon,
-		Lat:           *req.Lat,
-		AddressHint:   req.AddressHint,
-		Size:          req.Size,
-		PriceCents:    req.PriceCents,
-		Notes:         req.Notes,
-		AvailableFrom: availableFrom,
-		ExpiresAt:     availableFrom.Add(time.Duration(req.DurationMinutes) * time.Minute),
+		OwnerID:              claims.UserID,
+		VehicleID:            req.VehicleID,
+		Lon:                  *req.Lon,
+		Lat:                  *req.Lat,
+		AddressHint:          req.AddressHint,
+		Size:                 req.Size,
+		PriceCents:           req.PriceCents,
+		Notes:                req.Notes,
+		PreferredDepartureAt: req.PreferredDepartureAt,
+		AutoCancelNoShow:     req.AutoCancelNoShow,
+		ExpiresAt:            expiresAt,
 	})
 	if err != nil {
 		return err
@@ -287,8 +288,7 @@ func (a *API) handleUpdateSpot(w http.ResponseWriter, r *http.Request) error {
 			patch.AvailableIn = &availableIn
 			patch.ExpiresIn = &expiresIn
 		} else {
-			// Duration alone: keep the offer's current available_from; ExpiresIn
-			// is the offer length measured from that start.
+			// Listing extensions are anchored to the database clock.
 			patch.ExpiresIn = &duration
 		}
 	}
