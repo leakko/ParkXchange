@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 !**/.env.example
+# Committed Expo mode files (public EXPO_PUBLIC_* only — see apps/mobile).
+!apps/mobile/.env.development
+!apps/mobile/.env.production
 
 # --- Go ---------------------------------------------------------------------
 # go.work is a local development overlay: CI builds each module in isolation
