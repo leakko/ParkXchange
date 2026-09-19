@@ -197,10 +197,10 @@ func TestRegisterRejectsInvalidInput(t *testing.T) {
 			},
 			wantField: "display_name",
 		},
-		"missing phone": {
+		"invalid phone": {
 			body: map[string]string{
-				"email": uniqueEmail("nophone"), "password": "a-perfectly-fine-password",
-				"display_name": "Nobody",
+				"email": uniqueEmail("badphone"), "password": "a-perfectly-fine-password",
+				"display_name": "Nobody", "phone": "600111222",
 			},
 			wantField: "phone",
 		},

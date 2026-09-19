@@ -20,7 +20,9 @@ import (
 	"github.com/marco/parkxchange/services/api/internal/api"
 	"github.com/marco/parkxchange/services/api/internal/auth"
 	"github.com/marco/parkxchange/services/api/internal/config"
+	"github.com/marco/parkxchange/services/api/internal/googleauth"
 	"github.com/marco/parkxchange/services/api/internal/logging"
+	"github.com/marco/parkxchange/services/api/internal/mailer"
 	"github.com/marco/parkxchange/services/api/internal/migrate"
 	"github.com/marco/parkxchange/services/api/internal/offers"
 	"github.com/marco/parkxchange/services/api/internal/postgres"
@@ -75,8 +77,25 @@ func run() error {
 		return err
 	}
 
+	var googleVerifier accounts.GoogleVerifier
+	if cfg.GoogleWebClientID != "" {
+		googleVerifier = googleauth.New(cfg.GoogleWebClientID)
+	}
+
+	var resetMailer accounts.Mailer = mailer.LogMailer{Log: log}
+	if cfg.ResendAPIKey != "" {
+		resetMailer = mailer.ResendMailer{APIKey: cfg.ResendAPIKey, From: cfg.EmailFrom}
+	}
+
 	accountsService, err := accounts.New(
-		db, auth.NewArgon2Hasher(), tokens, cfg.RefreshTokenTTL)
+		db,
+		auth.NewArgon2Hasher(),
+		tokens,
+		cfg.RefreshTokenTTL,
+		googleVerifier,
+		resetMailer,
+		cfg.PasswordResetDeepLinkBase,
+	)
 	if err != nil {
 		return err
 	}

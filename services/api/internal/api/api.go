@@ -105,6 +105,9 @@ func (a *API) Handler() http.Handler {
 
 	mux.Handle("POST /v1/auth/register", web.Handler(a.handleRegister))
 	mux.Handle("POST /v1/auth/login", web.Handler(a.handleLogin))
+	mux.Handle("POST /v1/auth/google", web.Handler(a.handleGoogleLogin))
+	mux.Handle("POST /v1/auth/password/forgot", web.Handler(a.handleForgotPassword))
+	mux.Handle("POST /v1/auth/password/reset", web.Handler(a.handleResetPassword))
 	mux.Handle("POST /v1/auth/refresh", web.Handler(a.handleRefresh))
 	mux.Handle("POST /v1/auth/logout", web.Handler(a.handleLogout))
 

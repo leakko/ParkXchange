@@ -79,6 +79,7 @@ type User struct {
 	PasswordHash string
 	DisplayName  string
 	Phone        Phone
+	GoogleSub    string
 	RatingSum    int
 	RatingCount  int
 	BalanceCents int64
@@ -226,6 +227,39 @@ func ParseDisplayName(raw string) (string, error) {
 		return "", InvalidFields(map[string]string{"display_name": problem})
 	}
 	return name, nil
+}
+
+// SuggestDisplayName picks a valid display name from a preferred string or an
+// email local-part. Used when Google provides a name that may be empty or too
+// long for our rules.
+func SuggestDisplayName(preferred, email string) string {
+	preferred = strings.TrimSpace(preferred)
+	if validateDisplayName(preferred) == "" {
+		return preferred
+	}
+	if utf8.RuneCountInString(preferred) > MaxDisplayNameLength {
+		runes := []rune(preferred)
+		preferred = string(runes[:MaxDisplayNameLength])
+		if validateDisplayName(preferred) == "" {
+			return preferred
+		}
+	}
+	local := preferred
+	if at := strings.IndexByte(email, '@'); at > 0 {
+		local = email[:at]
+	}
+	local = strings.TrimSpace(local)
+	if local == "" {
+		local = "Driver"
+	}
+	if utf8.RuneCountInString(local) < MinDisplayNameLength {
+		local = local + " user"
+	}
+	if utf8.RuneCountInString(local) > MaxDisplayNameLength {
+		runes := []rune(local)
+		local = string(runes[:MaxDisplayNameLength])
+	}
+	return local
 }
 
 // PasswordProblem reports why a password fails the length rules, or "" if it

@@ -47,6 +47,8 @@ const (
 	pkgArch         = "internal/arch"
 	pkgSQL          = "migrations"
 	pkgMigrate      = "internal/migrate"
+	pkgMailer       = "internal/mailer"
+	pkgGoogleAuth   = "internal/googleauth"
 )
 
 // rule is what one package is permitted to depend on.
@@ -122,6 +124,17 @@ var rules = map[string]rule{
 			"token ports and must not reach for HTTP or the database",
 		packages:   []string{pkgDomain},
 		thirdParty: []string{"golang.org/x/crypto", "github.com/golang-jwt/jwt"},
+	},
+
+	pkgMailer: {
+		why: "mailer is an email delivery adapter for account use cases",
+		packages: []string{pkgDomain, pkgAccounts},
+	},
+
+	pkgGoogleAuth: {
+		why: "googleauth verifies Google ID tokens for the accounts port",
+		packages:   []string{pkgAccounts},
+		thirdParty: []string{"google.golang.org/api"},
 	},
 
 	pkgWeb: {

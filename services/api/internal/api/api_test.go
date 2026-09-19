@@ -16,6 +16,7 @@ import (
 	"github.com/marco/parkxchange/services/api/internal/api"
 	"github.com/marco/parkxchange/services/api/internal/auth"
 	"github.com/marco/parkxchange/services/api/internal/config"
+	"github.com/marco/parkxchange/services/api/internal/mailer"
 	"github.com/marco/parkxchange/services/api/internal/offers"
 	"github.com/marco/parkxchange/services/api/internal/postgres"
 	"github.com/marco/parkxchange/services/api/internal/realtime"
@@ -90,7 +91,8 @@ func newServerFrom(t *testing.T, cfg config.Config) (*httptest.Server, *postgres
 	}
 
 	accountsService, err := accounts.New(
-		db, auth.NewArgon2Hasher(), tokens, cfg.RefreshTokenTTL)
+		db, auth.NewArgon2Hasher(), tokens, cfg.RefreshTokenTTL,
+		nil, mailer.LogMailer{}, "parkxchange://auth/reset")
 	if err != nil {
 		t.Fatalf("build accounts service: %v", err)
 	}

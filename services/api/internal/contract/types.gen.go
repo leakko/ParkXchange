@@ -272,6 +272,11 @@ type ErrorEnvelope struct {
 	Error ErrorBody `json:"error"`
 }
 
+// ForgotPasswordRequest defines model for ForgotPasswordRequest.
+type ForgotPasswordRequest struct {
+	Email openapi_types.Email `json:"email"`
+}
+
 // GeoJSONPoint defines model for GeoJSONPoint.
 type GeoJSONPoint struct {
 	// Coordinates [longitude, latitude]
@@ -281,6 +286,11 @@ type GeoJSONPoint struct {
 
 // GeoJSONPointType defines model for GeoJSONPoint.Type.
 type GeoJSONPointType string
+
+// GoogleLoginRequest defines model for GoogleLoginRequest.
+type GoogleLoginRequest struct {
+	IdToken string `json:"id_token"`
+}
 
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
@@ -326,8 +336,8 @@ type RegisterRequest struct {
 	Email       openapi_types.Email `json:"email"`
 	Password    string              `json:"password"`
 
-	// Phone E.164 phone number (required at registration)
-	Phone string `json:"phone"`
+	// Phone Optional E.164 phone; required before announcing a spot
+	Phone *string `json:"phone,omitempty"`
 }
 
 // ReservationResponse defines model for ReservationResponse.
@@ -345,6 +355,12 @@ type ReservationResponse struct {
 	PriceCents      int                 `json:"price_cents"`
 	SpotId          openapi_types.UUID  `json:"spot_id"`
 	Status          string              `json:"status"`
+}
+
+// ResetPasswordRequest defines model for ResetPasswordRequest.
+type ResetPasswordRequest struct {
+	Password string `json:"password"`
+	Token    string `json:"token"`
 }
 
 // SessionResponse defines model for SessionResponse.
@@ -432,7 +448,10 @@ type TicketResponse struct {
 
 // UpdateMeRequest defines model for UpdateMeRequest.
 type UpdateMeRequest struct {
-	DisplayName string `json:"display_name"`
+	DisplayName *string `json:"display_name,omitempty"`
+
+	// Phone E.164 phone, or empty string to clear
+	Phone *string `json:"phone,omitempty"`
 }
 
 // UpdateSpotRequest Partial edit of an available listing. Location, listing lifetime, and
@@ -464,7 +483,7 @@ type UserResponse struct {
 	Email        openapi_types.Email `json:"email"`
 	Id           openapi_types.UUID  `json:"id"`
 
-	// Phone E.164 phone number of this account
+	// Phone E.164 phone number of this account; empty when unset
 	Phone       string   `json:"phone"`
 	Rating      *float64 `json:"rating,omitempty"`
 	RatingCount int      `json:"rating_count"`
@@ -567,11 +586,20 @@ type OpenWebSocketParams struct {
 	Ticket string `form:"ticket" json:"ticket"`
 }
 
+// LoginWithGoogleJSONRequestBody defines body for LoginWithGoogle for application/json ContentType.
+type LoginWithGoogleJSONRequestBody = GoogleLoginRequest
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
 // LogoutJSONRequestBody defines body for Logout for application/json ContentType.
 type LogoutJSONRequestBody = RefreshRequest
+
+// ForgotPasswordJSONRequestBody defines body for ForgotPassword for application/json ContentType.
+type ForgotPasswordJSONRequestBody = ForgotPasswordRequest
+
+// ResetPasswordJSONRequestBody defines body for ResetPassword for application/json ContentType.
+type ResetPasswordJSONRequestBody = ResetPasswordRequest
 
 // RefreshJSONRequestBody defines body for Refresh for application/json ContentType.
 type RefreshJSONRequestBody = RefreshRequest

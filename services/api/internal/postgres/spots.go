@@ -378,6 +378,19 @@ func (db *DB) VehicleOwnedBy(ctx context.Context, vehicleID, ownerID string) (bo
 	return found, nil
 }
 
+// OwnerPhone returns the owner's stored phone, or empty when unset.
+func (db *DB) OwnerPhone(ctx context.Context, ownerID string) (domain.Phone, error) {
+	var phone *string
+	err := db.q().QueryRow(ctx, `SELECT phone FROM users WHERE id = $1`, ownerID).Scan(&phone)
+	if err != nil {
+		return "", translate(err, "load owner phone")
+	}
+	if phone == nil {
+		return "", nil
+	}
+	return domain.NewPhone(*phone), nil
+}
+
 // SpotVehiclePhoto returns the linked vehicle's photo bytes.
 func (db *DB) SpotVehiclePhoto(ctx context.Context, spotID string) ([]byte, string, error) {
 	var (

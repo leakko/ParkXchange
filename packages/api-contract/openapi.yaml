@@ -118,6 +118,68 @@ paths:
         "401":
           $ref: "#/components/responses/Error"
 
+  /v1/auth/google:
+    post:
+      tags: [auth]
+      operationId: loginWithGoogle
+      summary: Authenticate with a Google ID token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoogleLoginRequest"
+      responses:
+        "200":
+          description: Session issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/auth/password/forgot:
+    post:
+      tags: [auth]
+      operationId: forgotPassword
+      summary: Request a password reset email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForgotPasswordRequest"
+      responses:
+        "204":
+          description: Always returned when the request is well-formed
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /v1/auth/password/reset:
+    post:
+      tags: [auth]
+      operationId: resetPassword
+      summary: Set a new password using a reset token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordRequest"
+      responses:
+        "204":
+          description: Password updated
+        "422":
+          $ref: "#/components/responses/Error"
+
   /v1/auth/refresh:
     post:
       tags: [auth]
@@ -842,7 +904,7 @@ components:
 
     RegisterRequest:
       type: object
-      required: [email, password, display_name, phone]
+      required: [email, password, display_name]
       properties:
         email:
           type: string
@@ -856,8 +918,33 @@ components:
           maxLength: 60
         phone:
           type: string
-          description: E.164 phone number (required at registration)
+          description: Optional E.164 phone; required before announcing a spot
           example: "+34600111222"
+
+    GoogleLoginRequest:
+      type: object
+      required: [id_token]
+      properties:
+        id_token:
+          type: string
+
+    ForgotPasswordRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    ResetPasswordRequest:
+      type: object
+      required: [token, password]
+      properties:
+        token:
+          type: string
+        password:
+          type: string
+          minLength: 8
 
     LoginRequest:
       type: object
@@ -907,7 +994,7 @@ components:
           type: string
         phone:
           type: string
-          description: E.164 phone number of this account
+          description: E.164 phone number of this account; empty when unset
         rating:
           type: number
           format: double
@@ -920,12 +1007,15 @@ components:
 
     UpdateMeRequest:
       type: object
-      required: [display_name]
       properties:
         display_name:
           type: string
           minLength: 2
           maxLength: 60
+        phone:
+          type: string
+          description: E.164 phone, or empty string to clear
+          example: "+34600111222"
 
     ChangePasswordRequest:
       type: object

@@ -68,6 +68,9 @@ type Store interface {
 	// VehicleOwnedBy reports whether vehicleID belongs to ownerID.
 	VehicleOwnedBy(ctx context.Context, vehicleID, ownerID string) (bool, error)
 
+	// OwnerPhone returns the owner's stored phone, or empty when unset.
+	OwnerPhone(ctx context.Context, ownerID string) (domain.Phone, error)
+
 	// SpotVehiclePhoto returns the image bytes for the vehicle linked to the
 	// spot, or ErrNoRows when the spot is missing or the vehicle has no photo.
 	SpotVehiclePhoto(ctx context.Context, spotID string) ([]byte, string, error)

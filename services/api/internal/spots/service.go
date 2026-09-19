@@ -114,6 +114,15 @@ func (s *Service) Offer(ctx context.Context, in domain.NewSpotInput) (domain.Spo
 		return domain.Spot{}, err
 	}
 
+	phone, err := s.store.OwnerPhone(ctx, draft.OwnerID)
+	if err != nil {
+		return domain.Spot{}, domain.Internal(err)
+	}
+	if !phone.Present() {
+		return domain.Spot{}, domain.Invalid("phone_required",
+			"add a phone number to your profile before announcing a spot")
+	}
+
 	owned, err := s.store.VehicleOwnedBy(ctx, draft.VehicleID, draft.OwnerID)
 	if err != nil {
 		return domain.Spot{}, domain.Internal(err)

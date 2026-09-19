@@ -41,6 +41,9 @@ type fakeStore struct {
 	// ownedVehicles maps ownerID → set of vehicle IDs they own.
 	ownedVehicles map[string]map[string]bool
 
+	// ownerPhones overrides the default phone returned by OwnerPhone.
+	ownerPhones map[string]domain.Phone
+
 	updateCalls int
 	updateErr   error
 
@@ -134,6 +137,16 @@ func (f *fakeStore) VehicleOwnedBy(_ context.Context, vehicleID, ownerID string)
 	}
 	_, found := owners[vehicleID]
 	return found, nil
+}
+
+func (f *fakeStore) OwnerPhone(_ context.Context, ownerID string) (domain.Phone, error) {
+	if f.ownerPhones != nil {
+		if phone, ok := f.ownerPhones[ownerID]; ok {
+			return phone, nil
+		}
+	}
+	// Default: owners in unit tests already have a phone so Offer keeps working.
+	return domain.NewPhone("+34600111222"), nil
 }
 
 func (f *fakeStore) UpdateAvailableSpot(_ context.Context, spotID, ownerID string, patch spots.SpotPatch) (domain.Spot, error) {

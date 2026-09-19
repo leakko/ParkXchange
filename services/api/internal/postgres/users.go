@@ -11,17 +11,19 @@ import (
 
 // userColumns is shared by every user query so the scan order cannot drift
 // between them.
-const userColumns = `id, email, password_hash, display_name, phone,
+const userColumns = `id, email, password_hash, display_name, phone, google_sub,
                      rating_sum, rating_count, balance_cents, created_at`
 
 func scanUser(row pgx.Row) (domain.User, error) {
 	var (
-		user  domain.User
-		email string
-		phone string
+		user         domain.User
+		email        string
+		passwordHash *string
+		phone        *string
+		googleSub    *string
 	)
 
-	err := row.Scan(&user.ID, &email, &user.PasswordHash, &user.DisplayName, &phone,
+	err := row.Scan(&user.ID, &email, &passwordHash, &user.DisplayName, &phone, &googleSub,
 		&user.RatingSum, &user.RatingCount, &user.BalanceCents, &user.CreatedAt)
 	if err != nil {
 		return domain.User{}, translate(err, "scan user")
@@ -31,7 +33,15 @@ func scanUser(row pgx.Row) (domain.User, error) {
 	// written, and re-validating on read would make a row unreadable if the
 	// rules were ever tightened.
 	user.Email = domain.NewEmail(email)
-	user.Phone = domain.NewPhone(phone)
+	if passwordHash != nil {
+		user.PasswordHash = *passwordHash
+	}
+	if phone != nil {
+		user.Phone = domain.NewPhone(*phone)
+	}
+	if googleSub != nil {
+		user.GoogleSub = *googleSub
+	}
 	return user, nil
 }
 
@@ -48,11 +58,20 @@ func (db *DB) CreateUser(
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	var phoneArg any
+	if phone.Present() {
+		phoneArg = phone.String()
+	}
+	var hashArg any
+	if passwordHash != "" {
+		hashArg = passwordHash
+	}
+
 	user, err := scanUser(tx.QueryRow(ctx, `
 		INSERT INTO users (email, password_hash, display_name, phone)
 		VALUES ($1, $2, $3, $4)
 		RETURNING `+userColumns,
-		email.String(), passwordHash, displayName, phone.String()))
+		email.String(), hashArg, displayName, phoneArg))
 	if err != nil {
 		return domain.User{}, err
 	}
@@ -274,6 +293,146 @@ func (db *DB) ChangePassword(ctx context.Context, userID, passwordHash string) e
 		return err
 	}
 	return translate(tx.Commit(ctx), "commit change password")
+}
+
+// UserByGoogleSub loads an account by its Google subject.
+func (db *DB) UserByGoogleSub(ctx context.Context, googleSub string) (domain.User, error) {
+	return scanUser(db.Pool.QueryRow(ctx,
+		`SELECT `+userColumns+` FROM users WHERE google_sub = $1`, googleSub))
+}
+
+// LinkGoogleSub attaches a Google subject to an account.
+func (db *DB) LinkGoogleSub(ctx context.Context, userID, googleSub string) (domain.User, error) {
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE users SET google_sub = $2 WHERE id = $1 AND google_sub IS NULL
+	`, userID, googleSub)
+	if err != nil {
+		return domain.User{}, translate(err, "link google sub")
+	}
+	if tag.RowsAffected() == 0 {
+		existing, err := db.UserByID(ctx, userID)
+		if err != nil {
+			return domain.User{}, err
+		}
+		if existing.GoogleSub == googleSub {
+			return existing, nil
+		}
+		if existing.GoogleSub != "" {
+			return domain.User{}, domain.ErrConflict
+		}
+		return domain.User{}, domain.ErrDuplicate
+	}
+	return db.UserByID(ctx, userID)
+}
+
+// UpdatePhone sets or clears the caller's phone.
+func (db *DB) UpdatePhone(ctx context.Context, userID string, phone domain.Phone) (domain.User, error) {
+	var phoneArg any
+	if phone.Present() {
+		phoneArg = phone.String()
+	}
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE users SET phone = $2 WHERE id = $1
+	`, userID, phoneArg)
+	if err != nil {
+		return domain.User{}, translate(err, "update phone")
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.User{}, domain.ErrNoRows
+	}
+	return db.UserByID(ctx, userID)
+}
+
+// InsertPasswordResetToken stores a one-time reset credential hash.
+func (db *DB) InsertPasswordResetToken(
+	ctx context.Context,
+	userID string,
+	tokenHash []byte,
+	expiresAt time.Time,
+) error {
+	_, err := db.Pool.Exec(ctx, `
+		INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+		VALUES ($1, $2, $3)
+	`, userID, tokenHash, expiresAt)
+	return translate(err, "insert password reset token")
+}
+
+// CompletePasswordReset validates the token, sets the password, marks the
+// token used, and revokes all refresh tokens.
+func (db *DB) CompletePasswordReset(ctx context.Context, tokenHash []byte, passwordHash string) error {
+	run := func(tx pgx.Tx) error {
+		var (
+			userID    string
+			expiresAt time.Time
+			usedAt    *time.Time
+		)
+		err := tx.QueryRow(ctx, `
+			SELECT user_id, expires_at, used_at
+			  FROM password_reset_tokens
+			 WHERE token_hash = $1
+			 FOR UPDATE
+		`, tokenHash).Scan(&userID, &expiresAt, &usedAt)
+		if err != nil {
+			return translate(err, "load password reset token")
+		}
+		if usedAt != nil {
+			return domain.ErrNoRows
+		}
+		if !expiresAt.After(time.Now()) {
+			return domain.ErrTokenExpired
+		}
+
+		tag, err := tx.Exec(ctx, `
+			UPDATE password_reset_tokens
+			   SET used_at = now()
+			 WHERE token_hash = $1 AND used_at IS NULL
+		`, tokenHash)
+		if err != nil {
+			return translate(err, "mark password reset used")
+		}
+		if tag.RowsAffected() == 0 {
+			return domain.ErrNoRows
+		}
+
+		tag, err = tx.Exec(ctx, `
+			UPDATE users SET password_hash = $2 WHERE id = $1
+		`, userID, passwordHash)
+		if err != nil {
+			return translate(err, "set password from reset")
+		}
+		if tag.RowsAffected() == 0 {
+			return domain.ErrNoRows
+		}
+
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM refresh_tokens WHERE user_id = $1
+		`, userID); err != nil {
+			return translate(err, "revoke all refresh tokens after reset")
+		}
+		return nil
+	}
+
+	if db.tx != nil {
+		sp, err := db.tx.Begin(ctx)
+		if err != nil {
+			return translate(err, "begin password reset")
+		}
+		defer func() { _ = sp.Rollback(ctx) }()
+		if err := run(sp); err != nil {
+			return err
+		}
+		return translate(sp.Commit(ctx), "commit password reset")
+	}
+
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return translate(err, "begin password reset")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := run(tx); err != nil {
+		return err
+	}
+	return translate(tx.Commit(ctx), "commit password reset")
 }
 
 // truncate bounds a value before it reaches a text column, so a client cannot

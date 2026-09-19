@@ -21,7 +21,8 @@ import (
 // Store is the persistence the account use cases need.
 type Store interface {
 	// CreateUser registers an account, reporting domain.ErrDuplicate if the
-	// address is taken.
+	// address is taken. passwordHash may be empty for OAuth-only accounts;
+	// phone may be empty when the user has not provided one yet.
 	CreateUser(ctx context.Context, email domain.Email, passwordHash, displayName string, phone domain.Phone) (domain.User, error)
 
 	// UserByEmail finds an account for login, reporting domain.ErrNoRows when
@@ -30,6 +31,13 @@ type Store interface {
 
 	// UserByID loads an account by identifier.
 	UserByID(ctx context.Context, id string) (domain.User, error)
+
+	// UserByGoogleSub finds an account linked to a Google subject.
+	UserByGoogleSub(ctx context.Context, googleSub string) (domain.User, error)
+
+	// LinkGoogleSub attaches a Google subject to an account. ErrDuplicate when
+	// another account already owns that subject.
+	LinkGoogleSub(ctx context.Context, userID, googleSub string) (domain.User, error)
 
 	// InsertRefreshToken records the hash of a newly issued refresh token.
 	InsertRefreshToken(ctx context.Context, userID string, tokenHash []byte, expiresAt time.Time, userAgent string) error
@@ -50,10 +58,38 @@ type Store interface {
 	// updated account.
 	UpdateDisplayName(ctx context.Context, userID, displayName string) (domain.User, error)
 
+	// UpdatePhone sets or clears the caller's phone and returns the updated
+	// account.
+	UpdatePhone(ctx context.Context, userID string, phone domain.Phone) (domain.User, error)
+
 	// ChangePassword replaces the password hash and deletes every refresh
 	// token for the account in one transaction, so a crash cannot leave a
 	// new password with old sessions still valid (or the reverse).
 	ChangePassword(ctx context.Context, userID, passwordHash string) error
+
+	// InsertPasswordResetToken stores a one-time reset credential hash.
+	InsertPasswordResetToken(ctx context.Context, userID string, tokenHash []byte, expiresAt time.Time) error
+
+	// CompletePasswordReset validates tokenHash, sets the password, marks the
+	// token used, and revokes all refresh tokens in one transaction.
+	CompletePasswordReset(ctx context.Context, tokenHash []byte, passwordHash string) error
+}
+
+// GoogleIdentity is what a verified ID token asserts about the Google account.
+type GoogleIdentity struct {
+	Subject string
+	Email   string
+	Name    string
+}
+
+// GoogleVerifier checks a Google ID token and returns the identity claims.
+type GoogleVerifier interface {
+	VerifyIDToken(ctx context.Context, idToken string) (GoogleIdentity, error)
+}
+
+// Mailer delivers transactional email for account flows.
+type Mailer interface {
+	SendPasswordReset(ctx context.Context, to domain.Email, resetURL string) error
 }
 
 // Hasher turns a password into something safe to store.

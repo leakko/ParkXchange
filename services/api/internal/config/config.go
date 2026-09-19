@@ -70,6 +70,21 @@ type Config struct {
 	// stored, rotated and revocable, so the lifetime can be long.
 	RefreshTokenTTL time.Duration
 
+	// GoogleWebClientID is the OAuth Web client ID used as the audience when
+	// verifying Google ID tokens. Empty disables Google Sign-In.
+	GoogleWebClientID string
+
+	// ResendAPIKey sends password-reset email in non-development environments.
+	// When empty in development, reset links are written to the application log.
+	ResendAPIKey string
+
+	// EmailFrom is the Resend From header, e.g. ParkXchange <noreply@mail.example.com>.
+	EmailFrom string
+
+	// PasswordResetDeepLinkBase is the app deep link prefix for reset tokens,
+	// e.g. parkxchange://auth/reset
+	PasswordResetDeepLinkBase string
+
 	// SweepInterval is how often the expiry worker runs. Short enough that a
 	// missed reconfirm returns the spot to the map before anyone has waited
 	// long, long enough that it is not a busy-loop against the database.
@@ -149,6 +164,21 @@ func Load() (Config, error) {
 	cfg.AccessTokenTTL = durationVar("ACCESS_TOKEN_TTL", defaultAccessTokenTTL, &problems)
 	cfg.RefreshTokenTTL = durationVar("REFRESH_TOKEN_TTL", defaultRefreshTokenTTL, &problems)
 	cfg.SweepInterval = durationVar("SWEEP_INTERVAL", defaultSweepInterval, &problems)
+
+	cfg.GoogleWebClientID = strings.TrimSpace(os.Getenv("GOOGLE_WEB_CLIENT_ID"))
+	cfg.ResendAPIKey = strings.TrimSpace(os.Getenv("RESEND_API_KEY"))
+	cfg.EmailFrom = strings.TrimSpace(os.Getenv("EMAIL_FROM"))
+	cfg.PasswordResetDeepLinkBase = orDefault(
+		"PASSWORD_RESET_DEEP_LINK_BASE", "parkxchange://auth/reset")
+
+	if cfg.Env != defaultEnv {
+		if cfg.ResendAPIKey == "" {
+			problems = append(problems, "RESEND_API_KEY is required outside development")
+		}
+		if cfg.EmailFrom == "" {
+			problems = append(problems, "EMAIL_FROM is required outside development")
+		}
+	}
 
 	cfg.JWTSecret = []byte(os.Getenv("JWT_SECRET"))
 	switch {

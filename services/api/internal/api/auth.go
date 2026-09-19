@@ -151,12 +151,61 @@ func (a *API) handleMe(w http.ResponseWriter, r *http.Request) error {
 }
 
 type updateMeRequest struct {
-	DisplayName string `json:"display_name"`
+	DisplayName *string `json:"display_name"`
+	Phone       *string `json:"phone"`
 }
 
 type changePasswordRequest struct {
 	CurrentPassword string `json:"current_password"`
 	NewPassword     string `json:"new_password"`
+}
+
+type googleLoginRequest struct {
+	IDToken string `json:"id_token"`
+}
+
+type forgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+type resetPasswordRequest struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
+}
+
+func (a *API) handleGoogleLogin(w http.ResponseWriter, r *http.Request) error {
+	var req googleLoginRequest
+	if err := web.DecodeJSON(w, r, &req); err != nil {
+		return err
+	}
+
+	session, err := a.accounts.LoginWithGoogle(r.Context(), req.IDToken, r.UserAgent())
+	if err != nil {
+		return err
+	}
+	return web.JSON(w, http.StatusOK, toSessionResponse(session))
+}
+
+func (a *API) handleForgotPassword(w http.ResponseWriter, r *http.Request) error {
+	var req forgotPasswordRequest
+	if err := web.DecodeJSON(w, r, &req); err != nil {
+		return err
+	}
+	if err := a.accounts.RequestPasswordReset(r.Context(), req.Email); err != nil {
+		return err
+	}
+	return web.NoContent(w)
+}
+
+func (a *API) handleResetPassword(w http.ResponseWriter, r *http.Request) error {
+	var req resetPasswordRequest
+	if err := web.DecodeJSON(w, r, &req); err != nil {
+		return err
+	}
+	if err := a.accounts.ResetPassword(r.Context(), req.Token, req.Password); err != nil {
+		return err
+	}
+	return web.NoContent(w)
 }
 
 func (a *API) handleUpdateMe(w http.ResponseWriter, r *http.Request) error {
@@ -165,7 +214,24 @@ func (a *API) handleUpdateMe(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	user, err := a.accounts.UpdateDisplayName(r.Context(), claimsFrom(r.Context()), req.DisplayName)
+	claims := claimsFrom(r.Context())
+	var user domain.User
+	var err error
+
+	switch {
+	case req.DisplayName != nil && req.Phone != nil:
+		user, err = a.accounts.UpdateDisplayName(r.Context(), claims, *req.DisplayName)
+		if err != nil {
+			return err
+		}
+		user, err = a.accounts.UpdatePhone(r.Context(), claims, *req.Phone)
+	case req.DisplayName != nil:
+		user, err = a.accounts.UpdateDisplayName(r.Context(), claims, *req.DisplayName)
+	case req.Phone != nil:
+		user, err = a.accounts.UpdatePhone(r.Context(), claims, *req.Phone)
+	default:
+		return domain.Invalid("empty_patch", "provide display_name and/or phone")
+	}
 	if err != nil {
 		return err
 	}

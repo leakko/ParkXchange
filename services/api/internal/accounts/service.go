@@ -7,8 +7,11 @@ package accounts
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/marco/parkxchange/services/api/internal/domain"
@@ -22,6 +25,11 @@ type Service struct {
 
 	refreshTTL time.Duration
 
+	google         GoogleVerifier
+	mailer         Mailer
+	resetLinkBase  string
+	resetTokenTTL  time.Duration
+
 	// dummyHash is verified against when a login names an address that does
 	// not exist, so that the response takes the same time either way.
 	//
@@ -33,8 +41,19 @@ type Service struct {
 	dummyHash string
 }
 
-// New builds the service.
-func New(store Store, hasher Hasher, tokens Tokens, refreshTTL time.Duration) (*Service, error) {
+const defaultResetTokenTTL = time.Hour
+
+// New builds the service. google and mailer may be nil when those flows are
+// unused in a given process (unit tests); production wires real adapters.
+func New(
+	store Store,
+	hasher Hasher,
+	tokens Tokens,
+	refreshTTL time.Duration,
+	google GoogleVerifier,
+	mailer Mailer,
+	resetLinkBase string,
+) (*Service, error) {
 	if refreshTTL <= 0 {
 		return nil, errors.New("accounts: refresh token TTL must be positive")
 	}
@@ -45,11 +64,15 @@ func New(store Store, hasher Hasher, tokens Tokens, refreshTTL time.Duration) (*
 	}
 
 	return &Service{
-		store:      store,
-		hasher:     hasher,
-		tokens:     tokens,
-		refreshTTL: refreshTTL,
-		dummyHash:  dummyHash,
+		store:         store,
+		hasher:        hasher,
+		tokens:        tokens,
+		refreshTTL:    refreshTTL,
+		google:        google,
+		mailer:        mailer,
+		resetLinkBase: strings.TrimRight(resetLinkBase, "?&"),
+		resetTokenTTL: defaultResetTokenTTL,
+		dummyHash:     dummyHash,
 	}, nil
 }
 
@@ -108,6 +131,12 @@ func (s *Service) Login(ctx context.Context, rawEmail, password, userAgent strin
 	user, err := s.store.UserByEmail(ctx, email)
 	if err != nil && !errors.Is(err, domain.ErrNoRows) {
 		return Session{}, domain.Internal(err)
+	}
+
+	if user.ID != "" && user.PasswordHash == "" {
+		_, _ = s.hasher.Verify(password, s.dummyHash)
+		return Session{}, domain.Invalid("oauth_only",
+			"this account signs in with Google")
 	}
 
 	// Verify a password even when the account does not exist, against the
@@ -181,6 +210,172 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent string) (
 		ExpiresAt:    expiresAt,
 		User:         user,
 	}, nil
+}
+
+// LoginWithGoogle exchanges a Google ID token for a ParkXchange session,
+// creating the account or linking google_sub when the email already exists.
+func (s *Service) LoginWithGoogle(ctx context.Context, idToken, userAgent string) (Session, error) {
+	if s.google == nil {
+		return Session{}, domain.Internal(errors.New("accounts: google sign-in is not configured"))
+	}
+	if strings.TrimSpace(idToken) == "" {
+		return Session{}, domain.Invalid("id_token_required", "a Google ID token is required")
+	}
+
+	identity, err := s.google.VerifyIDToken(ctx, idToken)
+	if err != nil {
+		return Session{}, domain.Unauthenticated("unauthorized", "the Google ID token is not valid")
+	}
+	if identity.Subject == "" {
+		return Session{}, domain.Unauthenticated("unauthorized", "the Google ID token is not valid")
+	}
+
+	email, err := domain.ParseEmail(identity.Email)
+	if err != nil {
+		return Session{}, domain.Invalid("email_invalid", "Google did not provide a usable email")
+	}
+
+	if user, err := s.store.UserByGoogleSub(ctx, identity.Subject); err == nil {
+		return s.issue(ctx, user, userAgent)
+	} else if !errors.Is(err, domain.ErrNoRows) {
+		return Session{}, domain.Internal(err)
+	}
+
+	user, err := s.store.UserByEmail(ctx, email)
+	switch {
+	case err == nil:
+		if user.GoogleSub == "" {
+			user, err = s.store.LinkGoogleSub(ctx, user.ID, identity.Subject)
+			if err != nil {
+				if errors.Is(err, domain.ErrDuplicate) {
+					return Session{}, domain.Conflict("google_sub_taken",
+						"that Google account is already linked elsewhere")
+				}
+				return Session{}, domain.Internal(err)
+			}
+		} else if user.GoogleSub != identity.Subject {
+			return Session{}, domain.Conflict("google_mismatch",
+				"that email is already linked to a different Google account")
+		}
+		return s.issue(ctx, user, userAgent)
+
+	case errors.Is(err, domain.ErrNoRows):
+		name := domain.SuggestDisplayName(identity.Name, email.String())
+		user, err = s.store.CreateUser(ctx, email, "", name, "")
+		if err != nil {
+			if errors.Is(err, domain.ErrDuplicate) {
+				return Session{}, domain.Conflict("email_taken", "that email address is already registered")
+			}
+			return Session{}, domain.Internal(err)
+		}
+		user, err = s.store.LinkGoogleSub(ctx, user.ID, identity.Subject)
+		if err != nil {
+			return Session{}, domain.Internal(err)
+		}
+		return s.issue(ctx, user, userAgent)
+
+	default:
+		return Session{}, domain.Internal(err)
+	}
+}
+
+// RequestPasswordReset emails a one-time reset link when the address exists.
+// The caller always sees success so the endpoint cannot enumerate accounts.
+func (s *Service) RequestPasswordReset(ctx context.Context, rawEmail string) error {
+	email, err := domain.ParseEmail(rawEmail)
+	if err != nil {
+		// Still succeed: a malformed address is not evidence of an account.
+		return nil
+	}
+
+	user, err := s.store.UserByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			return nil
+		}
+		return domain.Internal(err)
+	}
+	if user.PasswordHash == "" {
+		// OAuth-only: nothing useful to email.
+		return nil
+	}
+	if s.mailer == nil || s.resetLinkBase == "" {
+		return domain.Internal(errors.New("accounts: password reset mailer is not configured"))
+	}
+
+	plaintext, err := randomResetToken()
+	if err != nil {
+		return domain.Internal(err)
+	}
+	hash := s.tokens.HashRefreshToken(plaintext)
+	expires := time.Now().Add(s.resetTokenTTL)
+	if err := s.store.InsertPasswordResetToken(ctx, user.ID, hash, expires); err != nil {
+		return domain.Internal(err)
+	}
+
+	sep := "?"
+	if strings.Contains(s.resetLinkBase, "?") {
+		sep = "&"
+	}
+	resetURL := s.resetLinkBase + sep + "token=" + plaintext
+	if err := s.mailer.SendPasswordReset(ctx, email, resetURL); err != nil {
+		return domain.Internal(err)
+	}
+	return nil
+}
+
+// ResetPassword consumes a reset token and sets a new password.
+func (s *Service) ResetPassword(ctx context.Context, rawToken, newPassword string) error {
+	if strings.TrimSpace(rawToken) == "" {
+		return domain.Invalid("token_required", "a reset token is required")
+	}
+	if problem := domain.PasswordProblem(newPassword); problem != "" {
+		return domain.InvalidFields(map[string]string{"password": problem})
+	}
+
+	hash, err := s.hasher.Hash(newPassword)
+	if err != nil {
+		return domain.Internal(err)
+	}
+
+	tokenHash := s.tokens.HashRefreshToken(rawToken)
+	if err := s.store.CompletePasswordReset(ctx, tokenHash, hash); err != nil {
+		if errors.Is(err, domain.ErrNoRows) || errors.Is(err, domain.ErrTokenExpired) {
+			return domain.Invalid("token_invalid", "that reset link is invalid or has expired")
+		}
+		return domain.Internal(err)
+	}
+	return nil
+}
+
+// UpdatePhone sets the signed-in user's phone (required E.164, or empty to clear).
+func (s *Service) UpdatePhone(ctx context.Context, viewer domain.Claims, rawPhone string) (domain.User, error) {
+	if !viewer.Authenticated() {
+		return domain.User{}, domain.Unauthenticated("unauthorized", "an access token is required")
+	}
+
+	phone, err := domain.ParseOptionalPhone(rawPhone)
+	if err != nil {
+		return domain.User{}, err
+	}
+
+	user, err := s.store.UpdatePhone(ctx, viewer.UserID, phone)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			return domain.User{}, domain.Unauthenticated(
+				"unauthorized", "this account no longer exists")
+		}
+		return domain.User{}, domain.Internal(err)
+	}
+	return user, nil
+}
+
+func randomResetToken() (string, error) {
+	var b [32]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b[:]), nil
 }
 
 // Logout revokes a refresh token.
@@ -272,6 +467,10 @@ func (s *Service) ChangePassword(ctx context.Context, viewer domain.Claims, curr
 			return domain.Unauthenticated("unauthorized", "this account no longer exists")
 		}
 		return domain.Internal(err)
+	}
+
+	if user.PasswordHash == "" {
+		return domain.Invalid("oauth_only", "this account signs in with Google")
 	}
 
 	// Same opaque failure shape as login: a wrong current password must not
