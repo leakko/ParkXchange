@@ -1,6 +1,7 @@
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { VehicleResponse } from "@/api/client";
+import { useTranslation } from "@/i18n";
 
 type Props = {
   visible: boolean;
@@ -11,12 +12,14 @@ type Props = {
 
 /** Full-screen list used on Android when announcing with multiple vehicles. */
 export function VehiclePickModal({ visible, vehicles, onPick, onCancel }: Props) {
+  const { t } = useTranslation();
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <Pressable style={styles.backdrop} onPress={onCancel}>
         <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
-          <Text style={styles.title}>Which vehicle?</Text>
-          <Text style={styles.sub}>Drivers will see this car at the exchange.</Text>
+          <Text style={styles.title}>{t("announce.vehiclePick.title")}</Text>
+          <Text style={styles.sub}>{t("announce.vehiclePick.subtitle")}</Text>
           {vehicles.map((v) => (
             <Pressable
               key={v.id}
@@ -32,7 +35,7 @@ export function VehiclePickModal({ visible, vehicles, onPick, onCancel }: Props)
             </Pressable>
           ))}
           <Pressable style={styles.cancel} onPress={onCancel}>
-            <Text style={styles.cancelText}>Cancel</Text>
+            <Text style={styles.cancelText}>{t("common.cancel")}</Text>
           </Pressable>
         </Pressable>
       </Pressable>

@@ -11,6 +11,8 @@ import {
   View,
 } from "react-native";
 
+import { useTranslation } from "@/i18n";
+
 export type AnnounceValues = {
   guidePriceCents: number;
   preferredDepartureAt: string | null;
@@ -25,6 +27,7 @@ type Props = {
 };
 
 export function AnnounceModal({ visible, busy, onCancel, onSubmit }: Props) {
+  const { t } = useTranslation();
   const [price, setPrice] = useState("1.50");
   const [hasPreferredTime, setHasPreferredTime] = useState(false);
   const [preferredTime, setPreferredTime] = useState("");
@@ -42,11 +45,17 @@ export function AnnounceModal({ visible, busy, onCancel, onSubmit }: Props) {
     const euros = Number.parseFloat(price);
     const preferred = hasPreferredTime ? new Date(preferredTime) : null;
     if (!Number.isFinite(euros) || euros < 0) {
-      Alert.alert("Precio no válido", "Introduce un precio orientativo válido.");
+      Alert.alert(
+        t("announce.alert.invalidPrice.title"),
+        t("announce.alert.invalidPrice.message"),
+      );
       return;
     }
     if (preferred && !Number.isFinite(preferred.getTime())) {
-      Alert.alert("Fecha no válida", "Usa el formato AAAA-MM-DDTHH:mm.");
+      Alert.alert(
+        t("announce.alert.invalidDate.title"),
+        t("announce.alert.invalidDate.message"),
+      );
       return;
     }
     await onSubmit({
@@ -60,8 +69,8 @@ export function AnnounceModal({ visible, busy, onCancel, onSubmit }: Props) {
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={styles.backdrop}>
         <View style={styles.card}>
-          <Text style={styles.title}>Anunciar plaza</Text>
-          <Text style={styles.label}>Precio orientativo (€)</Text>
+          <Text style={styles.title}>{t("announce.title")}</Text>
+          <Text style={styles.label}>{t("announce.guidePrice")}</Text>
           <TextInput
             style={styles.input}
             value={price}
@@ -70,7 +79,7 @@ export function AnnounceModal({ visible, busy, onCancel, onSubmit }: Props) {
             placeholderTextColor="#7A93A0"
           />
           <View style={styles.toggleRow}>
-            <Text style={styles.label}>Hora de salida preferida</Text>
+            <Text style={styles.label}>{t("announce.preferredDeparture")}</Text>
             <Switch value={hasPreferredTime} onValueChange={setHasPreferredTime} />
           </View>
           {hasPreferredTime ? (
@@ -78,15 +87,15 @@ export function AnnounceModal({ visible, busy, onCancel, onSubmit }: Props) {
               style={styles.input}
               value={preferredTime}
               onChangeText={setPreferredTime}
-              placeholder="2026-09-19T18:00"
+              placeholder={t("announce.datetimePlaceholder")}
               placeholderTextColor="#7A93A0"
               autoCapitalize="none"
             />
           ) : null}
           <View style={styles.toggleRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Cancelar automáticamente si no aparece</Text>
-              <Text style={styles.help}>Solo después del margen acordado.</Text>
+              <Text style={styles.label}>{t("announce.autoCancel.label")}</Text>
+              <Text style={styles.help}>{t("announce.autoCancel.help")}</Text>
             </View>
             <Switch value={autoCancel} onValueChange={setAutoCancel} />
           </View>
@@ -94,11 +103,11 @@ export function AnnounceModal({ visible, busy, onCancel, onSubmit }: Props) {
             {busy ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.primaryText}>Publicar durante 7 días</Text>
+              <Text style={styles.primaryText}>{t("announce.submit")}</Text>
             )}
           </Pressable>
           <Pressable disabled={busy} onPress={onCancel}>
-            <Text style={styles.cancel}>Cancelar</Text>
+            <Text style={styles.cancel}>{t("common.cancel")}</Text>
           </Pressable>
         </View>
       </View>

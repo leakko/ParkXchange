@@ -13,8 +13,10 @@ import {
 import { changePassword, getMe, updateMe } from "@/api/client";
 import { accountStyles } from "@/account/theme";
 import { useDevSession } from "@/hooks/useDevSession";
+import { useTranslation, type AppLocale } from "@/i18n";
 
 export default function ProfileScreen() {
+  const { t, locale, setLocale } = useTranslation();
   const { ready } = useDevSession();
   const queryClient = useQueryClient();
   const me = useQuery({
@@ -38,17 +40,20 @@ export default function ProfileScreen() {
     mutationFn: () => updateMe({ display_name: displayName.trim() }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["me"] });
-      Alert.alert("Saved", "Display name updated.");
+      Alert.alert(t("account.profile.saved.title"), t("account.profile.saved.displayName"));
     },
     onError: (err) => {
-      Alert.alert("Save failed", err instanceof Error ? err.message : "error");
+      Alert.alert(
+        t("account.profile.saveFailed.title"),
+        err instanceof Error ? err.message : t("common.error"),
+      );
     },
   });
 
   const savePassword = useMutation({
     mutationFn: async () => {
       if (newPassword !== confirmPassword) {
-        throw new Error("New password and confirmation do not match");
+        throw new Error(t("account.profile.passwordMismatch"));
       }
       await changePassword({
         current_password: currentPassword,
@@ -59,10 +64,16 @@ export default function ProfileScreen() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      Alert.alert("Password changed", "Use the new password next time you sign in.");
+      Alert.alert(
+        t("account.profile.passwordChanged.title"),
+        t("account.profile.passwordChanged.message"),
+      );
     },
     onError: (err) => {
-      Alert.alert("Password change failed", err instanceof Error ? err.message : "error");
+      Alert.alert(
+        t("account.profile.passwordChangeFailed.title"),
+        err instanceof Error ? err.message : t("common.error"),
+      );
     },
   });
 
@@ -74,15 +85,40 @@ export default function ProfileScreen() {
     );
   }
 
+  const languageOptions: { id: AppLocale; labelKey: "account.profile.language.es" | "account.profile.language.en" }[] =
+    [
+      { id: "es", labelKey: "account.profile.language.es" },
+      { id: "en", labelKey: "account.profile.language.en" },
+    ];
+
   return (
     <ScrollView
       style={accountStyles.screen}
       contentContainerStyle={accountStyles.scroll}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={accountStyles.sectionTitle}>Display name</Text>
+      <Text style={accountStyles.sectionTitle}>{t("account.profile.language.section")}</Text>
+      <View style={accountStyles.section}>
+        {languageOptions.map((opt) => {
+          const selected = locale === opt.id;
+          return (
+            <Pressable
+              key={opt.id}
+              style={accountStyles.row}
+              onPress={() => setLocale(opt.id)}
+            >
+              <Text style={accountStyles.rowTitle}>{t(opt.labelKey)}</Text>
+              {selected ? <Text style={accountStyles.link}>✓</Text> : null}
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Text style={[accountStyles.sectionTitle, { marginTop: 24 }]}>
+        {t("account.profile.displayName.section")}
+      </Text>
       <View style={accountStyles.field}>
-        <Text style={accountStyles.label}>Name</Text>
+        <Text style={accountStyles.label}>{t("account.profile.displayName.label")}</Text>
         <TextInput
           style={accountStyles.input}
           value={displayName}
@@ -91,7 +127,9 @@ export default function ProfileScreen() {
           placeholderTextColor="#7A93A0"
         />
       </View>
-      <Text style={accountStyles.meta}>Email is {me.data?.email} (read-only)</Text>
+      <Text style={accountStyles.meta}>
+        {t("account.profile.emailReadOnly", { email: me.data?.email ?? "" })}
+      </Text>
       <Pressable
         style={accountStyles.primary}
         disabled={saveName.isPending || !displayName.trim()}
@@ -100,14 +138,14 @@ export default function ProfileScreen() {
         {saveName.isPending ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={accountStyles.primaryText}>Save name</Text>
+          <Text style={accountStyles.primaryText}>{t("account.profile.saveName")}</Text>
         )}
       </Pressable>
 
       <View style={[accountStyles.section, { marginTop: 24 }]}>
-        <Text style={accountStyles.sectionTitle}>Change password</Text>
+        <Text style={accountStyles.sectionTitle}>{t("account.profile.password.section")}</Text>
         <View style={accountStyles.field}>
-          <Text style={accountStyles.label}>Current password</Text>
+          <Text style={accountStyles.label}>{t("account.profile.password.current")}</Text>
           <TextInput
             style={accountStyles.input}
             value={currentPassword}
@@ -118,7 +156,7 @@ export default function ProfileScreen() {
           />
         </View>
         <View style={accountStyles.field}>
-          <Text style={accountStyles.label}>New password</Text>
+          <Text style={accountStyles.label}>{t("account.profile.password.new")}</Text>
           <TextInput
             style={accountStyles.input}
             value={newPassword}
@@ -129,7 +167,7 @@ export default function ProfileScreen() {
           />
         </View>
         <View style={accountStyles.field}>
-          <Text style={accountStyles.label}>Confirm new password</Text>
+          <Text style={accountStyles.label}>{t("account.profile.password.confirm")}</Text>
           <TextInput
             style={accountStyles.input}
             value={confirmPassword}
@@ -152,7 +190,7 @@ export default function ProfileScreen() {
           {savePassword.isPending ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={accountStyles.primaryText}>Update password</Text>
+            <Text style={accountStyles.primaryText}>{t("account.profile.updatePassword")}</Text>
           )}
         </Pressable>
       </View>

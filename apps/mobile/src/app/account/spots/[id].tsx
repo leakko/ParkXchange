@@ -24,6 +24,7 @@ import {
 } from "@/api/client";
 import { accountStyles } from "@/account/theme";
 import { useDevSession } from "@/hooks/useDevSession";
+import { useTranslation } from "@/i18n";
 import { matchesPreferredMinute } from "@/map/exchange";
 
 function localDateTimeInput(value: string): string {
@@ -33,6 +34,7 @@ function localDateTimeInput(value: string): string {
 }
 
 export default function EditSpotScreen() {
+  const { t, formatDateTime } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { ready } = useDevSession();
@@ -82,11 +84,11 @@ export default function EditSpotScreen() {
   const save = useMutation({
     mutationFn: async () => {
       if (!id) {
-        throw new Error("Missing spot id");
+        throw new Error(t("account.spots.edit.missingId"));
       }
       const euros = Number.parseFloat(price);
       if (!Number.isFinite(euros) || euros < 0) {
-        throw new Error("Enter a valid price");
+        throw new Error(t("account.spots.edit.invalidPrice"));
       }
       const body: Parameters<typeof updateSpot>[1] = {
         price_cents: Math.round(euros * 100),
@@ -95,7 +97,7 @@ export default function EditSpotScreen() {
       if (hasPreferredTime) {
         const preferred = new Date(preferredTime);
         if (!Number.isFinite(preferred.getTime())) {
-          throw new Error("Enter a valid preferred departure date and time");
+          throw new Error(t("account.spots.edit.invalidPreferredTime"));
         }
         body.preferred_departure_at = preferred.toISOString();
       } else {
@@ -112,12 +114,15 @@ export default function EditSpotScreen() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["spots", "mine"] });
-      Alert.alert("Saved", "Spot updated.", [
-        { text: "OK", onPress: () => router.back() },
+      Alert.alert(t("account.spots.edit.saved.title"), t("account.spots.edit.saved.message"), [
+        { text: t("common.ok"), onPress: () => router.back() },
       ]);
     },
     onError: (err) => {
-      Alert.alert("Save failed", err instanceof Error ? err.message : "error");
+      Alert.alert(
+        t("account.spots.edit.saveFailed.title"),
+        err instanceof Error ? err.message : t("common.error"),
+      );
     },
   });
 
@@ -135,18 +140,24 @@ export default function EditSpotScreen() {
         queryClient.invalidateQueries({ queryKey: ["spots", "mine"] }),
       ]);
       if (variables.accept) {
-        Alert.alert("Oferta aceptada", "El intercambio ya está reservado.");
+        Alert.alert(
+          t("account.spots.offer.accepted.title"),
+          t("account.spots.offer.accepted.message"),
+        );
       }
     },
     onError: (err) => {
-      Alert.alert("No se pudo actualizar", err instanceof Error ? err.message : "error");
+      Alert.alert(
+        t("account.spots.offer.updateFailed.title"),
+        err instanceof Error ? err.message : t("common.error"),
+      );
     },
   });
 
   const withdraw = useMutation({
     mutationFn: async () => {
       if (!id) {
-        throw new Error("Missing spot id");
+        throw new Error(t("account.spots.edit.missingId"));
       }
       await withdrawSpot(id);
     },
@@ -155,7 +166,10 @@ export default function EditSpotScreen() {
       router.back();
     },
     onError: (err) => {
-      Alert.alert("Withdraw failed", err instanceof Error ? err.message : "error");
+      Alert.alert(
+        t("account.spots.withdrawFailed.title"),
+        err instanceof Error ? err.message : t("common.error"),
+      );
     },
   });
 
@@ -170,7 +184,7 @@ export default function EditSpotScreen() {
   if (!spot) {
     return (
       <View style={[accountStyles.screen, accountStyles.scroll]}>
-        <Text style={accountStyles.error}>Spot not found</Text>
+        <Text style={accountStyles.error}>{t("account.spots.notFound")}</Text>
       </View>
     );
   }
@@ -179,22 +193,26 @@ export default function EditSpotScreen() {
     return (
       <View style={[accountStyles.screen, accountStyles.scroll]}>
         <Text style={accountStyles.meta}>
-          Only available spots can be edited (status: {spot.properties.status}).
+          {t("account.spots.edit.notAvailable", { status: spot.properties.status })}
         </Text>
         <Pressable
           style={[accountStyles.danger, { marginTop: 16 }]}
           onPress={() => {
-            Alert.alert("Withdraw spot?", "This removes the offer from the map.", [
-              { text: "Cancel", style: "cancel" },
-              {
-                text: "Withdraw",
-                style: "destructive",
-                onPress: () => withdraw.mutate(),
-              },
-            ]);
+            Alert.alert(
+              t("account.spots.withdraw.confirmTitle"),
+              t("account.spots.withdraw.confirmMessage"),
+              [
+                { text: t("common.cancel"), style: "cancel" },
+                {
+                  text: t("account.spots.withdraw.action"),
+                  style: "destructive",
+                  onPress: () => withdraw.mutate(),
+                },
+              ],
+            );
           }}
         >
-          <Text style={accountStyles.dangerText}>Withdraw</Text>
+          <Text style={accountStyles.dangerText}>{t("account.spots.withdraw.action")}</Text>
         </Pressable>
       </View>
     );
@@ -207,12 +225,13 @@ export default function EditSpotScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <Text style={accountStyles.meta}>
-        Location and space size are fixed. Listed until{" "}
-        {new Date(spot.properties.listed_until).toLocaleString()}
+        {t("account.spots.edit.listedUntilHint", {
+          datetime: formatDateTime(spot.properties.listed_until),
+        })}
       </Text>
 
       <View style={accountStyles.field}>
-        <Text style={accountStyles.label}>Precio orientativo (€)</Text>
+        <Text style={accountStyles.label}>{t("account.spots.edit.guidePrice")}</Text>
         <TextInput
           style={accountStyles.input}
           value={price}
@@ -222,7 +241,7 @@ export default function EditSpotScreen() {
         />
       </View>
       <View style={accountStyles.field}>
-        <Text style={accountStyles.label}>Notes</Text>
+        <Text style={accountStyles.label}>{t("account.spots.edit.notes")}</Text>
         <TextInput
           style={[accountStyles.input, { minHeight: 72, textAlignVertical: "top" }]}
           value={notes}
@@ -232,7 +251,7 @@ export default function EditSpotScreen() {
         />
       </View>
       <View style={[accountStyles.row, { marginBottom: 12 }]}>
-        <Text style={accountStyles.rowTitle}>Hora de salida preferida</Text>
+        <Text style={accountStyles.rowTitle}>{t("account.spots.edit.preferredDeparture")}</Text>
         <Switch value={hasPreferredTime} onValueChange={setHasPreferredTime} />
       </View>
       {hasPreferredTime ? (
@@ -241,7 +260,7 @@ export default function EditSpotScreen() {
             style={accountStyles.input}
             value={preferredTime}
             onChangeText={setPreferredTime}
-            placeholder="2026-09-19T18:00"
+            placeholder={t("account.spots.edit.datetimePlaceholder")}
             placeholderTextColor="#7A93A0"
             autoCapitalize="none"
           />
@@ -249,14 +268,14 @@ export default function EditSpotScreen() {
       ) : null}
       <View style={[accountStyles.row, { marginBottom: 12 }]}>
         <View style={{ flex: 1 }}>
-          <Text style={accountStyles.rowTitle}>Auto-cancelar ausencia</Text>
-          <Text style={accountStyles.rowMeta}>Después del margen de cortesía.</Text>
+          <Text style={accountStyles.rowTitle}>{t("account.spots.edit.autoCancelNoShow")}</Text>
+          <Text style={accountStyles.rowMeta}>{t("account.spots.edit.autoCancelHelp")}</Text>
         </View>
         <Switch value={autoCancel} onValueChange={setAutoCancel} />
       </View>
 
       <View style={accountStyles.field}>
-        <Text style={accountStyles.label}>Vehicle</Text>
+        <Text style={accountStyles.label}>{t("account.spots.edit.vehicle")}</Text>
         {(vehicles.data ?? []).map((v) => {
           const active = vehicleId === v.id;
           return (
@@ -277,7 +296,9 @@ export default function EditSpotScreen() {
                   {v.color} · {v.year}
                 </Text>
               </View>
-              {active ? <Text style={accountStyles.link}>Selected</Text> : null}
+              {active ? (
+                <Text style={accountStyles.link}>{t("account.spots.edit.vehicleSelected")}</Text>
+              ) : null}
             </Pressable>
           );
         })}
@@ -291,12 +312,12 @@ export default function EditSpotScreen() {
         {save.isPending ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={accountStyles.primaryText}>Save spot</Text>
+          <Text style={accountStyles.primaryText}>{t("account.spots.edit.saveSpot")}</Text>
         )}
       </Pressable>
 
       <View style={accountStyles.section}>
-        <Text style={accountStyles.sectionTitle}>Ofertas pendientes</Text>
+        <Text style={accountStyles.sectionTitle}>{t("account.spots.edit.pendingOffers")}</Text>
         {(offers.data ?? [])
           .filter((offer) => offer.status === "pending")
           .map((offer) => {
@@ -309,10 +330,12 @@ export default function EditSpotScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={accountStyles.rowTitle}>
                     €{(offer.amount_cents / 100).toFixed(2)} ·{" "}
-                    {new Date(offer.exchange_at).toLocaleString()}
+                    {formatDateTime(offer.exchange_at)}
                   </Text>
                   <Text style={accountStyles.rowMeta}>
-                    {preferred ? "a tu hora" : "otra hora"}
+                    {preferred
+                      ? t("account.spots.edit.offerAtPreferredTime")
+                      : t("account.spots.edit.offerAtOtherTime")}
                   </Text>
                 </View>
                 <View style={{ gap: 6 }}>
@@ -321,14 +344,18 @@ export default function EditSpotScreen() {
                     disabled={decideOffer.isPending}
                     onPress={() => decideOffer.mutate({ offerId: offer.id, accept: true })}
                   >
-                    <Text style={accountStyles.primaryText}>Aceptar</Text>
+                    <Text style={accountStyles.primaryText}>
+                      {t("account.spots.edit.acceptOffer")}
+                    </Text>
                   </Pressable>
                   <Pressable
                     style={[accountStyles.danger, { paddingHorizontal: 12 }]}
                     disabled={decideOffer.isPending}
                     onPress={() => decideOffer.mutate({ offerId: offer.id, accept: false })}
                   >
-                    <Text style={accountStyles.dangerText}>Rechazar</Text>
+                    <Text style={accountStyles.dangerText}>
+                      {t("account.spots.edit.rejectOffer")}
+                    </Text>
                   </Pressable>
                 </View>
               </View>
@@ -337,7 +364,7 @@ export default function EditSpotScreen() {
         {offers.isLoading ? <ActivityIndicator color="#F4F7FA" /> : null}
         {!offers.isLoading &&
         !(offers.data ?? []).some((offer) => offer.status === "pending") ? (
-          <Text style={accountStyles.empty}>No hay ofertas pendientes.</Text>
+          <Text style={accountStyles.empty}>{t("account.spots.edit.noPendingOffers")}</Text>
         ) : null}
       </View>
 
@@ -345,20 +372,24 @@ export default function EditSpotScreen() {
         style={[accountStyles.danger, { marginTop: 8 }]}
         disabled={withdraw.isPending}
         onPress={() => {
-          Alert.alert("Withdraw spot?", "This removes the offer from the map.", [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Withdraw",
-              style: "destructive",
-              onPress: () => withdraw.mutate(),
-            },
-          ]);
+          Alert.alert(
+            t("account.spots.withdraw.confirmTitle"),
+            t("account.spots.withdraw.confirmMessage"),
+            [
+              { text: t("common.cancel"), style: "cancel" },
+              {
+                text: t("account.spots.withdraw.action"),
+                style: "destructive",
+                onPress: () => withdraw.mutate(),
+              },
+            ],
+          );
         }}
       >
         {withdraw.isPending ? (
           <ActivityIndicator color="#FF8FAB" />
         ) : (
-          <Text style={accountStyles.dangerText}>Withdraw</Text>
+          <Text style={accountStyles.dangerText}>{t("account.spots.withdraw.action")}</Text>
         )}
       </Pressable>
     </ScrollView>

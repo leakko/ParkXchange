@@ -14,8 +14,15 @@ import {
   pickVehiclePhoto,
   type PickedVehiclePhoto,
 } from "@/account/pickVehiclePhoto";
+import { useTranslation, type TranslationKey } from "@/i18n";
 
 const SIZE_CLASSES = ["small", "medium", "large"] as const;
+
+const SIZE_LABELS: Record<(typeof SIZE_CLASSES)[number], TranslationKey> = {
+  small: "account.vehicles.size.small",
+  medium: "account.vehicles.size.medium",
+  large: "account.vehicles.size.large",
+};
 
 export type VehicleFormValues = CreateVehicleRequest;
 
@@ -39,6 +46,7 @@ export function VehicleForm({
   onDelete,
   deleteBusy,
 }: Props) {
+  const { t } = useTranslation();
   const [plate, setPlate] = useState(initial.plate);
   const [makeModel, setMakeModel] = useState(initial.make_model);
   const [sizeClass, setSizeClass] = useState(initial.size_class);
@@ -52,7 +60,7 @@ export function VehicleForm({
   return (
     <View style={{ gap: 4 }}>
       <View style={accountStyles.field}>
-        <Text style={accountStyles.label}>Plate</Text>
+        <Text style={accountStyles.label}>{t("account.vehicles.form.plate")}</Text>
         <TextInput
           style={accountStyles.input}
           value={plate}
@@ -62,7 +70,7 @@ export function VehicleForm({
         />
       </View>
       <View style={accountStyles.field}>
-        <Text style={accountStyles.label}>Make / model</Text>
+        <Text style={accountStyles.label}>{t("account.vehicles.form.makeModel")}</Text>
         <TextInput
           style={accountStyles.input}
           value={makeModel}
@@ -71,7 +79,7 @@ export function VehicleForm({
         />
       </View>
       <View style={accountStyles.field}>
-        <Text style={accountStyles.label}>Size</Text>
+        <Text style={accountStyles.label}>{t("account.vehicles.form.size")}</Text>
         <View style={accountStyles.sizeRow}>
           {SIZE_CLASSES.map((size) => {
             const active = sizeClass === size;
@@ -87,7 +95,7 @@ export function VehicleForm({
                     active && accountStyles.sizeChipTextActive,
                   ]}
                 >
-                  {size}
+                  {t(SIZE_LABELS[size])}
                 </Text>
               </Pressable>
             );
@@ -95,7 +103,7 @@ export function VehicleForm({
         </View>
       </View>
       <View style={accountStyles.field}>
-        <Text style={accountStyles.label}>Color</Text>
+        <Text style={accountStyles.label}>{t("account.vehicles.form.color")}</Text>
         <TextInput
           style={accountStyles.input}
           value={color}
@@ -104,7 +112,7 @@ export function VehicleForm({
         />
       </View>
       <View style={accountStyles.field}>
-        <Text style={accountStyles.label}>Year</Text>
+        <Text style={accountStyles.label}>{t("account.vehicles.form.year")}</Text>
         <TextInput
           style={accountStyles.input}
           value={year}
@@ -115,7 +123,7 @@ export function VehicleForm({
       </View>
 
       <View style={accountStyles.field}>
-        <Text style={accountStyles.label}>Photo (optional)</Text>
+        <Text style={accountStyles.label}>{t("account.vehicles.form.photoOptional")}</Text>
         {previewUri ? (
           <Image
             source={{ uri: previewUri }}
@@ -134,13 +142,19 @@ export function VehicleForm({
                   setPicked(photo);
                 }
               } catch (err) {
-                setPickError(err instanceof Error ? err.message : "Could not pick photo");
+                setPickError(
+                  err instanceof Error
+                    ? err.message
+                    : t("account.vehicles.form.pickPhotoFailed"),
+                );
               }
             })();
           }}
         >
           <Text style={accountStyles.secondaryText}>
-            {previewUri ? "Change photo" : "Add photo"}
+            {previewUri
+              ? t("account.vehicles.form.changePhoto")
+              : t("account.vehicles.form.addPhoto")}
           </Text>
         </Pressable>
         {pickError ? <Text style={accountStyles.error}>{pickError}</Text> : null}
@@ -179,7 +193,9 @@ export function VehicleForm({
           {deleteBusy ? (
             <ActivityIndicator color="#FF8FAB" />
           ) : (
-            <Text style={accountStyles.dangerText}>Delete vehicle</Text>
+            <Text style={accountStyles.dangerText}>
+              {t("account.vehicles.delete.action")}
+            </Text>
           )}
         </Pressable>
       ) : null}

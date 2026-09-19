@@ -14,23 +14,11 @@ import {
   type ReservationResponse,
   type SpotFeature,
 } from "@/api/client";
+import { useTranslation } from "@/i18n";
 import { distanceMeters } from "@/map/exchange";
 
-function confirmFarAway(distance: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    Alert.alert(
-      "Estás lejos del punto",
-      `Tu ubicación está a unos ${Math.round(distance)} m. ¿Quieres marcarte como listo igualmente?`,
-      [
-        { text: "Volver", style: "cancel", onPress: () => resolve(false) },
-        { text: "Continuar", onPress: () => resolve(true) },
-      ],
-      { cancelable: true, onDismiss: () => resolve(false) },
-    );
-  });
-}
-
 export function useActiveReservation(enabled: boolean) {
+  const { t } = useTranslation();
   const [active, setActive] = useState<ReservationResponse | null>(null);
   const [spot, setSpot] = useState<SpotFeature | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -57,6 +45,27 @@ export function useActiveReservation(enabled: boolean) {
     return () => clearInterval(id);
   }, [refresh]);
 
+  const confirmFarAway = useCallback(
+    (distance: number): Promise<boolean> => {
+      return new Promise((resolve) => {
+        Alert.alert(
+          t("exchange.farAway.title"),
+          t("exchange.farAway.message", { meters: Math.round(distance) }),
+          [
+            {
+              text: t("exchange.farAway.back"),
+              style: "cancel",
+              onPress: () => resolve(false),
+            },
+            { text: t("exchange.farAway.continue"), onPress: () => resolve(true) },
+          ],
+          { cancelable: true, onDismiss: () => resolve(false) },
+        );
+      });
+    },
+    [t],
+  );
+
   const run = useCallback(
     async (fn: () => Promise<void>) => {
       setBusy(true);
@@ -64,12 +73,15 @@ export function useActiveReservation(enabled: boolean) {
         await fn();
         await refresh();
       } catch (err) {
-        Alert.alert("Action failed", err instanceof Error ? err.message : "unknown error");
+        Alert.alert(
+          t("exchange.actionFailed.title"),
+          err instanceof Error ? err.message : t("common.error"),
+        );
       } finally {
         setBusy(false);
       }
     },
-    [refresh],
+    [refresh, t],
   );
 
   const warnIfFar = useCallback(async () => {
@@ -89,7 +101,7 @@ export function useActiveReservation(enabled: boolean) {
       [Number(coords[0]), Number(coords[1])],
     );
     return distance <= 150 || confirmFarAway(distance);
-  }, [spot]);
+  }, [spot, confirmFarAway]);
 
   const isOwner = !!active && active.owner_id === userId;
   const isDriver = !!active && active.driver_id === userId;
@@ -120,7 +132,7 @@ export function useActiveReservation(enabled: boolean) {
           return;
         }
         await driverReady(active.id);
-        Alert.alert("Intercambio completado", "El propietario ya puede salir.");
+        Alert.alert(t("exchange.completed.title"), t("exchange.completed.message"));
       }),
     cancel: () =>
       run(async () => {
@@ -137,10 +149,11 @@ export async function announceHere(opts: {
   preferredDepartureAt?: string | null;
   autoCancelNoShow: boolean;
   vehicleId: string;
+  locationPermissionMessage: string;
 }): Promise<SpotFeature> {
   const permission = await Location.requestForegroundPermissionsAsync();
   if (!permission.granted) {
-    throw new Error("Location permission is required to announce a spot");
+    throw new Error(opts.locationPermissionMessage);
   }
   const position = await Location.getCurrentPositionAsync({
     accuracy: Location.Accuracy.Balanced,

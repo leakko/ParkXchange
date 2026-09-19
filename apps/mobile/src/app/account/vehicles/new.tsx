@@ -6,6 +6,7 @@ import { createVehicle, putVehiclePhoto } from "@/api/client";
 import { VehicleForm, type VehicleFormValues } from "@/account/VehicleForm";
 import type { PickedVehiclePhoto } from "@/account/pickVehiclePhoto";
 import { accountStyles } from "@/account/theme";
+import { useTranslation } from "@/i18n";
 
 const empty: VehicleFormValues = {
   plate: "",
@@ -16,6 +17,7 @@ const empty: VehicleFormValues = {
 };
 
 export default function NewVehicleScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -38,7 +40,10 @@ export default function NewVehicleScreen() {
       router.back();
     },
     onError: (err) => {
-      Alert.alert("Create failed", err instanceof Error ? err.message : "error");
+      Alert.alert(
+        t("account.vehicles.createFailed.title"),
+        err instanceof Error ? err.message : t("common.error"),
+      );
     },
   });
 
@@ -50,7 +55,7 @@ export default function NewVehicleScreen() {
     >
       <VehicleForm
         initial={empty}
-        submitLabel="Create vehicle"
+        submitLabel={t("account.vehicles.create.submit")}
         busy={create.isPending}
         onSubmit={(values, photo) => create.mutate({ values, photo })}
       />

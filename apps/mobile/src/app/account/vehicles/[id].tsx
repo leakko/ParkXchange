@@ -20,8 +20,10 @@ import type { PickedVehiclePhoto } from "@/account/pickVehiclePhoto";
 import { accountStyles } from "@/account/theme";
 import { useAuthImage } from "@/hooks/useAuthImage";
 import { useDevSession } from "@/hooks/useDevSession";
+import { useTranslation } from "@/i18n";
 
 export default function EditVehicleScreen() {
+  const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { ready } = useDevSession();
@@ -47,7 +49,7 @@ export default function EditVehicleScreen() {
       photo: PickedVehiclePhoto | null;
     }) => {
       if (!id) {
-        throw new Error("Missing vehicle id");
+        throw new Error(t("account.vehicles.edit.missingId"));
       }
       const updated = await updateVehicle(id, values);
       if (photo) {
@@ -57,17 +59,23 @@ export default function EditVehicleScreen() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["vehicles"] });
-      Alert.alert("Saved", "Vehicle updated.");
+      Alert.alert(
+        t("account.vehicles.edit.saved.title"),
+        t("account.vehicles.edit.saved.message"),
+      );
     },
     onError: (err) => {
-      Alert.alert("Save failed", err instanceof Error ? err.message : "error");
+      Alert.alert(
+        t("account.vehicles.edit.saveFailed.title"),
+        err instanceof Error ? err.message : t("common.error"),
+      );
     },
   });
 
   const remove = useMutation({
     mutationFn: async () => {
       if (!id) {
-        throw new Error("Missing vehicle id");
+        throw new Error(t("account.vehicles.edit.missingId"));
       }
       await deleteVehicle(id);
     },
@@ -76,7 +84,10 @@ export default function EditVehicleScreen() {
       router.back();
     },
     onError: (err) => {
-      Alert.alert("Delete failed", err instanceof Error ? err.message : "error");
+      Alert.alert(
+        t("account.vehicles.deleteFailed.title"),
+        err instanceof Error ? err.message : t("common.error"),
+      );
     },
   });
 
@@ -91,7 +102,7 @@ export default function EditVehicleScreen() {
   if (!vehicle) {
     return (
       <View style={[accountStyles.screen, accountStyles.scroll]}>
-        <Text style={accountStyles.error}>Vehicle not found</Text>
+        <Text style={accountStyles.error}>{t("account.vehicles.notFound")}</Text>
       </View>
     );
   }
@@ -111,18 +122,18 @@ export default function EditVehicleScreen() {
           year: vehicle.year,
         }}
         photoUri={authPhotoUri}
-        submitLabel="Save vehicle"
+        submitLabel={t("account.vehicles.edit.submit")}
         busy={save.isPending}
         onSubmit={(values, photo) => save.mutate({ values, photo })}
         deleteBusy={remove.isPending}
         onDelete={() => {
           Alert.alert(
-            "Delete vehicle?",
-            "This fails if an active spot still references it.",
+            t("account.vehicles.delete.confirmTitle"),
+            t("account.vehicles.delete.confirmMessage"),
             [
-              { text: "Cancel", style: "cancel" },
+              { text: t("common.cancel"), style: "cancel" },
               {
-                text: "Delete",
+                text: t("account.vehicles.delete.confirm"),
                 style: "destructive",
                 onPress: () => remove.mutate(),
               },

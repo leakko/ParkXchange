@@ -11,8 +11,10 @@ import {
 import { listVehicles } from "@/api/client";
 import { accountStyles } from "@/account/theme";
 import { useDevSession } from "@/hooks/useDevSession";
+import { useTranslation } from "@/i18n";
 
 export default function VehiclesListScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { ready } = useDevSession();
   const vehicles = useQuery({
@@ -40,11 +42,11 @@ export default function VehiclesListScreen() {
             style={[accountStyles.primary, { marginBottom: 8 }]}
             onPress={() => router.push("/account/vehicles/new" as Href)}
           >
-            <Text style={accountStyles.primaryText}>Add vehicle</Text>
+            <Text style={accountStyles.primaryText}>{t("account.vehicles.add")}</Text>
           </Pressable>
         }
         ListEmptyComponent={
-          <Text style={accountStyles.empty}>No vehicles yet. Add one to announce spots.</Text>
+          <Text style={accountStyles.empty}>{t("account.vehicles.empty")}</Text>
         }
         renderItem={({ item }) => (
           <Pressable
@@ -57,10 +59,10 @@ export default function VehiclesListScreen() {
               </Text>
               <Text style={accountStyles.rowMeta}>
                 {item.color} · {item.year} · {item.size_class}
-                {item.has_photo ? " · photo" : ""}
+                {item.has_photo ? t("account.vehicles.hasPhoto") : ""}
               </Text>
             </View>
-            <Text style={accountStyles.link}>Edit</Text>
+            <Text style={accountStyles.link}>{t("account.vehicles.edit")}</Text>
           </Pressable>
         )}
         refreshing={vehicles.isFetching}
@@ -68,7 +70,9 @@ export default function VehiclesListScreen() {
       />
       {vehicles.error ? (
         <Text style={[accountStyles.error, { padding: 20 }]}>
-          {vehicles.error instanceof Error ? vehicles.error.message : "Failed to load"}
+          {vehicles.error instanceof Error
+            ? vehicles.error.message
+            : t("account.vehicles.loadFailed")}
         </Text>
       ) : null}
     </View>

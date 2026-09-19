@@ -5,8 +5,10 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 import { getMe } from "@/api/client";
 import { accountStyles } from "@/account/theme";
 import { useDevSession } from "@/hooks/useDevSession";
+import { useTranslation } from "@/i18n";
 
 export default function AccountHubScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { ready, signedOut, signOut, retry } = useDevSession();
   const me = useQuery({
@@ -18,18 +20,15 @@ export default function AccountHubScreen() {
   if (signedOut) {
     return (
       <View style={[accountStyles.screen, accountStyles.scroll]}>
-        <Text style={accountStyles.title}>Signed out</Text>
-        <Text style={accountStyles.meta}>
-          Dev session cleared. Map and account APIs stay idle until you sign in
-          again (or restart the app).
-        </Text>
+        <Text style={accountStyles.title}>{t("account.signedOut.title")}</Text>
+        <Text style={accountStyles.meta}>{t("account.signedOut.message")}</Text>
         <Pressable
           style={[accountStyles.primary, { marginTop: 16 }]}
           onPress={() => {
             void retry();
           }}
         >
-          <Text style={accountStyles.primaryText}>Dev login</Text>
+          <Text style={accountStyles.primaryText}>{t("account.devLogin")}</Text>
         </Pressable>
       </View>
     );
@@ -47,7 +46,7 @@ export default function AccountHubScreen() {
     return (
       <View style={[accountStyles.screen, accountStyles.scroll]}>
         <Text style={accountStyles.error}>
-          {me.error instanceof Error ? me.error.message : "Failed to load account"}
+          {me.error instanceof Error ? me.error.message : t("account.loadFailed")}
         </Text>
         <Pressable
           style={[accountStyles.primary, { marginTop: 16 }]}
@@ -55,7 +54,7 @@ export default function AccountHubScreen() {
             void retry();
           }}
         >
-          <Text style={accountStyles.primaryText}>Dev login</Text>
+          <Text style={accountStyles.primaryText}>{t("account.devLogin")}</Text>
         </Pressable>
       </View>
     );
@@ -64,8 +63,11 @@ export default function AccountHubScreen() {
   const user = me.data;
   const rating =
     user.rating != null
-      ? `${user.rating.toFixed(1)} · ${user.rating_count} ratings`
-      : `${user.rating_count} ratings`;
+      ? t("account.rating.withScore", {
+          score: user.rating.toFixed(1),
+          count: user.rating_count,
+        })
+      : t("account.rating.countOnly", { count: user.rating_count });
   const balance = `€${(user.balance_cents / 100).toFixed(2)}`;
 
   return (
@@ -73,7 +75,7 @@ export default function AccountHubScreen() {
       <Text style={accountStyles.title}>{user.display_name}</Text>
       <Text style={accountStyles.subtitle}>{user.email}</Text>
       <Text style={accountStyles.meta}>
-        {rating} · balance {balance}
+        {rating} · {t("account.balance", { amount: balance })}
       </Text>
 
       <View style={accountStyles.section}>
@@ -81,22 +83,22 @@ export default function AccountHubScreen() {
           style={accountStyles.row}
           onPress={() => router.push("/account/profile" as Href)}
         >
-          <Text style={accountStyles.rowTitle}>Profile</Text>
-          <Text style={accountStyles.link}>Edit</Text>
+          <Text style={accountStyles.rowTitle}>{t("account.profile.title")}</Text>
+          <Text style={accountStyles.link}>{t("account.profile.edit")}</Text>
         </Pressable>
         <Pressable
           style={accountStyles.row}
           onPress={() => router.push("/account/vehicles" as Href)}
         >
-          <Text style={accountStyles.rowTitle}>Vehicles</Text>
-          <Text style={accountStyles.link}>Manage</Text>
+          <Text style={accountStyles.rowTitle}>{t("account.vehicles.title")}</Text>
+          <Text style={accountStyles.link}>{t("account.vehicles.manage")}</Text>
         </Pressable>
         <Pressable
           style={accountStyles.row}
           onPress={() => router.push("/account/spots" as Href)}
         >
-          <Text style={accountStyles.rowTitle}>My spots</Text>
-          <Text style={accountStyles.link}>Manage</Text>
+          <Text style={accountStyles.rowTitle}>{t("account.spots.title")}</Text>
+          <Text style={accountStyles.link}>{t("account.spots.manage")}</Text>
         </Pressable>
       </View>
 
@@ -106,7 +108,7 @@ export default function AccountHubScreen() {
           void signOut();
         }}
       >
-        <Text style={accountStyles.dangerText}>Sign out</Text>
+        <Text style={accountStyles.dangerText}>{t("account.signOut")}</Text>
       </Pressable>
     </ScrollView>
   );

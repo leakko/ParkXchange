@@ -12,13 +12,18 @@ import {
 import { fetchMySpots, withdrawSpot, type SpotFeature } from "@/api/client";
 import { accountStyles } from "@/account/theme";
 import { useDevSession } from "@/hooks/useDevSession";
+import { useTranslation } from "@/i18n";
 
-function spotTitle(spot: SpotFeature): string {
+function spotTitle(
+  spot: SpotFeature,
+  t: (key: "account.spots.spotTitle", params: Record<string, string | number>) => string,
+): string {
   const price = (spot.properties.price_cents / 100).toFixed(2);
-  return `€${price} · ${spot.properties.status}`;
+  return t("account.spots.spotTitle", { price, status: spot.properties.status });
 }
 
 export default function MySpotsScreen() {
+  const { t, formatDateTime } = useTranslation();
   const router = useRouter();
   const { ready } = useDevSession();
   const queryClient = useQueryClient();
@@ -34,7 +39,10 @@ export default function MySpotsScreen() {
       await queryClient.invalidateQueries({ queryKey: ["spots", "mine"] });
     },
     onError: (err) => {
-      Alert.alert("Withdraw failed", err instanceof Error ? err.message : "error");
+      Alert.alert(
+        t("account.spots.withdrawFailed.title"),
+        err instanceof Error ? err.message : t("common.error"),
+      );
     },
   });
 
@@ -53,7 +61,7 @@ export default function MySpotsScreen() {
         data={spots.data?.features ?? []}
         keyExtractor={(item) => String(item.id)}
         ListEmptyComponent={
-          <Text style={accountStyles.empty}>You have no published spots.</Text>
+          <Text style={accountStyles.empty}>{t("account.spots.empty")}</Text>
         }
         renderItem={({ item }) => {
           const id = String(item.id);
@@ -65,12 +73,14 @@ export default function MySpotsScreen() {
                 { marginBottom: 8, flexDirection: "column", alignItems: "stretch" },
               ]}
             >
-              <Text style={accountStyles.rowTitle}>{spotTitle(item)}</Text>
+              <Text style={accountStyles.rowTitle}>{spotTitle(item, t)}</Text>
               <Text style={accountStyles.rowMeta}>
                 {item.properties.vehicle.plate} · {item.properties.vehicle.make_model}
               </Text>
               <Text style={accountStyles.rowMeta}>
-                Listed until {new Date(item.properties.listed_until).toLocaleString()}
+                {t("account.spots.listedUntil", {
+                  datetime: formatDateTime(item.properties.listed_until),
+                })}
               </Text>
               <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
                 {canEdit ? (
@@ -78,7 +88,7 @@ export default function MySpotsScreen() {
                     style={[accountStyles.secondary, { flex: 1 }]}
                     onPress={() => router.push(`/account/spots/${id}` as Href)}
                   >
-                    <Text style={accountStyles.secondaryText}>Edit</Text>
+                    <Text style={accountStyles.secondaryText}>{t("account.spots.edit")}</Text>
                   </Pressable>
                 ) : null}
                 <Pressable
@@ -86,12 +96,12 @@ export default function MySpotsScreen() {
                   disabled={withdraw.isPending}
                   onPress={() => {
                     Alert.alert(
-                      "Withdraw spot?",
-                      "This removes the offer from the map.",
+                      t("account.spots.withdraw.confirmTitle"),
+                      t("account.spots.withdraw.confirmMessage"),
                       [
-                        { text: "Cancel", style: "cancel" },
+                        { text: t("common.cancel"), style: "cancel" },
                         {
-                          text: "Withdraw",
+                          text: t("account.spots.withdraw.action"),
                           style: "destructive",
                           onPress: () => withdraw.mutate(id),
                         },
@@ -99,7 +109,9 @@ export default function MySpotsScreen() {
                     );
                   }}
                 >
-                  <Text style={accountStyles.dangerText}>Withdraw</Text>
+                  <Text style={accountStyles.dangerText}>
+                    {t("account.spots.withdraw.action")}
+                  </Text>
                 </Pressable>
               </View>
             </View>
@@ -110,7 +122,7 @@ export default function MySpotsScreen() {
       />
       {spots.error ? (
         <Text style={[accountStyles.error, { padding: 20 }]}>
-          {spots.error instanceof Error ? spots.error.message : "Failed to load"}
+          {spots.error instanceof Error ? spots.error.message : t("account.spots.loadFailed")}
         </Text>
       ) : null}
     </View>

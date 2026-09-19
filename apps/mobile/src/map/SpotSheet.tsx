@@ -17,6 +17,7 @@ import type {
 } from "@/api/client";
 import { spotVehiclePhotoUrl } from "@/api/client";
 import { useAuthImage } from "@/hooks/useAuthImage";
+import { useTranslation } from "@/i18n";
 import { openNavigation } from "@/lib/navigation";
 
 type Props = {
@@ -63,6 +64,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
   },
   ref,
 ) {
+  const { t, formatDateTime } = useTranslation();
   const snapPoints = useMemo(() => ["36%", "82%"], []);
   const [makingOffer, setMakingOffer] = useState(false);
   const [vehicleId, setVehicleId] = useState("");
@@ -116,10 +118,14 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
           <>
             <Text style={styles.title}>{spot.properties.owner_name}</Text>
             {spot.properties.is_mine ? (
-              <Text style={styles.mineBadge}>Your listing</Text>
+              <Text style={styles.mineBadge}>{t("spotSheet.yourListing")}</Text>
             ) : null}
             <Text style={styles.meta}>
-              {spot.properties.size_class} · €{price} · {spot.properties.status}
+              {t("spotSheet.meta", {
+                sizeClass: spot.properties.size_class,
+                price,
+                status: spot.properties.status,
+              })}
             </Text>
             {spot.properties.address_hint ? (
               <Text style={styles.hint}>{spot.properties.address_hint}</Text>
@@ -151,9 +157,13 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
 
             <Text style={styles.window}>
               {spot.properties.preferred_departure_at
-                ? `Preferred ${new Date(spot.properties.preferred_departure_at).toLocaleString()}`
-                : "Flexible departure time"}{" "}
-              · listed until {new Date(spot.properties.listed_until).toLocaleString()}
+                ? t("spotSheet.preferredDeparture", {
+                    datetime: formatDateTime(spot.properties.preferred_departure_at),
+                  })
+                : t("spotSheet.flexibleDeparture")}{" "}
+              {t("spotSheet.listedUntil", {
+                datetime: formatDateTime(spot.properties.listed_until),
+              })}
             </Text>
 
             <View style={styles.actions}>
@@ -164,14 +174,14 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                     disabled={busy}
                     onPress={() => onEdit(spot)}
                   >
-                    <Text style={styles.primaryText}>Edit</Text>
+                    <Text style={styles.primaryText}>{t("spotSheet.edit")}</Text>
                   </Pressable>
                   <Pressable
                     style={styles.danger}
                     disabled={busy}
                     onPress={() => onWithdraw(spot)}
                   >
-                    <Text style={styles.dangerText}>Withdraw</Text>
+                    <Text style={styles.dangerText}>{t("spotSheet.withdraw")}</Text>
                   </Pressable>
                 </>
               ) : null}
@@ -181,7 +191,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
               spot.properties.status === "available" ? (
                 makingOffer ? (
                   <View style={styles.offerForm}>
-                    <Text style={styles.formLabel}>Tu vehículo</Text>
+                    <Text style={styles.formLabel}>{t("spotSheet.offer.yourVehicle")}</Text>
                     {vehicles.map((candidate) => (
                       <Pressable
                         key={candidate.id}
@@ -196,16 +206,18 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                         </Text>
                       </Pressable>
                     ))}
-                    <Text style={styles.formLabel}>Fecha y hora del intercambio</Text>
+                    <Text style={styles.formLabel}>
+                      {t("spotSheet.offer.exchangeDatetime")}
+                    </Text>
                     <TextInput
                       style={styles.input}
                       value={exchangeAt}
                       onChangeText={setExchangeAt}
-                      placeholder="2026-09-19T18:00"
+                      placeholder={t("spotSheet.offer.datetimePlaceholder")}
                       placeholderTextColor="#7A93A0"
                       autoCapitalize="none"
                     />
-                    <Text style={styles.formLabel}>Oferta (€)</Text>
+                    <Text style={styles.formLabel}>{t("spotSheet.offer.amount")}</Text>
                     <TextInput
                       style={styles.input}
                       value={amount}
@@ -221,11 +233,11 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                       {busy ? (
                         <ActivityIndicator color="#fff" />
                       ) : (
-                        <Text style={styles.primaryText}>Enviar oferta</Text>
+                        <Text style={styles.primaryText}>{t("spotSheet.offer.submit")}</Text>
                       )}
                     </Pressable>
                     <Pressable onPress={() => setMakingOffer(false)}>
-                      <Text style={styles.cancelText}>Cancelar</Text>
+                      <Text style={styles.cancelText}>{t("common.cancel")}</Text>
                     </Pressable>
                   </View>
                 ) : (
@@ -234,7 +246,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                     disabled={busy}
                     onPress={() => setMakingOffer(true)}
                   >
-                    <Text style={styles.primaryText}>Hacer oferta</Text>
+                    <Text style={styles.primaryText}>{t("spotSheet.offer.makeOffer")}</Text>
                   </Pressable>
                 )
               ) : null}
@@ -242,11 +254,13 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
               {isActiveForSpot ? (
                 <>
                   <Text style={styles.exchangeTime}>
-                    Intercambio: {new Date(active.exchange_at).toLocaleString()}
+                    {t("spotSheet.exchange.time", {
+                      datetime: formatDateTime(active.exchange_at),
+                    })}
                   </Text>
                   {isOwner && !active.owner_ready_at ? (
                     <Pressable style={styles.primary} disabled={busy} onPress={onOwnerReady}>
-                      <Text style={styles.primaryText}>Listo para salir</Text>
+                      <Text style={styles.primaryText}>{t("spotSheet.exchange.ownerReady")}</Text>
                     </Pressable>
                   ) : null}
                   {isDriver && !active.driver_arrived_at ? (
@@ -255,7 +269,9 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                       disabled={busy}
                       onPress={onDriverArrived}
                     >
-                      <Text style={styles.secondaryText}>He llegado</Text>
+                      <Text style={styles.secondaryText}>
+                        {t("spotSheet.exchange.driverArrived")}
+                      </Text>
                     </Pressable>
                   ) : null}
                   {isDriver &&
@@ -263,7 +279,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                   !!active.driver_arrived_at &&
                   !active.driver_ready_at ? (
                     <Pressable style={styles.primary} disabled={busy} onPress={onDriverReady}>
-                      <Text style={styles.primaryText}>Listo</Text>
+                      <Text style={styles.primaryText}>{t("spotSheet.exchange.driverReady")}</Text>
                     </Pressable>
                   ) : null}
                   <Pressable
@@ -271,7 +287,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                     disabled={busy}
                     onPress={onCancel}
                   >
-                    <Text style={styles.dangerText}>Cancelar intercambio</Text>
+                    <Text style={styles.dangerText}>{t("spotSheet.exchange.cancel")}</Text>
                   </Pressable>
                 </>
               ) : null}
@@ -280,10 +296,16 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                 <Pressable
                   style={styles.secondary}
                   onPress={() =>
-                    void openNavigation({ lon: coords[0]!, lat: coords[1]! })
+                    void openNavigation(
+                      { lon: coords[0]!, lat: coords[1]! },
+                      {
+                        failedTitle: t("navigation.failed.title"),
+                        failedMessage: t("navigation.failed.message"),
+                      },
+                    )
                   }
                 >
-                  <Text style={styles.secondaryText}>Navigate</Text>
+                  <Text style={styles.secondaryText}>{t("spotSheet.navigate")}</Text>
                 </Pressable>
               ) : null}
             </View>

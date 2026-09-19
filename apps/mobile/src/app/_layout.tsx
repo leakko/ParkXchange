@@ -6,6 +6,8 @@ import { useState } from "react";
 import { LogBox } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
+import { I18nProvider } from "@/i18n";
+
 // Intermittent MapLibre tile/glyph stream errors on emulators are noisy but
 // non-fatal; the map still renders.
 LogBox.ignoreLogs(["MapLibre Native", "unexpected end of stream"]);
@@ -22,12 +24,14 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <QueryClientProvider client={queryClient}>
-        <BottomSheetModalProvider>
-          <StatusBar style="light" />
-          <Stack screenOptions={{ headerShown: false }} />
-        </BottomSheetModalProvider>
-      </QueryClientProvider>
+      <I18nProvider>
+        <QueryClientProvider client={queryClient}>
+          <BottomSheetModalProvider>
+            <StatusBar style="light" />
+            <Stack screenOptions={{ headerShown: false }} />
+          </BottomSheetModalProvider>
+        </QueryClientProvider>
+      </I18nProvider>
     </GestureHandlerRootView>
   );
 }

@@ -40,6 +40,7 @@ import {
   announceHere,
   useActiveReservation,
 } from "@/hooks/useSpotActions";
+import { useTranslation } from "@/i18n";
 import {
   followReducer,
   initialFollowState,
@@ -59,6 +60,7 @@ import { VehiclePickModal } from "@/map/VehiclePickModal";
 const DEBOUNCE_MS = 350;
 
 export default function MapScreen() {
+  const { t, formatDateTime } = useTranslation();
   const router = useRouter();
   const mapRef = useRef<MapRef>(null);
   const cameraRef = useRef<CameraRef>(null);
@@ -273,12 +275,12 @@ export default function MapScreen() {
       return await pickAnnounceVehicle(router, showAndroidVehicleList);
     } catch (err) {
       Alert.alert(
-        "Announce failed",
-        err instanceof Error ? err.message : "Could not load vehicles",
+        t("map.alert.announceFailed.title"),
+        err instanceof Error ? err.message : t("map.alert.announceFailed.loadVehicles"),
       );
       return null;
     }
-  }, [router, showAndroidVehicleList]);
+  }, [router, showAndroidVehicleList, t]);
 
   const afterAnnounce = useCallback(
     async (spot: SpotFeature, message: string) => {
@@ -287,9 +289,9 @@ export default function MapScreen() {
       setMineArmed(true);
       sheetRef.current?.snapToIndex(0);
       await refetch();
-      Alert.alert("Announced", message);
+      Alert.alert(t("map.alert.announced.title"), message);
     },
-    [refetch],
+    [refetch, t],
   );
 
   const doAnnounceHere = useCallback(async () => {
@@ -314,31 +316,37 @@ export default function MapScreen() {
               announceDraft.coordinates[1],
               opts,
             )
-          : await announceHere(opts);
+          : await announceHere({
+              ...opts,
+              locationPermissionMessage: t("exchange.locationPermissionRequired"),
+            });
         setAnnounceDraft(null);
-        await afterAnnounce(spot, "La plaza estará publicada durante 7 días.");
+        await afterAnnounce(spot, t("map.alert.announced.message"));
       } catch (err) {
         Alert.alert(
-          "No se pudo anunciar",
-          err instanceof Error ? err.message : "error",
+          t("map.alert.announceFailed.title"),
+          err instanceof Error ? err.message : t("common.error"),
         );
       } finally {
         setAnnouncing(false);
       }
     },
-    [afterAnnounce, announceDraft],
+    [afterAnnounce, announceDraft, t],
   );
 
   const onLongPress = useCallback(
     (event: NativeSyntheticEvent<PressEvent>) => {
       const [lon, lat] = event.nativeEvent.lngLat;
       Alert.alert(
-        "Announce here?",
-        `Publish a spot at ${lat.toFixed(5)}, ${lon.toFixed(5)}`,
+        t("map.alert.announceHere.title"),
+        t("map.alert.announceHere.message", {
+          lat: lat.toFixed(5),
+          lon: lon.toFixed(5),
+        }),
         [
-          { text: "Cancel", style: "cancel" },
+          { text: t("common.cancel"), style: "cancel" },
           {
-            text: "Announce",
+            text: t("map.alert.announceHere.confirm"),
             onPress: () => {
               void (async () => {
                 setAnnouncing(true);
@@ -350,8 +358,8 @@ export default function MapScreen() {
                   setAnnounceDraft({ vehicleId, coordinates: [lon, lat] });
                 } catch (err) {
                   Alert.alert(
-                    "Announce failed",
-                    err instanceof Error ? err.message : "error",
+                    t("map.alert.announceFailed.title"),
+                    err instanceof Error ? err.message : t("common.error"),
                   );
                 } finally {
                   setAnnouncing(false);
@@ -362,7 +370,7 @@ export default function MapScreen() {
         ],
       );
     },
-    [resolveVehicleId],
+    [resolveVehicleId, t],
   );
 
   const onEditSpot = useCallback(
@@ -383,12 +391,12 @@ export default function MapScreen() {
         return;
       }
       Alert.alert(
-        "Withdraw listing?",
-        "This removes your offer from the map.",
+        t("map.alert.withdrawListing.title"),
+        t("map.alert.withdrawListing.message"),
         [
-          { text: "Cancel", style: "cancel" },
+          { text: t("common.cancel"), style: "cancel" },
           {
-            text: "Withdraw",
+            text: t("map.alert.withdraw.confirm"),
             style: "destructive",
             onPress: () => {
               void (async () => {
@@ -399,8 +407,8 @@ export default function MapScreen() {
                   await refetch();
                 } catch (err) {
                   Alert.alert(
-                    "Withdraw failed",
-                    err instanceof Error ? err.message : "error",
+                    t("map.alert.withdrawFailed.title"),
+                    err instanceof Error ? err.message : t("common.error"),
                   );
                 }
               })();
@@ -409,7 +417,7 @@ export default function MapScreen() {
         ],
       );
     },
-    [refetch],
+    [refetch, t],
   );
 
   return (
@@ -447,9 +455,9 @@ export default function MapScreen() {
 
       {signedOut ? (
         <View style={styles.banner}>
-          <Text style={styles.bannerText}>Signed out</Text>
+          <Text style={styles.bannerText}>{t("map.banner.signedOut")}</Text>
           <Pressable onPress={() => void retrySession()}>
-            <Text style={styles.link}>Dev login</Text>
+            <Text style={styles.link}>{t("map.banner.devLogin")}</Text>
           </Pressable>
         </View>
       ) : null}
@@ -457,21 +465,23 @@ export default function MapScreen() {
         <View style={styles.banner} pointerEvents="none">
           <ActivityIndicator color="#F4F7FA" />
           <Text style={styles.bannerText}>
-            {!ready ? "Signing in..." : "Loading spots..."}
+            {!ready ? t("map.banner.signingIn") : t("map.banner.loadingSpots")}
           </Text>
         </View>
       ) : null}
       {ready && !isLoading ? (
         <View style={styles.banner} pointerEvents="none">
           <Text style={styles.bannerText}>
-            {collection.features.length} spots
+            {t("map.banner.spotCount", { count: collection.features.length })}
           </Text>
         </View>
       ) : null}
       {active ? (
         <View style={[styles.banner, styles.activeBanner]}>
           <Text style={styles.bannerText}>
-            Intercambio · {new Date(active.exchange_at).toLocaleString()}
+            {t("map.banner.exchangeActive", {
+              datetime: formatDateTime(active.exchange_at),
+            })}
           </Text>
           <Pressable
             onPress={() => {
@@ -481,22 +491,24 @@ export default function MapScreen() {
               }
             }}
           >
-            <Text style={styles.link}>Abrir</Text>
+            <Text style={styles.link}>{t("map.banner.openExchange")}</Text>
           </Pressable>
         </View>
       ) : null}
       {error ? (
         <View style={[styles.banner, { top: active ? 128 : 88 }]}>
           <Text style={styles.bannerText}>
-            {error instanceof Error ? error.message : "failed to load spots"}
+            {error instanceof Error ? error.message : t("map.banner.loadSpotsFailed")}
           </Text>
         </View>
       ) : null}
       {sessionError ? (
         <View style={styles.banner}>
-          <Text style={styles.bannerText}>Session: {sessionError}</Text>
+          <Text style={styles.bannerText}>
+            {t("map.banner.sessionError", { message: sessionError })}
+          </Text>
           <Pressable onPress={() => void retrySession()}>
-            <Text style={styles.link}>Retry</Text>
+            <Text style={styles.link}>{t("map.banner.retry")}</Text>
           </Pressable>
         </View>
       ) : null}
@@ -505,7 +517,7 @@ export default function MapScreen() {
         style={styles.accountFab}
         onPress={() => router.push("/account" as Href)}
       >
-        <Text style={styles.fabText}>Account</Text>
+        <Text style={styles.fabText}>{t("map.fab.account")}</Text>
       </Pressable>
 
       <Pressable
@@ -513,7 +525,7 @@ export default function MapScreen() {
         disabled={!follow.locationGranted}
         onPress={onRecenter}
       >
-        <Text style={styles.fabText}>Me</Text>
+        <Text style={styles.fabText}>{t("map.fab.locateMe")}</Text>
       </Pressable>
 
       <Pressable
@@ -524,7 +536,7 @@ export default function MapScreen() {
         {announcing ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.fabText}>+ Announce</Text>
+          <Text style={styles.fabText}>{t("map.fab.announce")}</Text>
         )}
       </Pressable>
 
@@ -545,11 +557,11 @@ export default function MapScreen() {
               exchange_at: exchangeAt,
               amount_cents: amountCents,
             });
-            Alert.alert("Oferta enviada", "El propietario puede aceptarla o rechazarla.");
+            Alert.alert(t("map.alert.offerSent.title"), t("map.alert.offerSent.message"));
           } catch (err) {
             Alert.alert(
-              "No se pudo enviar",
-              err instanceof Error ? err.message : "error",
+              t("map.alert.offerFailed.title"),
+              err instanceof Error ? err.message : t("common.error"),
             );
           } finally {
             setOfferBusy(false);

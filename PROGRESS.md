@@ -21,8 +21,8 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** none — post-MVP offer-based dated exchange complete
-  on `feature/offer-based-exchange` (manual mobile smoke remains)
+- **Phase in progress:** none — mobile i18n (ES/EN) implemented on `main`
+  (local AsyncStorage preference; emulator smoke optional)
 - **Last updated:** 2026-09-19
 - **Phases complete:** 12 of 12 (MVP)
 - **Blockers:** none open
@@ -31,8 +31,8 @@ If that test fails, fix the code, not the test.
 
 ## Next immediate step
 
-Merge `feature/offer-based-exchange` when ready. Optionally run a final emulator
-smoke for mobile polish first. Remaining post-MVP infra work lives in
+Smoke the mobile ES/EN language toggle on an emulator (Profile → Idioma). Optionally
+merge leftover post-MVP polish. Remaining infra work lives in
 `infra/pulumi/README.md` (EKS/Fargate, RDS, S3 PMTiles).
 
 ---
