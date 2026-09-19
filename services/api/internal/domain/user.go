@@ -90,11 +90,26 @@ type Phone string
 
 var e164Pattern = regexp.MustCompile(`^\+[1-9]\d{7,14}$`)
 
-// ParsePhone normalises and validates an E.164 phone number.
+// ParsePhone normalises and validates a required E.164 phone number.
 func ParsePhone(raw string) (Phone, error) {
+	phone, err := ParseOptionalPhone(raw)
+	if err != nil {
+		return "", err
+	}
+	if phone == "" {
+		return "", Invalid("phone_required", "a phone number is required")
+	}
+	return phone, nil
+}
+
+// ParseOptionalPhone accepts an empty value or a valid E.164 number.
+func ParseOptionalPhone(raw string) (Phone, error) {
 	normalised := strings.TrimSpace(raw)
+	if normalised == "" {
+		return "", nil
+	}
 	// Allow spaces/dashes in input; strip to digits and leading +.
-	if normalised != "" && !strings.HasPrefix(normalised, "+") {
+	if !strings.HasPrefix(normalised, "+") {
 		return "", Invalid("phone_invalid", "phone must be E.164, starting with +")
 	}
 	var b strings.Builder
@@ -109,18 +124,20 @@ func ParsePhone(raw string) (Phone, error) {
 	}
 	normalised = b.String()
 	switch {
-	case normalised == "" || normalised == "+":
-		return "", Invalid("phone_required", "a phone number is required")
-	case !e164Pattern.MatchString(normalised):
+	case normalised == "+" || !e164Pattern.MatchString(normalised):
 		return "", Invalid("phone_invalid", "phone must be E.164 (+ and 8–15 digits)")
 	}
 	return Phone(normalised), nil
 }
 
 // NewPhone trusts a number that has already been persisted.
+// An empty stored value means the account has not provided a phone yet.
 func NewPhone(stored string) Phone { return Phone(stored) }
 
 func (p Phone) String() string { return string(p) }
+
+// Present reports whether a phone number has been set.
+func (p Phone) Present() bool { return p != "" }
 
 // Rating returns the average rating and whether the user has been rated.
 //
@@ -186,7 +203,7 @@ func NewUser(in NewUserInput) (email Email, displayName string, phone Phone, err
 		fields["display_name"] = problem
 	}
 
-	parsedPhone, phoneErr := ParsePhone(in.Phone)
+	parsedPhone, phoneErr := ParseOptionalPhone(in.Phone)
 	if phoneErr != nil {
 		if domainErr, ok := AsError(phoneErr); ok {
 			fields["phone"] = domainErr.Message

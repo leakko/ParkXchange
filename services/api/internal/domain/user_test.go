@@ -41,16 +41,39 @@ func TestParsePhoneRejectsInvalid(t *testing.T) {
 	}
 }
 
-func TestNewUserRequiresPhone(t *testing.T) {
+func TestNewUserAllowsEmptyPhone(t *testing.T) {
 	t.Parallel()
 
-	_, _, _, err := domain.NewUser(domain.NewUserInput{
+	_, _, phone, err := domain.NewUser(domain.NewUserInput{
 		Email:       "a@example.com",
 		Password:    "a-perfectly-fine-password",
 		DisplayName: "Ada",
 	})
-	if err == nil {
-		t.Fatal("expected phone required error")
+	if err != nil {
+		t.Fatalf("NewUser: %v", err)
+	}
+	if phone.String() != "" {
+		t.Errorf("phone = %q, want empty", phone)
+	}
+}
+
+func TestParseOptionalPhoneEmpty(t *testing.T) {
+	t.Parallel()
+
+	got, err := domain.ParseOptionalPhone("")
+	if err != nil {
+		t.Fatalf("ParseOptionalPhone: %v", err)
+	}
+	if got.String() != "" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestParseOptionalPhoneRejectsInvalid(t *testing.T) {
+	t.Parallel()
+
+	if _, err := domain.ParseOptionalPhone("600111222"); err == nil {
+		t.Fatal("expected error")
 	}
 }
 
