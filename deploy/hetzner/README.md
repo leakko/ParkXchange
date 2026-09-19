@@ -38,6 +38,7 @@ Repository → **Settings → Secrets and variables → Actions**.
 | `DEPLOY_POSTGRES_PASSWORD` | long random (`openssl rand -base64 24`) |
 | `DEPLOY_POSTGRES_DB` | e.g. `parkxchange` |
 | `DEPLOY_JWT_SECRET` | ≥32 bytes (`openssl rand -base64 32`) |
+| `DEPLOY_LOCATION_FUZZ_SECRET` | ≥32 bytes, **different** from JWT (`openssl rand -base64 32`) |
 
 The workflow also writes `CORS_ALLOWED_ORIGINS=*` (required when
 `API_ENV=production`). Tighten it later if you add a browser client.

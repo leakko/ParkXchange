@@ -48,6 +48,7 @@ services:
       API_ENV: ${API_ENV}
       LOG_LEVEL: ${LOG_LEVEL}
       JWT_SECRET: ${JWT_SECRET}
+      LOCATION_FUZZ_SECRET: ${LOCATION_FUZZ_SECRET}
       # Required outside development; "*" is fine for a mobile-first family beta
       # (native clients are not subject to CORS; it also unlocks WS origins).
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}

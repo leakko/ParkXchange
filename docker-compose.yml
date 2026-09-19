@@ -59,6 +59,7 @@ services:
       API_ENV: ${API_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env via task auth:secret}
+      LOCATION_FUZZ_SECRET: ${LOCATION_FUZZ_SECRET:?set LOCATION_FUZZ_SECRET in .env}
       ACCESS_TOKEN_TTL: ${ACCESS_TOKEN_TTL:-15m}
       REFRESH_TOKEN_TTL: ${REFRESH_TOKEN_TTL:-720h}
       SWEEP_INTERVAL: ${SWEEP_INTERVAL:-15s}

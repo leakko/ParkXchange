@@ -14,6 +14,7 @@ env:
   # Shared by the Go jobs that talk to the PostGIS service container.
   DATABASE_URL: postgres://parkxchange:parkxchange@localhost:5432/parkxchange?sslmode=disable
   JWT_SECRET: ci-only-insecure-secret-change-me-32b
+  LOCATION_FUZZ_SECRET: ci-only-insecure-fuzz-secret-32b!!
   API_ENV: development
 
 jobs:
