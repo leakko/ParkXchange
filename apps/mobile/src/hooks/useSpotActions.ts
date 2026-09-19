@@ -32,17 +32,17 @@ async function ensureNotificationPermission(): Promise<boolean> {
   return asked.granted;
 }
 
-/** Schedule a local reminder before reconfirm_by when the claim is not imminent. */
+/** Schedule a local reminder shortly before the agreed exchange. */
 export async function scheduleReconfirmReminder(
   reservation: ReservationResponse,
 ): Promise<void> {
   if (!(await ensureNotificationPermission())) {
     return;
   }
-  if (!reservation.reconfirm_by) {
+  if (!reservation.exchange_at) {
     return;
   }
-  const when = new Date(reservation.reconfirm_by).getTime() - 5 * 60 * 1000;
+  const when = new Date(reservation.exchange_at).getTime() - 5 * 60 * 1000;
   const delayMs = when - Date.now();
   if (delayMs < 15_000) {
     return;
@@ -152,8 +152,11 @@ export async function announceHere(opts: {
     lat: position.coords.latitude,
     size_class: "medium",
     price_cents: opts.priceCents,
-    duration_minutes: opts.durationMinutes,
-    available_in_minutes: opts.availableInMinutes ?? 0,
+    preferred_departure_at:
+      opts.availableInMinutes && opts.availableInMinutes > 0
+        ? new Date(Date.now() + opts.availableInMinutes * 60_000).toISOString()
+        : null,
+    auto_cancel_no_show: true,
     vehicle_id: opts.vehicleId,
     notes: Platform.OS === "android" ? "Announced from Android" : "Announced from iOS",
   });
@@ -174,8 +177,11 @@ export async function announceAt(
     lat,
     size_class: "medium",
     price_cents: opts.priceCents,
-    duration_minutes: opts.durationMinutes,
-    available_in_minutes: opts.availableInMinutes ?? 0,
+    preferred_departure_at:
+      opts.availableInMinutes && opts.availableInMinutes > 0
+        ? new Date(Date.now() + opts.availableInMinutes * 60_000).toISOString()
+        : null,
+    auto_cancel_no_show: true,
     vehicle_id: opts.vehicleId,
     notes: "Announced from map long-press",
   });

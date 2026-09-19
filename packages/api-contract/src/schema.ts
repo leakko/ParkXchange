@@ -290,7 +290,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/spots/{id}/reservations": {
+    "/v1/spots/{id}/offers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List offers for a listing owned by the caller */
+        get: operations["listSpotOffers"];
+        put?: never;
+        /** Propose a dated exchange for a listing */
+        post: operations["createOffer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/offers/{id}/accept": {
         parameters: {
             query?: never;
             header?: never;
@@ -299,8 +317,42 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Atomically claim a spot */
-        post: operations["claimSpot"];
+        /** Accept an offer and atomically create its reservation */
+        post: operations["acceptOffer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/offers/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a pending offer as listing owner */
+        post: operations["rejectOffer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/offers/{id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw a pending offer as its driver */
+        post: operations["withdrawOffer"];
         delete?: never;
         options?: never;
         head?: never;
@@ -341,7 +393,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/reservations/{id}/reconfirm": {
+    "/v1/reservations/{id}/owner-ready": {
         parameters: {
             query?: never;
             header?: never;
@@ -350,8 +402,42 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Confirm the driver still intends to take the spot */
-        post: operations["reconfirmReservation"];
+        /** Mark the listing owner ready to leave */
+        post: operations["markOwnerReady"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reservations/{id}/driver-arrived": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the driver's early “I arrived” signal */
+        post: operations["markDriverArrived"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reservations/{id}/driver-ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete the handover once the owner is ready */
+        post: operations["markDriverReady"];
         delete?: never;
         options?: never;
         head?: never;
@@ -369,23 +455,6 @@ export interface paths {
         put?: never;
         /** Cancel a reservation */
         post: operations["cancelReservation"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/reservations/{id}/complete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Confirm handover */
-        post: operations["completeReservation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -543,22 +612,23 @@ export interface components {
              * @description One of the caller's vehicles; required so claimers know which car to meet
              */
             vehicle_id: string;
-            duration_minutes: number;
-            /** @description Delay until the offer starts. Zero means immediately. Capped at 24 hours. */
-            available_in_minutes?: number;
+            /** Format: date-time */
+            preferred_departure_at?: string | null;
+            /** @default true */
+            auto_cancel_no_show: boolean;
         };
         /**
-         * @description Partial edit of an available offer. Location and spot size_class are not
-         *     editable. When available_in_minutes is set, duration_minutes is required.
+         * @description Partial edit of an available listing. Location, listing lifetime, and
+         *     spot size_class are not editable.
          */
         UpdateSpotRequest: {
             price_cents?: number;
             notes?: string;
             /** Format: uuid */
             vehicle_id?: string;
-            duration_minutes?: number;
-            /** @description Delay until the offer starts. Requires duration_minutes. */
-            available_in_minutes?: number;
+            /** Format: date-time */
+            preferred_departure_at?: string | null;
+            auto_cancel_no_show?: boolean;
         };
         SpotProperties: {
             /** Format: uuid */
@@ -572,9 +642,10 @@ export interface components {
             address_hint?: string;
             notes?: string;
             /** Format: date-time */
-            available_from: string;
+            preferred_departure_at?: string | null;
             /** Format: date-time */
-            expires_at: string;
+            listed_until: string;
+            auto_cancel_no_show: boolean;
             exact_location: boolean;
             is_mine: boolean;
             vehicle: components["schemas"]["VehicleSummary"];
@@ -597,6 +668,32 @@ export interface components {
             type: "FeatureCollection";
             features: components["schemas"]["SpotFeature"][];
         };
+        CreateOfferRequest: {
+            /** Format: uuid */
+            vehicle_id: string;
+            /** Format: date-time */
+            exchange_at: string;
+            amount_cents: number;
+        };
+        OfferResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            spot_id: string;
+            /** Format: uuid */
+            driver_id: string;
+            /** Format: uuid */
+            vehicle_id: string;
+            /** Format: date-time */
+            exchange_at: string;
+            amount_cents: number;
+            /** @enum {string} */
+            status: "pending" | "accepted" | "rejected" | "withdrawn" | "expired";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
         ReservationResponse: {
             /** Format: uuid */
             id: string;
@@ -608,18 +705,20 @@ export interface components {
             owner_id: string;
             status: string;
             price_cents: number;
+            /** Format: uuid */
+            offer_id?: string;
+            /** Format: uuid */
+            driver_vehicle_id?: string;
             /** Format: date-time */
-            starts_at: string;
+            exchange_at: string;
             /** Format: date-time */
-            ends_at: string;
+            owner_ready_at?: string | null;
             /** Format: date-time */
-            reconfirm_by: string;
+            driver_arrived_at?: string | null;
             /** Format: date-time */
-            reconfirmed_at?: string | null;
+            driver_ready_at?: string | null;
             /** Format: date-time */
             created_at: string;
-            /** Format: date-time */
-            expires_at: string;
         };
         TicketResponse: {
             ticket: string;
@@ -684,6 +783,7 @@ export interface components {
         SpotID: string;
         VehicleID: string;
         ReservationID: string;
+        OfferID: string;
         /** @description minLon,minLat,maxLon,maxLat */
         BBox: string;
         Zoom: number;
@@ -1292,12 +1392,66 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
-    claimSpot: {
+    listSpotOffers: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 id: components["parameters"]["SpotID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Offers ordered by preferred-time match, then amount */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfferResponse"][];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    createOffer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["SpotID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOfferRequest"];
+            };
+        };
+        responses: {
+            /** @description Offer created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfferResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    acceptOffer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["OfferID"];
             };
             cookie?: never;
         };
@@ -1311,6 +1465,52 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ReservationResponse"];
                 };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    rejectOffer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["OfferID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rejected */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    withdrawOffer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["OfferID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Withdrawn */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
@@ -1362,7 +1562,7 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
-    reconfirmReservation: {
+    markOwnerReady: {
         parameters: {
             query?: never;
             header?: never;
@@ -1373,7 +1573,53 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Reconfirmed */
+            /** @description Owner ready recorded */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    markDriverArrived: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ReservationID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Driver arrival recorded */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    markDriverReady: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ReservationID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Handover completed */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -1397,29 +1643,6 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Cancelled */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Error"];
-            404: components["responses"]["Error"];
-            409: components["responses"]["Error"];
-        };
-    };
-    completeReservation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["ReservationID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Completed */
             204: {
                 headers: {
                     [name: string]: unknown;

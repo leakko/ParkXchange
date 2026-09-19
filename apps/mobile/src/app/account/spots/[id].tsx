@@ -23,10 +23,9 @@ import { useDevSession } from "@/hooks/useDevSession";
 
 /** Remaining offer window relative to now, for form defaults only. */
 function remainingWindow(spot: SpotFeature, now = Date.now()) {
-  const from = new Date(spot.properties.available_from).getTime();
-  const expires = new Date(spot.properties.expires_at).getTime();
-  const availableIn = Math.max(0, Math.ceil((from - now) / 60_000));
-  const start = Math.max(from, now);
+  const expires = new Date(spot.properties.listed_until).getTime();
+  const availableIn = 0;
+  const start = now;
   const duration = Math.max(1, Math.ceil((expires - start) / 60_000));
   return {
     availableInMinutes: String(availableIn),
@@ -101,8 +100,6 @@ export default function EditSpotScreen() {
         if (!Number.isFinite(delay) || delay < 0) {
           throw new Error("Available-in must be zero or more minutes");
         }
-        body.duration_minutes = duration;
-        body.available_in_minutes = delay;
       }
       const trimmedNotes = notes.trim();
       if (trimmedNotes) {
@@ -188,9 +185,8 @@ export default function EditSpotScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <Text style={accountStyles.meta}>
-        Location and space size are fixed. Current window:{" "}
-        {new Date(spot.properties.available_from).toLocaleString()} →{" "}
-        {new Date(spot.properties.expires_at).toLocaleString()}
+        Location and space size are fixed. Listed until{" "}
+        {new Date(spot.properties.listed_until).toLocaleString()}
       </Text>
 
       <View style={accountStyles.field}>

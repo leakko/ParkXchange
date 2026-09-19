@@ -163,8 +163,11 @@ func (s *Service) Update(ctx context.Context, spotID string, viewer domain.Claim
 
 	now := s.now()
 	in := domain.UpdateSpotInput{
-		PriceCents: patch.PriceCents,
-		Notes:      patch.Notes,
+		PriceCents:           patch.PriceCents,
+		Notes:                patch.Notes,
+		PreferredDepartureAt: patch.PreferredDepartureAt,
+		ClearPreferred:       patch.ClearPreferred,
+		AutoCancelNoShow:     patch.AutoCancelNoShow,
 	}
 	if patch.ExpiresIn != nil {
 		expiresAt := now.Add(*patch.ExpiresIn)
@@ -177,10 +180,13 @@ func (s *Service) Update(ctx context.Context, spotID string, viewer domain.Claim
 	}
 
 	storePatch := SpotPatch{
-		ExpiresIn:  validated.ExpiresIn,
-		PriceCents: validated.PriceCents,
-		Notes:      validated.Notes,
-		VehicleID:  patch.VehicleID,
+		ExpiresIn:            validated.ExpiresIn,
+		PriceCents:           validated.PriceCents,
+		Notes:                validated.Notes,
+		VehicleID:            patch.VehicleID,
+		PreferredDepartureAt: validated.PreferredDepartureAt,
+		ClearPreferred:       validated.ClearPreferred,
+		AutoCancelNoShow:     validated.AutoCancelNoShow,
 	}
 
 	updated, err := s.store.UpdateAvailableSpot(ctx, spotID, viewer.UserID, storePatch)

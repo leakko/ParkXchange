@@ -100,8 +100,10 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
             ) : null}
 
             <Text style={styles.window}>
-              From {new Date(spot.properties.available_from).toLocaleString()} · to{" "}
-              {new Date(spot.properties.expires_at).toLocaleString()}
+              {spot.properties.preferred_departure_at
+                ? `Preferred ${new Date(spot.properties.preferred_departure_at).toLocaleString()}`
+                : "Flexible departure time"}{" "}
+              · listed until {new Date(spot.properties.listed_until).toLocaleString()}
             </Text>
 
             <View style={styles.actions}>

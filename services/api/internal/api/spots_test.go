@@ -54,17 +54,19 @@ type feature struct {
 		Coordinates []float64 `json:"coordinates"`
 	} `json:"geometry"`
 	Properties struct {
-		OwnerID       string    `json:"owner_id"`
-		OwnerName     string    `json:"owner_name"`
-		OwnerRating   *float64  `json:"owner_rating"`
-		Size          string    `json:"size_class"`
-		Status        string    `json:"status"`
-		PriceCents    int       `json:"price_cents"`
-		AddressHint   string    `json:"address_hint"`
-		Notes         string    `json:"notes"`
-		ExpiresAt     time.Time `json:"expires_at"`
-		ExactLocation bool      `json:"exact_location"`
-		IsMine        bool      `json:"is_mine"`
+		OwnerID       string     `json:"owner_id"`
+		OwnerName     string     `json:"owner_name"`
+		OwnerRating   *float64   `json:"owner_rating"`
+		Size          string     `json:"size_class"`
+		Status        string     `json:"status"`
+		PriceCents    int        `json:"price_cents"`
+		AddressHint   string     `json:"address_hint"`
+		Notes         string     `json:"notes"`
+		PreferredAt   *time.Time `json:"preferred_departure_at"`
+		ListedUntil   time.Time  `json:"listed_until"`
+		AutoCancel    bool       `json:"auto_cancel_no_show"`
+		ExactLocation bool       `json:"exact_location"`
+		IsMine        bool       `json:"is_mine"`
 		Vehicle       *struct {
 			ID        string `json:"id"`
 			Plate     string `json:"plate"`
@@ -144,11 +146,10 @@ func createSpot(
 	t.Helper()
 
 	body := map[string]any{
-		"lon":              at.Lon,
-		"lat":              at.Lat,
-		"size_class":       "medium",
-		"price_cents":      150,
-		"duration_minutes": 30,
+		"lon":         at.Lon,
+		"lat":         at.Lat,
+		"size_class":  "medium",
+		"price_cents": 150,
 	}
 	for key, value := range overrides {
 		body[key] = value
@@ -186,10 +187,13 @@ func TestCreateSpotReturnsAGeoJSONFeature(t *testing.T) {
 
 	owner, _, _ := registerUser(t, server)
 	at := uniqueLocation()
+	preferred := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Second)
 
 	got := createSpot(t, server, db, owner, at, map[string]any{
-		"address_hint": "outside number 42",
-		"notes":        "behind the blue van",
+		"address_hint":           "outside number 42",
+		"notes":                  "behind the blue van",
+		"preferred_departure_at": preferred,
+		"auto_cancel_no_show":    false,
 	})
 
 	if got.Type != "Feature" {
@@ -231,6 +235,12 @@ func TestCreateSpotReturnsAGeoJSONFeature(t *testing.T) {
 	if got.Properties.Vehicle.Plate == "" {
 		t.Error("vehicle plate missing")
 	}
+	if got.Properties.PreferredAt == nil || !got.Properties.PreferredAt.Equal(preferred) {
+		t.Errorf("preferred_departure_at = %v, want %s", got.Properties.PreferredAt, preferred)
+	}
+	if got.Properties.AutoCancel {
+		t.Error("auto_cancel_no_show = true, want false")
+	}
 }
 
 func TestCreateSpotRequiresAuthentication(t *testing.T) {
@@ -257,8 +267,7 @@ func TestCreateSpotRejectsInvalidInput(t *testing.T) {
 	base := func() map[string]any {
 		return map[string]any{
 			"lon": at.Lon, "lat": at.Lat, "size_class": "medium",
-			"price_cents": 150, "duration_minutes": 30,
-			"vehicle_id": vehicleID,
+			"price_cents": 150, "vehicle_id": vehicleID,
 		}
 	}
 
@@ -765,9 +774,9 @@ func TestUpdateSpotDurationSetsListingEndFromNow(t *testing.T) {
 
 	got := decode[feature](t, resp)
 	wantExpiry := time.Now().Add(60 * time.Minute)
-	if diff := got.Properties.ExpiresAt.Sub(wantExpiry); diff > 2*time.Second || diff < -2*time.Second {
+	if diff := got.Properties.ListedUntil.Sub(wantExpiry); diff > 2*time.Second || diff < -2*time.Second {
 		t.Errorf("expires_at = %s, want now+60m = %s (diff %s)",
-			got.Properties.ExpiresAt, wantExpiry, diff)
+			got.Properties.ListedUntil, wantExpiry, diff)
 	}
 }
 
@@ -796,10 +805,12 @@ func TestUpdateSpotRejectsAReservedOffer(t *testing.T) {
 	driver, _, _ := registerUser(t, server)
 	created := createSpot(t, server, db, owner, uniqueLocation(), nil)
 
-	claim := authedRequest(t, server, http.MethodPost,
-		"/v1/spots/"+created.ID+"/reservations", driver.AccessToken, nil)
-	if claim.StatusCode != http.StatusCreated {
-		t.Fatalf("claim status = %d, want 201 (%s)", claim.StatusCode, errorCode(t, claim))
+	offer := createOffer(t, server, driver.AccessToken, created.ID,
+		insertTestVehicle(t, db, driver.User.ID), time.Now().Add(15*time.Minute), 150)
+	accept := authedRequest(t, server, http.MethodPost,
+		"/v1/offers/"+offer.ID+"/accept", owner.AccessToken, nil)
+	if accept.StatusCode != http.StatusCreated {
+		t.Fatalf("accept status = %d, want 201 (%s)", accept.StatusCode, errorCode(t, accept))
 	}
 
 	resp := authedRequest(t, server, http.MethodPatch, "/v1/spots/"+created.ID,

@@ -312,7 +312,12 @@ func (db *DB) UpdateAvailableSpot(ctx context.Context, spotID, ownerID string, p
 				WHEN $6::float8 IS NULL THEN expires_at
 				ELSE now() + make_interval(secs => $6::float8)
 			END,
-			vehicle_id = COALESCE($7::uuid, vehicle_id)
+			vehicle_id = COALESCE($7::uuid, vehicle_id),
+			preferred_departure_at = CASE
+				WHEN $8::boolean THEN $9::timestamptz
+				ELSE preferred_departure_at
+			END,
+			auto_cancel_no_show = COALESCE($10::boolean, auto_cancel_no_show)
 		 WHERE id = $1 AND owner_id = $2 AND status = 'available'
 	`,
 		spotID, ownerID,
@@ -320,6 +325,9 @@ func (db *DB) UpdateAvailableSpot(ctx context.Context, spotID, ownerID string, p
 		patch.Notes != nil, nullable(stringPtr(patch.Notes)),
 		expiresSecs,
 		patch.VehicleID,
+		patch.ClearPreferred || patch.PreferredDepartureAt != nil,
+		patch.PreferredDepartureAt,
+		patch.AutoCancelNoShow,
 	)
 	if err != nil {
 		return domain.Spot{}, translate(err, "update available spot")

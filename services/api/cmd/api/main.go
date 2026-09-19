@@ -22,6 +22,7 @@ import (
 	"github.com/marco/parkxchange/services/api/internal/config"
 	"github.com/marco/parkxchange/services/api/internal/logging"
 	"github.com/marco/parkxchange/services/api/internal/migrate"
+	"github.com/marco/parkxchange/services/api/internal/offers"
 	"github.com/marco/parkxchange/services/api/internal/postgres"
 	"github.com/marco/parkxchange/services/api/internal/realtime"
 	"github.com/marco/parkxchange/services/api/internal/reservations"
@@ -98,6 +99,7 @@ func run() error {
 		Logger:       log,
 		Accounts:     accountsService,
 		Spots:        spots.New(db),
+		Offers:       offers.New(db),
 		Reservations: reservationsService,
 		Vehicles:     vehicles.NewService(db),
 		Health:       db,
@@ -140,8 +142,9 @@ func run() error {
 					log.Error("sweep failed", slog.Any("err", sweepErr))
 					continue
 				}
-				if result.ExpiredSpots+result.ExpiredReservations > 0 {
+				if result.ExpiredOffers+result.ExpiredSpots+result.ExpiredReservations > 0 {
 					log.Info("sweep",
+						slog.Int("expired_offers", result.ExpiredOffers),
 						slog.Int("expired_spots", result.ExpiredSpots),
 						slog.Int("expired_reservations", result.ExpiredReservations),
 					)

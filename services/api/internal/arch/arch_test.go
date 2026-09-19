@@ -143,7 +143,7 @@ var rules = map[string]rule{
 		why: "api is the HTTP adapter: it decodes requests, calls use cases " +
 			"and serialises results, and must reach the database only " +
 			"through a port",
-		packages:   []string{pkgDomain, pkgAccounts, pkgSpots, pkgVehicles, pkgReservations, pkgWeb, pkgConfig, pkgRealtime, geoModule},
+		packages:   []string{pkgDomain, pkgAccounts, pkgSpots, pkgVehicles, pkgOffers, pkgReservations, pkgWeb, pkgConfig, pkgRealtime, geoModule},
 		thirdParty: []string{"github.com/coder/websocket"},
 	},
 

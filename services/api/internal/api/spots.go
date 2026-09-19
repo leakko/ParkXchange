@@ -1,6 +1,8 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -31,7 +33,9 @@ type spotProperties struct {
 	AddressHint string `json:"address_hint,omitempty"`
 	Notes       string `json:"notes,omitempty"`
 
-	ExpiresAt time.Time `json:"expires_at"`
+	PreferredDepartureAt *time.Time `json:"preferred_departure_at,omitempty"`
+	ListedUntil          time.Time  `json:"listed_until"`
+	AutoCancelNoShow     bool       `json:"auto_cancel_no_show"`
 
 	// ExactLocation tells the client whether the geometry is the real position
 	// or a point snapped to the privacy grid, so it can draw a pin or an area
@@ -71,18 +75,20 @@ func toFeature(visible spots.VisibleSpot, viewer domain.Claims) geo.Feature[spot
 	spot := visible.Spot
 
 	return geo.NewFeature(spot.ID, visible.Lon, visible.Lat, spotProperties{
-		OwnerID:       spot.OwnerID,
-		OwnerName:     spot.OwnerName,
-		OwnerRating:   spot.OwnerRating,
-		Size:          string(spot.Size),
-		Status:        string(spot.Status),
-		PriceCents:    spot.PriceCents,
-		AddressHint:   spot.AddressHint,
-		Notes:         spot.Notes,
-		ExpiresAt:     spot.ExpiresAt,
-		ExactLocation: visible.Exact,
-		IsMine:        spot.OwnedBy(viewer.UserID),
-		Vehicle:       toVehicleSummary(spot.Vehicle),
+		OwnerID:              spot.OwnerID,
+		OwnerName:            spot.OwnerName,
+		OwnerRating:          spot.OwnerRating,
+		Size:                 string(spot.Size),
+		Status:               string(spot.Status),
+		PriceCents:           spot.PriceCents,
+		AddressHint:          spot.AddressHint,
+		Notes:                spot.Notes,
+		PreferredDepartureAt: spot.PreferredDepartureAt,
+		ListedUntil:          spot.ExpiresAt,
+		AutoCancelNoShow:     spot.AutoCancelNoShow,
+		ExactLocation:        visible.Exact,
+		IsMine:               spot.OwnedBy(viewer.UserID),
+		Vehicle:              toVehicleSummary(spot.Vehicle),
 	})
 }
 
@@ -186,11 +192,11 @@ type createSpotRequest struct {
 
 	// DurationMinutes is how long the offer stands after it becomes
 	// available, rather than an absolute expiry.
-	DurationMinutes int `json:"duration_minutes"`
+	DurationMinutes *int `json:"duration_minutes"`
 
 	// AvailableInMinutes is how long until the offer starts. Zero or omitted
 	// means immediately. Capped at 24 hours by the domain.
-	AvailableInMinutes int `json:"available_in_minutes"`
+	AvailableInMinutes *int `json:"available_in_minutes"`
 }
 
 func (a *API) handleCreateSpot(w http.ResponseWriter, r *http.Request) error {
@@ -206,10 +212,10 @@ func (a *API) handleCreateSpot(w http.ResponseWriter, r *http.Request) error {
 	if req.Lat == nil {
 		fields["lat"] = "is required"
 	}
-	if req.DurationMinutes <= 0 {
+	if req.DurationMinutes != nil && *req.DurationMinutes <= 0 {
 		fields["duration_minutes"] = "must be a positive number of minutes"
 	}
-	if req.AvailableInMinutes < 0 {
+	if req.AvailableInMinutes != nil && *req.AvailableInMinutes < 0 {
 		fields["available_in_minutes"] = "must not be negative"
 	}
 	if strings.TrimSpace(req.VehicleID) == "" {
@@ -220,8 +226,15 @@ func (a *API) handleCreateSpot(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	claims := claimsFrom(r.Context())
-	now := time.Now()
-	expiresAt := now.Add(time.Duration(req.AvailableInMinutes+req.DurationMinutes) * time.Minute)
+	var expiresAt time.Time
+	if req.DurationMinutes != nil {
+		availableIn := 0
+		if req.AvailableInMinutes != nil {
+			availableIn = *req.AvailableInMinutes
+		}
+		expiresAt = time.Now().Add(
+			time.Duration(availableIn+*req.DurationMinutes) * time.Minute)
+	}
 
 	spot, err := a.spots.Offer(r.Context(), domain.NewSpotInput{
 		OwnerID:              claims.UserID,
@@ -246,11 +259,32 @@ func (a *API) handleCreateSpot(w http.ResponseWriter, r *http.Request) error {
 }
 
 type updateSpotRequest struct {
-	PriceCents         *int    `json:"price_cents"`
-	Notes              *string `json:"notes"`
-	VehicleID          *string `json:"vehicle_id"`
-	DurationMinutes    *int    `json:"duration_minutes"`
-	AvailableInMinutes *int    `json:"available_in_minutes"`
+	PriceCents           *int         `json:"price_cents"`
+	Notes                *string      `json:"notes"`
+	VehicleID            *string      `json:"vehicle_id"`
+	PreferredDepartureAt nullableTime `json:"preferred_departure_at"`
+	AutoCancelNoShow     *bool        `json:"auto_cancel_no_show"`
+	DurationMinutes      *int         `json:"duration_minutes"`
+	AvailableInMinutes   *int         `json:"available_in_minutes"`
+}
+
+type nullableTime struct {
+	Present bool
+	Value   *time.Time
+}
+
+func (n *nullableTime) UnmarshalJSON(data []byte) error {
+	n.Present = true
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		n.Value = nil
+		return nil
+	}
+	var value time.Time
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	n.Value = &value
+	return nil
 }
 
 func (a *API) handleUpdateSpot(w http.ResponseWriter, r *http.Request) error {
@@ -276,9 +310,14 @@ func (a *API) handleUpdateSpot(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	patch := spots.SpotPatch{
-		PriceCents: req.PriceCents,
-		Notes:      req.Notes,
-		VehicleID:  req.VehicleID,
+		PriceCents:       req.PriceCents,
+		Notes:            req.Notes,
+		VehicleID:        req.VehicleID,
+		AutoCancelNoShow: req.AutoCancelNoShow,
+	}
+	if req.PreferredDepartureAt.Present {
+		patch.PreferredDepartureAt = req.PreferredDepartureAt.Value
+		patch.ClearPreferred = req.PreferredDepartureAt.Value == nil
 	}
 	if req.DurationMinutes != nil {
 		duration := time.Duration(*req.DurationMinutes) * time.Minute

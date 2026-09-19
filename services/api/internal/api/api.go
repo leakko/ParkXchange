@@ -13,6 +13,7 @@ import (
 
 	"github.com/marco/parkxchange/services/api/internal/accounts"
 	"github.com/marco/parkxchange/services/api/internal/config"
+	"github.com/marco/parkxchange/services/api/internal/offers"
 	"github.com/marco/parkxchange/services/api/internal/realtime"
 	"github.com/marco/parkxchange/services/api/internal/reservations"
 	"github.com/marco/parkxchange/services/api/internal/spots"
@@ -40,6 +41,7 @@ type API struct {
 
 	accounts *accounts.Service
 	spots    *spots.Service
+	offers   *offers.Service
 	reserves *reservations.Service
 	vehicles *vehicles.Service
 
@@ -55,6 +57,7 @@ type Deps struct {
 	Logger       *slog.Logger
 	Accounts     *accounts.Service
 	Spots        *spots.Service
+	Offers       *offers.Service
 	Reservations *reservations.Service
 	Vehicles     *vehicles.Service
 	Health       Pinger
@@ -74,6 +77,7 @@ func New(deps Deps) (*API, error) {
 		log:      deps.Logger,
 		accounts: deps.Accounts,
 		spots:    deps.Spots,
+		offers:   deps.Offers,
 		reserves: deps.Reservations,
 		vehicles: deps.Vehicles,
 		health:   deps.Health,
@@ -129,12 +133,17 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("GET /v1/spots/mine", a.requireAuth(a.handleMySpots))
 	mux.Handle("GET /v1/spots/{id}/vehicle/photo", a.requireAuth(a.handleSpotVehiclePhoto))
 
-	mux.Handle("POST /v1/spots/{id}/reservations", a.requireAuth(a.handleClaimSpot))
+	mux.Handle("POST /v1/spots/{id}/offers", a.requireAuth(a.handleCreateOffer))
+	mux.Handle("GET /v1/spots/{id}/offers", a.requireAuth(a.handleListSpotOffers))
+	mux.Handle("POST /v1/offers/{id}/accept", a.requireAuth(a.handleAcceptOffer))
+	mux.Handle("POST /v1/offers/{id}/reject", a.requireAuth(a.handleRejectOffer))
+	mux.Handle("POST /v1/offers/{id}/withdraw", a.requireAuth(a.handleWithdrawOffer))
 	mux.Handle("GET /v1/reservations/active", a.requireAuth(a.handleActiveReservations))
 	mux.Handle("GET /v1/reservations/{id}", a.requireAuth(a.handleGetReservation))
-	mux.Handle("POST /v1/reservations/{id}/reconfirm", a.requireAuth(a.handleReconfirm))
+	mux.Handle("POST /v1/reservations/{id}/owner-ready", a.requireAuth(a.handleOwnerReady))
+	mux.Handle("POST /v1/reservations/{id}/driver-arrived", a.requireAuth(a.handleDriverArrived))
+	mux.Handle("POST /v1/reservations/{id}/driver-ready", a.requireAuth(a.handleDriverReady))
 	mux.Handle("POST /v1/reservations/{id}/cancel", a.requireAuth(a.handleCancelReservation))
-	mux.Handle("POST /v1/reservations/{id}/complete", a.requireAuth(a.handleCompleteReservation))
 	mux.Handle("POST "+pathWSTickets, a.requireAuth(a.handleIssueTicket))
 	mux.HandleFunc("GET "+pathWS, a.handleWS)
 

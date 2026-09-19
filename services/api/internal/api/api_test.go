@@ -16,6 +16,7 @@ import (
 	"github.com/marco/parkxchange/services/api/internal/api"
 	"github.com/marco/parkxchange/services/api/internal/auth"
 	"github.com/marco/parkxchange/services/api/internal/config"
+	"github.com/marco/parkxchange/services/api/internal/offers"
 	"github.com/marco/parkxchange/services/api/internal/postgres"
 	"github.com/marco/parkxchange/services/api/internal/realtime"
 	"github.com/marco/parkxchange/services/api/internal/reservations"
@@ -113,6 +114,7 @@ func newServerFrom(t *testing.T, cfg config.Config) (*httptest.Server, *postgres
 		Logger:       log,
 		Accounts:     accountsService,
 		Spots:        spots.New(db),
+		Offers:       offers.New(db),
 		Reservations: reservations.New(db),
 		Vehicles:     vehicles.NewService(db),
 		Health:       db,

@@ -45,6 +45,33 @@ func (e GeoJSONPointType) Valid() bool {
 	}
 }
 
+// Defines values for OfferResponseStatus.
+const (
+	Accepted  OfferResponseStatus = "accepted"
+	Expired   OfferResponseStatus = "expired"
+	Pending   OfferResponseStatus = "pending"
+	Rejected  OfferResponseStatus = "rejected"
+	Withdrawn OfferResponseStatus = "withdrawn"
+)
+
+// Valid indicates whether the value is a known member of the OfferResponseStatus enum.
+func (e OfferResponseStatus) Valid() bool {
+	switch e {
+	case Accepted:
+		return true
+	case Expired:
+		return true
+	case Pending:
+		return true
+	case Rejected:
+		return true
+	case Withdrawn:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SnapshotMessageType.
 const (
 	Snapshot SnapshotMessageType = "snapshot"
@@ -198,18 +225,23 @@ type ChangePasswordRequest struct {
 	NewPassword     string `json:"new_password"`
 }
 
+// CreateOfferRequest defines model for CreateOfferRequest.
+type CreateOfferRequest struct {
+	AmountCents int                `json:"amount_cents"`
+	ExchangeAt  time.Time          `json:"exchange_at"`
+	VehicleId   openapi_types.UUID `json:"vehicle_id"`
+}
+
 // CreateSpotRequest defines model for CreateSpotRequest.
 type CreateSpotRequest struct {
-	AddressHint *string `json:"address_hint,omitempty"`
-
-	// AvailableInMinutes Delay until the offer starts. Zero means immediately. Capped at 24 hours.
-	AvailableInMinutes *int    `json:"available_in_minutes,omitempty"`
-	DurationMinutes    int     `json:"duration_minutes"`
-	Lat                float64 `json:"lat"`
-	Lon                float64 `json:"lon"`
-	Notes              *string `json:"notes,omitempty"`
-	PriceCents         int     `json:"price_cents"`
-	SizeClass          string  `json:"size_class"`
+	AddressHint          *string    `json:"address_hint,omitempty"`
+	AutoCancelNoShow     *bool      `json:"auto_cancel_no_show,omitempty"`
+	Lat                  float64    `json:"lat"`
+	Lon                  float64    `json:"lon"`
+	Notes                *string    `json:"notes,omitempty"`
+	PreferredDepartureAt *time.Time `json:"preferred_departure_at,omitempty"`
+	PriceCents           int        `json:"price_cents"`
+	SizeClass            string     `json:"size_class"`
 
 	// VehicleId One of the caller's vehicles; required so claimers know which car to meet
 	VehicleId openapi_types.UUID `json:"vehicle_id"`
@@ -261,6 +293,22 @@ type LoginRequest struct {
 	Password string              `json:"password"`
 }
 
+// OfferResponse defines model for OfferResponse.
+type OfferResponse struct {
+	AmountCents int                 `json:"amount_cents"`
+	CreatedAt   time.Time           `json:"created_at"`
+	DriverId    openapi_types.UUID  `json:"driver_id"`
+	ExchangeAt  time.Time           `json:"exchange_at"`
+	ExpiresAt   time.Time           `json:"expires_at"`
+	Id          openapi_types.UUID  `json:"id"`
+	SpotId      openapi_types.UUID  `json:"spot_id"`
+	Status      OfferResponseStatus `json:"status"`
+	VehicleId   openapi_types.UUID  `json:"vehicle_id"`
+}
+
+// OfferResponseStatus defines model for OfferResponse.Status.
+type OfferResponseStatus string
+
 // ReadyResponse defines model for ReadyResponse.
 type ReadyResponse struct {
 	Database string `json:"database"`
@@ -281,18 +329,19 @@ type RegisterRequest struct {
 
 // ReservationResponse defines model for ReservationResponse.
 type ReservationResponse struct {
-	CreatedAt     time.Time          `json:"created_at"`
-	DriverId      openapi_types.UUID `json:"driver_id"`
-	EndsAt        time.Time          `json:"ends_at"`
-	ExpiresAt     time.Time          `json:"expires_at"`
-	Id            openapi_types.UUID `json:"id"`
-	OwnerId       openapi_types.UUID `json:"owner_id"`
-	PriceCents    int                `json:"price_cents"`
-	ReconfirmBy   time.Time          `json:"reconfirm_by"`
-	ReconfirmedAt *time.Time         `json:"reconfirmed_at,omitempty"`
-	SpotId        openapi_types.UUID `json:"spot_id"`
-	StartsAt      time.Time          `json:"starts_at"`
-	Status        string             `json:"status"`
+	CreatedAt       time.Time           `json:"created_at"`
+	DriverArrivedAt *time.Time          `json:"driver_arrived_at,omitempty"`
+	DriverId        openapi_types.UUID  `json:"driver_id"`
+	DriverReadyAt   *time.Time          `json:"driver_ready_at,omitempty"`
+	DriverVehicleId *openapi_types.UUID `json:"driver_vehicle_id,omitempty"`
+	ExchangeAt      time.Time           `json:"exchange_at"`
+	Id              openapi_types.UUID  `json:"id"`
+	OfferId         *openapi_types.UUID `json:"offer_id,omitempty"`
+	OwnerId         openapi_types.UUID  `json:"owner_id"`
+	OwnerReadyAt    *time.Time          `json:"owner_ready_at,omitempty"`
+	PriceCents      int                 `json:"price_cents"`
+	SpotId          openapi_types.UUID  `json:"spot_id"`
+	Status          string              `json:"status"`
 }
 
 // SessionResponse defines model for SessionResponse.
@@ -351,18 +400,19 @@ type SpotFeatureCollectionType string
 
 // SpotProperties defines model for SpotProperties.
 type SpotProperties struct {
-	AddressHint   *string            `json:"address_hint,omitempty"`
-	AvailableFrom time.Time          `json:"available_from"`
-	ExactLocation bool               `json:"exact_location"`
-	ExpiresAt     time.Time          `json:"expires_at"`
-	IsMine        bool               `json:"is_mine"`
-	Notes         *string            `json:"notes,omitempty"`
-	OwnerId       openapi_types.UUID `json:"owner_id"`
-	OwnerName     string             `json:"owner_name"`
-	OwnerRating   *float64           `json:"owner_rating,omitempty"`
-	PriceCents    int                `json:"price_cents"`
-	SizeClass     string             `json:"size_class"`
-	Status        string             `json:"status"`
+	AddressHint          *string            `json:"address_hint,omitempty"`
+	AutoCancelNoShow     bool               `json:"auto_cancel_no_show"`
+	ExactLocation        bool               `json:"exact_location"`
+	IsMine               bool               `json:"is_mine"`
+	ListedUntil          time.Time          `json:"listed_until"`
+	Notes                *string            `json:"notes,omitempty"`
+	OwnerId              openapi_types.UUID `json:"owner_id"`
+	OwnerName            string             `json:"owner_name"`
+	OwnerRating          *float64           `json:"owner_rating,omitempty"`
+	PreferredDepartureAt *time.Time         `json:"preferred_departure_at,omitempty"`
+	PriceCents           int                `json:"price_cents"`
+	SizeClass            string             `json:"size_class"`
+	Status               string             `json:"status"`
 
 	// Vehicle Claimer-visible car identity embedded on spot features
 	Vehicle VehicleSummary `json:"vehicle"`
@@ -379,15 +429,14 @@ type UpdateMeRequest struct {
 	DisplayName string `json:"display_name"`
 }
 
-// UpdateSpotRequest Partial edit of an available offer. Location and spot size_class are not
-// editable. When available_in_minutes is set, duration_minutes is required.
+// UpdateSpotRequest Partial edit of an available listing. Location, listing lifetime, and
+// spot size_class are not editable.
 type UpdateSpotRequest struct {
-	// AvailableInMinutes Delay until the offer starts. Requires duration_minutes.
-	AvailableInMinutes *int                `json:"available_in_minutes,omitempty"`
-	DurationMinutes    *int                `json:"duration_minutes,omitempty"`
-	Notes              *string             `json:"notes,omitempty"`
-	PriceCents         *int                `json:"price_cents,omitempty"`
-	VehicleId          *openapi_types.UUID `json:"vehicle_id,omitempty"`
+	AutoCancelNoShow     *bool               `json:"auto_cancel_no_show,omitempty"`
+	Notes                *string             `json:"notes,omitempty"`
+	PreferredDepartureAt *time.Time          `json:"preferred_departure_at,omitempty"`
+	PriceCents           *int                `json:"price_cents,omitempty"`
+	VehicleId            *openapi_types.UUID `json:"vehicle_id,omitempty"`
 }
 
 // UpdateVehicleRequest defines model for UpdateVehicleRequest.
@@ -469,6 +518,9 @@ type BBox = string
 // From defines model for From.
 type From = time.Time
 
+// OfferID defines model for OfferID.
+type OfferID = openapi_types.UUID
+
 // ReservationID defines model for ReservationID.
 type ReservationID = openapi_types.UUID
 
@@ -529,6 +581,9 @@ type CreateSpotJSONRequestBody = CreateSpotRequest
 
 // UpdateSpotJSONRequestBody defines body for UpdateSpot for application/json ContentType.
 type UpdateSpotJSONRequestBody = UpdateSpotRequest
+
+// CreateOfferJSONRequestBody defines body for CreateOffer for application/json ContentType.
+type CreateOfferJSONRequestBody = CreateOfferRequest
 
 // CreateVehicleJSONRequestBody defines body for CreateVehicle for application/json ContentType.
 type CreateVehicleJSONRequestBody = CreateVehicleRequest

@@ -13,11 +13,14 @@ import (
 // Window fields are durations anchored to the database clock, matching
 // SpotDraft: the API and database clocks are not the same clock.
 type SpotPatch struct {
-	AvailableIn *time.Duration
-	ExpiresIn   *time.Duration
-	PriceCents  *int
-	Notes       *string
-	VehicleID   *string
+	AvailableIn          *time.Duration
+	ExpiresIn            *time.Duration
+	PriceCents           *int
+	Notes                *string
+	VehicleID            *string
+	PreferredDepartureAt *time.Time
+	ClearPreferred       bool
+	AutoCancelNoShow     *bool
 }
 
 // Store is the persistence the spot use cases need.

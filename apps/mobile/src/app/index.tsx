@@ -470,8 +470,8 @@ export default function MapScreen() {
       {active ? (
         <View style={[styles.banner, styles.activeBanner]}>
           <Text style={styles.bannerText}>
-            Active claim · reconfirm by{" "}
-            {new Date(active.reconfirm_by).toLocaleTimeString()}
+            Active exchange ·{" "}
+            {new Date(active.exchange_at).toLocaleString()}
           </Text>
           <Pressable onPress={() => void reconfirm()} disabled={busy}>
             <Text style={styles.link}>Reconfirm</Text>

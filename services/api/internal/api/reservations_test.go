@@ -1,13 +1,9 @@
 package api_test
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"net/http"
-	"sync"
-	"sync/atomic"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -15,313 +11,151 @@ import (
 )
 
 type reservationBody struct {
-	ID         string    `json:"id"`
-	SpotID     string    `json:"spot_id"`
-	DriverID   string    `json:"driver_id"`
-	Status     string    `json:"status"`
-	PriceCents int       `json:"price_cents"`
-	StartsAt   time.Time `json:"starts_at"`
-	EndsAt     time.Time `json:"ends_at"`
+	ID              string     `json:"id"`
+	SpotID          string     `json:"spot_id"`
+	DriverID        string     `json:"driver_id"`
+	OwnerID         string     `json:"owner_id"`
+	OfferID         string     `json:"offer_id"`
+	DriverVehicleID string     `json:"driver_vehicle_id"`
+	Status          string     `json:"status"`
+	PriceCents      int        `json:"price_cents"`
+	ExchangeAt      time.Time  `json:"exchange_at"`
+	OwnerReadyAt    *time.Time `json:"owner_ready_at"`
+	DriverArrivedAt *time.Time `json:"driver_arrived_at"`
+	DriverReadyAt   *time.Time `json:"driver_ready_at"`
 }
 
-func TestClaimRemovesTheSpotFromTheMap(t *testing.T) {
-	server, db := newServer(t)
+type offerBody struct {
+	ID          string    `json:"id"`
+	SpotID      string    `json:"spot_id"`
+	DriverID    string    `json:"driver_id"`
+	VehicleID   string    `json:"vehicle_id"`
+	ExchangeAt  time.Time `json:"exchange_at"`
+	AmountCents int       `json:"amount_cents"`
+	Status      string    `json:"status"`
+}
 
-	owner, _, _ := registerUser(t, server)
-	driver, _, _ := registerUser(t, server)
-	at := uniqueLocation()
-	spot := createSpot(t, server, db, owner, at, nil)
-
+func createOffer(
+	t *testing.T,
+	server *httptest.Server,
+	token, spotID, vehicleID string,
+	exchangeAt time.Time,
+	amount int,
+) offerBody {
+	t.Helper()
 	resp := authedRequest(t, server, http.MethodPost,
-		"/v1/spots/"+spot.ID+"/reservations", driver.AccessToken, nil)
+		"/v1/spots/"+spotID+"/offers", token, map[string]any{
+			"vehicle_id": vehicleID, "exchange_at": exchangeAt,
+			"amount_cents": amount,
+		})
 	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("claim status = %d, want 201 (%s)", resp.StatusCode, errorCode(t, resp))
+		t.Fatalf("create offer status = %d (%s)", resp.StatusCode, errorCode(t, resp))
 	}
-
-	listed := decode[featureCollection](t, get(t, server, "/v1/spots?bbox="+at.bbox()))
-	if _, found := listed.find(spot.ID); found {
-		t.Fatal("a claimed spot was still on the map")
-	}
+	return decode[offerBody](t, resp)
 }
 
-func TestOwnerCannotClaimTheirOwnSpot(t *testing.T) {
+func TestOfferAcceptanceAndHandshakePayOwner(t *testing.T) {
 	server, db := newServer(t)
-
-	owner, _, _ := registerUser(t, server)
-	at := uniqueLocation()
-	spot := createSpot(t, server, db, owner, at, nil)
-
-	resp := authedRequest(t, server, http.MethodPost,
-		"/v1/spots/"+spot.ID+"/reservations", owner.AccessToken, nil)
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", resp.StatusCode)
-	}
-	if errorCode(t, resp) != "own_spot" {
-		t.Errorf("code = %q, want own_spot", errorCode(t, resp))
-	}
-}
-
-func TestSecondClaimIsAConflict(t *testing.T) {
-	server, db := newServer(t)
-
-	owner, _, _ := registerUser(t, server)
-	a, _, _ := registerUser(t, server)
-	b, _, _ := registerUser(t, server)
-	at := uniqueLocation()
-	spot := createSpot(t, server, db, owner, at, nil)
-
-	first := authedRequest(t, server, http.MethodPost,
-		"/v1/spots/"+spot.ID+"/reservations", a.AccessToken, nil)
-	if first.StatusCode != http.StatusCreated {
-		t.Fatalf("first claim status = %d (%s)", first.StatusCode, errorCode(t, first))
-	}
-
-	second := authedRequest(t, server, http.MethodPost,
-		"/v1/spots/"+spot.ID+"/reservations", b.AccessToken, nil)
-	if second.StatusCode != http.StatusConflict {
-		t.Fatalf("second claim status = %d, want 409", second.StatusCode)
-	}
-}
-
-func TestLegacyAvailableInDoesNotDelayClaim(t *testing.T) {
-	server, db := newServer(t)
-
 	owner, _, _ := registerUser(t, server)
 	driver, _, _ := registerUser(t, server)
-	at := uniqueLocation()
-	spot := createSpot(t, server, db, owner, at, map[string]any{
-		"available_in_minutes": 120,
-		"duration_minutes":     30,
-	})
+	spot := createSpot(t, server, db, owner, uniqueLocation(), nil)
+	driverVehicleID := insertTestVehicle(t, db, driver.User.ID)
+	exchangeAt := time.Now().Add(30 * time.Minute).UTC().Truncate(time.Second)
 
-	listed := decode[featureCollection](t, get(t, server, "/v1/spots?bbox="+at.bbox()))
-	if _, found := listed.find(spot.ID); !found {
-		t.Fatal("a spot announced for later was missing from the default 24h window")
+	offer := createOffer(t, server, driver.AccessToken,
+		spot.ID, driverVehicleID, exchangeAt, 200)
+
+	listed := authedRequest(t, server, http.MethodGet,
+		"/v1/spots/"+spot.ID+"/offers", owner.AccessToken, nil)
+	if listed.StatusCode != http.StatusOK {
+		t.Fatalf("list offers status = %d (%s)", listed.StatusCode, errorCode(t, listed))
+	}
+	if got := decode[[]offerBody](t, listed); len(got) != 1 || got[0].ID != offer.ID {
+		t.Fatalf("listed offers = %+v", got)
 	}
 
-	resp := authedRequest(t, server, http.MethodPost,
-		"/v1/spots/"+spot.ID+"/reservations", driver.AccessToken, nil)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("claim future spot status = %d (%s)", resp.StatusCode, errorCode(t, resp))
+	accepted := authedRequest(t, server, http.MethodPost,
+		"/v1/offers/"+offer.ID+"/accept", owner.AccessToken, nil)
+	if accepted.StatusCode != http.StatusCreated {
+		t.Fatalf("accept status = %d (%s)", accepted.StatusCode, errorCode(t, accepted))
+	}
+	reservation := decode[reservationBody](t, accepted)
+	if reservation.OfferID != offer.ID ||
+		reservation.DriverVehicleID != driverVehicleID ||
+		!reservation.ExchangeAt.Equal(exchangeAt) {
+		t.Fatalf("reservation = %+v", reservation)
 	}
 
-	got := decode[reservationBody](t, resp)
-	if got.Status != string(domain.ResConfirmed) {
-		t.Errorf("status = %q, want confirmed: listings are visible immediately", got.Status)
+	for _, step := range []struct {
+		path, token string
+	}{
+		{"/driver-arrived", driver.AccessToken},
+		{"/owner-ready", owner.AccessToken},
+		{"/driver-ready", driver.AccessToken},
+	} {
+		resp := authedRequest(t, server, http.MethodPost,
+			"/v1/reservations/"+reservation.ID+step.path, step.token, nil)
+		if resp.StatusCode != http.StatusNoContent {
+			t.Fatalf("%s status = %d (%s)", step.path, resp.StatusCode, errorCode(t, resp))
+		}
 	}
 
-	listed = decode[featureCollection](t, get(t, server, "/v1/spots?bbox="+at.bbox()))
-	if _, found := listed.find(spot.ID); found {
-		t.Fatal("a claimed future spot was still on the map")
-	}
-
-}
-
-func TestImmediateClaimIsBornConfirmed(t *testing.T) {
-	server, db := newServer(t)
-
-	owner, _, _ := registerUser(t, server)
-	driver, _, _ := registerUser(t, server)
-	at := uniqueLocation()
-	spot := createSpot(t, server, db, owner, at, nil)
-
-	resp := authedRequest(t, server, http.MethodPost,
-		"/v1/spots/"+spot.ID+"/reservations", driver.AccessToken, nil)
-	got := decode[reservationBody](t, resp)
-	if got.Status != string(domain.ResConfirmed) {
-		t.Errorf("status = %q, want confirmed for an imminent handover", got.Status)
-	}
-}
-
-func TestDriverCancelReleasesTheSpot(t *testing.T) {
-	server, db := newServer(t)
-
-	owner, _, _ := registerUser(t, server)
-	driver, _, _ := registerUser(t, server)
-	at := uniqueLocation()
-	spot := createSpot(t, server, db, owner, at, nil)
-
-	claimed := decode[reservationBody](t, authedRequest(t, server, http.MethodPost,
-		"/v1/spots/"+spot.ID+"/reservations", driver.AccessToken, nil))
-
-	cancel := authedRequest(t, server, http.MethodPost,
-		"/v1/reservations/"+claimed.ID+"/cancel", driver.AccessToken, nil)
-	if cancel.StatusCode != http.StatusNoContent {
-		t.Fatalf("cancel status = %d (%s)", cancel.StatusCode, errorCode(t, cancel))
-	}
-
-	listed := decode[featureCollection](t, get(t, server, "/v1/spots?bbox="+at.bbox()))
-	if _, found := listed.find(spot.ID); !found {
-		t.Fatal("cancelling a claim did not return the spot to the map")
-	}
-}
-
-func TestCompletePaysTheOwner(t *testing.T) {
-	server, db := newServer(t)
-
-	owner, _, _ := registerUser(t, server)
-	driver, _, _ := registerUser(t, server)
-	at := uniqueLocation()
-	spot := createSpot(t, server, db, owner, at, map[string]any{"price_cents": 150})
-
-	claimed := decode[reservationBody](t, authedRequest(t, server, http.MethodPost,
-		"/v1/spots/"+spot.ID+"/reservations", driver.AccessToken, nil))
-
-	complete := authedRequest(t, server, http.MethodPost,
-		"/v1/reservations/"+claimed.ID+"/complete", driver.AccessToken, nil)
-	if complete.StatusCode != http.StatusNoContent {
-		t.Fatalf("complete status = %d (%s)", complete.StatusCode, errorCode(t, complete))
+	got := decode[reservationBody](t, authedRequest(t, server, http.MethodGet,
+		"/v1/reservations/"+reservation.ID, driver.AccessToken, nil))
+	if got.Status != string(domain.ResCompleted) || got.DriverReadyAt == nil {
+		t.Fatalf("completed reservation = %+v", got)
 	}
 
 	me := authedRequest(t, server, http.MethodGet, "/v1/me", owner.AccessToken, nil)
-	var body struct {
+	var profile struct {
 		BalanceCents int64 `json:"balance_cents"`
 	}
-	if err := json.NewDecoder(me.Body).Decode(&body); err != nil {
-		t.Fatalf("decode me: %v", err)
+	if err := json.NewDecoder(me.Body).Decode(&profile); err != nil {
+		t.Fatalf("decode owner profile: %v", err)
 	}
-	want := domain.SignupGrantCents + 150
-	if body.BalanceCents != want {
-		t.Errorf("owner balance = %d, want %d (grant + price)", body.BalanceCents, want)
-	}
-}
-
-func TestSignupGrantLetsADriverClaim(t *testing.T) {
-	server, _ := newServer(t)
-
-	_, _, _ = registerUser(t, server)
-	driver, _, _ := registerUser(t, server)
-
-	me := authedRequest(t, server, http.MethodGet, "/v1/me", driver.AccessToken, nil)
-	var body struct {
-		BalanceCents int64 `json:"balance_cents"`
-	}
-	if err := json.NewDecoder(me.Body).Decode(&body); err != nil {
-		t.Fatalf("decode me: %v", err)
-	}
-	if body.BalanceCents != domain.SignupGrantCents {
-		t.Errorf("balance = %d, want signup grant %d", body.BalanceCents, domain.SignupGrantCents)
+	if want := domain.SignupGrantCents + 200; profile.BalanceCents != want {
+		t.Errorf("owner balance = %d, want %d", profile.BalanceCents, want)
 	}
 }
 
-func TestUnreconfirmedReservationReturnsTheSpotToTheMap(t *testing.T) {
+func TestOfferRejectAndWithdraw(t *testing.T) {
 	server, db := newServer(t)
-
 	owner, _, _ := registerUser(t, server)
-	driver, _, _ := registerUser(t, server)
-	at := uniqueLocation()
-	spot := createSpot(t, server, db, owner, at, map[string]any{
-		"duration_minutes":       180,
-		"preferred_departure_at": time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
-	})
+	firstDriver, _, _ := registerUser(t, server)
+	secondDriver, _, _ := registerUser(t, server)
+	spot := createSpot(t, server, db, owner, uniqueLocation(), nil)
+	exchangeAt := time.Now().Add(time.Hour).UTC()
 
-	claimed := decode[reservationBody](t, authedRequest(t, server, http.MethodPost,
-		"/v1/spots/"+spot.ID+"/reservations", driver.AccessToken, nil))
-	if claimed.Status != string(domain.ResPending) {
-		t.Fatalf("status = %q, want pending", claimed.Status)
-	}
+	withdrawn := createOffer(t, server, firstDriver.AccessToken,
+		spot.ID, insertTestVehicle(t, db, firstDriver.User.ID), exchangeAt, 100)
+	rejected := createOffer(t, server, secondDriver.AccessToken,
+		spot.ID, insertTestVehicle(t, db, secondDriver.User.ID), exchangeAt, 150)
 
-	if _, err := db.Pool.Exec(context.Background(), `
-		UPDATE reservations SET reconfirm_by = now() - interval '1 second' WHERE id = $1
-	`, claimed.ID); err != nil {
-		t.Fatalf("backdate reconfirm_by: %v", err)
-	}
-
-	result, err := db.Sweep(context.Background())
-	if err != nil {
-		t.Fatalf("sweep: %v", err)
-	}
-	if result.ExpiredReservations < 1 {
-		t.Fatalf("expired reservations = %d, want at least 1", result.ExpiredReservations)
-	}
-
-	listed := decode[featureCollection](t, get(t, server, "/v1/spots?bbox="+at.bbox()))
-	if _, found := listed.find(spot.ID); !found {
-		t.Fatal("an unreconfirmed reservation did not return the spot to the map")
-	}
-}
-
-func TestAHundredConcurrentClaimsProduceOneWinner(t *testing.T) {
-	server, db := newServer(t)
-
-	owner, _, _ := registerUser(t, server)
-	at := uniqueLocation()
-	spot := createSpot(t, server, db, owner, at, nil)
-
-	const n = 100
-	ids := make([]string, n)
-	for i := range ids {
-		err := db.Pool.QueryRow(context.Background(), `
-			INSERT INTO users (email, password_hash, display_name)
-			VALUES ($1, 'x', $2)
-			RETURNING id
-		`, fmt.Sprintf("racer-%d-%d@parkxchange.invalid", time.Now().UnixNano(), i),
-			fmt.Sprintf("racer-%d", i)).Scan(&ids[i])
-		if err != nil {
-			t.Fatalf("insert racer: %v", err)
-		}
-		if _, err := db.Pool.Exec(context.Background(), `
-			INSERT INTO ledger_entries (user_id, kind, amount_cents, memo)
-			VALUES ($1, 'credit', $2, 'test grant')
-		`, ids[i], domain.SignupGrantCents); err != nil {
-			t.Fatalf("credit racer: %v", err)
-		}
-	}
-
-	var (
-		wins  atomic.Int64
-		fails atomic.Int64
-		wg    sync.WaitGroup
-	)
-	wg.Add(n)
-	for i := 0; i < n; i++ {
-		go func(driverID string) {
-			defer wg.Done()
-			_, err := db.Claim(context.Background(), spot.ID, driverID)
-			switch {
-			case err == nil:
-				wins.Add(1)
-			case errors.Is(err, domain.ErrConflict):
-				fails.Add(1)
-			default:
-				t.Errorf("claim: %v", err)
-			}
-		}(ids[i])
-	}
-	wg.Wait()
-
-	if wins.Load() != 1 {
-		t.Errorf("winners = %d, want exactly 1", wins.Load())
-	}
-	if fails.Load() != n-1 {
-		t.Errorf("conflicts = %d, want %d", fails.Load(), n-1)
-	}
-}
-
-func TestOwnerWithdrawOfAClaimedSpotReleasesTheDriver(t *testing.T) {
-	server, db := newServer(t)
-
-	owner, _, _ := registerUser(t, server)
-	driver, _, _ := registerUser(t, server)
-	at := uniqueLocation()
-	spot := createSpot(t, server, db, owner, at, map[string]any{"price_cents": 150})
-
-	authedRequest(t, server, http.MethodPost,
-		"/v1/spots/"+spot.ID+"/reservations", driver.AccessToken, nil)
-
-	resp := authedRequest(t, server, http.MethodDelete, "/v1/spots/"+spot.ID, owner.AccessToken, nil)
+	resp := authedRequest(t, server, http.MethodPost,
+		"/v1/offers/"+withdrawn.ID+"/withdraw", firstDriver.AccessToken, nil)
 	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("withdraw claimed spot status = %d (%s)", resp.StatusCode, errorCode(t, resp))
+		t.Fatalf("withdraw status = %d (%s)", resp.StatusCode, errorCode(t, resp))
 	}
+	resp = authedRequest(t, server, http.MethodPost,
+		"/v1/offers/"+rejected.ID+"/reject", owner.AccessToken, nil)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("reject status = %d (%s)", resp.StatusCode, errorCode(t, resp))
+	}
+}
 
-	me := authedRequest(t, server, http.MethodGet, "/v1/me", driver.AccessToken, nil)
-	var body struct {
-		BalanceCents int64 `json:"balance_cents"`
-	}
-	if err := json.NewDecoder(me.Body).Decode(&body); err != nil {
-		t.Fatalf("decode me: %v", err)
-	}
-	if body.BalanceCents != domain.SignupGrantCents {
-		t.Errorf("driver balance = %d, want grant restored (%d)", body.BalanceCents, domain.SignupGrantCents)
+func TestLegacyClaimAndReconfirmRoutesAreRemoved(t *testing.T) {
+	server, db := newServer(t)
+	owner, _, _ := registerUser(t, server)
+	driver, _, _ := registerUser(t, server)
+	spot := createSpot(t, server, db, owner, uniqueLocation(), nil)
+
+	for _, path := range []string{
+		"/v1/spots/" + spot.ID + "/reservations",
+		"/v1/reservations/00000000-0000-0000-0000-000000000001/reconfirm",
+	} {
+		resp := authedRequest(t, server, http.MethodPost, path, driver.AccessToken, nil)
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s status = %d, want 404", path, resp.StatusCode)
+		}
 	}
 }
