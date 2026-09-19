@@ -91,7 +91,6 @@ func TestOfferAcceptanceAndHandshakePayOwner(t *testing.T) {
 	}{
 		{"/driver-arrived", driver.AccessToken},
 		{"/owner-ready", owner.AccessToken},
-		{"/driver-ready", driver.AccessToken},
 	} {
 		resp := authedRequest(t, server, http.MethodPost,
 			"/v1/reservations/"+reservation.ID+step.path, step.token, nil)
@@ -102,7 +101,9 @@ func TestOfferAcceptanceAndHandshakePayOwner(t *testing.T) {
 
 	got := decode[reservationBody](t, authedRequest(t, server, http.MethodGet,
 		"/v1/reservations/"+reservation.ID, driver.AccessToken, nil))
-	if got.Status != string(domain.ResCompleted) || got.DriverReadyAt == nil {
+	if got.Status != string(domain.ResCompleted) ||
+		got.DriverReadyAt == nil ||
+		got.OwnerReadyAt == nil {
 		t.Fatalf("completed reservation = %+v", got)
 	}
 

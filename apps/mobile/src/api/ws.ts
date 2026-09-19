@@ -116,7 +116,11 @@ export function applySpotEvent(
   features: SpotFeature[],
   event: SpotEventMessage,
 ): SpotFeature[] {
-  if (event.type === "spot.removed") {
+  const terminal =
+    event.status === "completed" ||
+    event.status === "cancelled" ||
+    event.status === "expired";
+  if (event.type === "spot.removed" || terminal) {
     return features.filter((f) => String(f.id) !== event.id);
   }
 

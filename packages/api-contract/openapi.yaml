@@ -603,6 +603,23 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
 
+  /v1/offers/mine:
+    get:
+      tags: [offers]
+      operationId: listMyOffers
+      summary: The caller's own offers
+      responses:
+        "200":
+          description: Offers submitted by the caller
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OfferResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+
   /v1/offers/{id}/accept:
     post:
       tags: [offers]
@@ -658,6 +675,23 @@ paths:
         "409":
           $ref: "#/components/responses/Error"
 
+  /v1/reservations:
+    get:
+      tags: [reservations]
+      operationId: listReservations
+      summary: The caller's recent reservations (as driver or owner)
+      responses:
+        "200":
+          description: Reservations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReservationResponse"
+        "401":
+          $ref: "#/components/responses/Error"
+
   /v1/reservations/active:
     get:
       tags: [reservations]
@@ -698,12 +732,15 @@ paths:
     post:
       tags: [reservations]
       operationId: markOwnerReady
-      summary: Mark the listing owner ready to leave
+      summary: Owner “Salir ya” — completes the exchange and credits the owner
+      description: >
+        Allowed when the driver has marked ready, or after exchange_at plus the
+        10-minute courtesy window. Completes the reservation atomically.
       parameters:
         - $ref: "#/components/parameters/ReservationID"
       responses:
         "204":
-          description: Owner ready recorded
+          description: Exchange completed
         "401":
           $ref: "#/components/responses/Error"
         "404":
@@ -728,16 +765,73 @@ paths:
         "409":
           $ref: "#/components/responses/Error"
 
-  /v1/reservations/{id}/driver-ready:
+  /v1/reservations/{id}/clear-driver-arrived:
     post:
       tags: [reservations]
-      operationId: markDriverReady
-      summary: Complete the handover once the owner is ready
+      operationId: clearDriverArrived
+      summary: Retract the driver's “I arrived” signal so they can mark it again
       parameters:
         - $ref: "#/components/parameters/ReservationID"
       responses:
         "204":
-          description: Handover completed
+          description: Driver arrival cleared
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /v1/reservations/{id}/driver-ready:
+    post:
+      tags: [reservations]
+      operationId: markDriverReady
+      summary: Mark the driver ready to enter (does not complete the exchange)
+      parameters:
+        - $ref: "#/components/parameters/ReservationID"
+      responses:
+        "204":
+          description: Driver ready recorded
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /v1/reservations/{id}/driver-confirm-entered:
+    post:
+      tags: [reservations]
+      operationId: driverConfirmEntered
+      summary: Driver confirms entry after a stalled owner forgot “Salir ya”
+      description: >
+        Allowed after max(driver_ready_at, exchange_at) + 10 minutes. Completes
+        the exchange and credits the owner.
+      parameters:
+        - $ref: "#/components/parameters/ReservationID"
+      responses:
+        "204":
+          description: Exchange completed
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /v1/reservations/{id}/driver-report-owner-no-show:
+    post:
+      tags: [reservations]
+      operationId: driverReportOwnerNoShow
+      summary: Driver reports the owner never left after the leave deadline
+      description: >
+        Allowed after max(driver_ready_at, exchange_at) + 10 minutes. Cancels
+        with a full deposit release to the driver.
+      parameters:
+        - $ref: "#/components/parameters/ReservationID"
+      responses:
+        "204":
+          description: Cancelled and deposit released
         "401":
           $ref: "#/components/responses/Error"
         "404":

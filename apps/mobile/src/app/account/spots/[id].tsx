@@ -25,6 +25,7 @@ import {
 import { accountStyles } from "@/account/theme";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
+import { formatPoints, parsePointsInput } from "@/i18n/formatPoints";
 import { matchesPreferredMinute } from "@/map/exchange";
 import { DateTimeField } from "@/ui/DateTimeField";
 
@@ -68,7 +69,7 @@ export default function EditSpotScreen() {
     if (!spot) {
       return;
     }
-    setPrice((spot.properties.price_cents / 100).toFixed(2));
+    setPrice(formatPoints(spot.properties.price_cents));
     setNotes(spot.properties.notes ?? "");
     setVehicleId(spot.properties.vehicle?.id ?? "");
     setHasPreferredTime(!!spot.properties.preferred_departure_at);
@@ -85,12 +86,12 @@ export default function EditSpotScreen() {
       if (!id) {
         throw new Error(t("account.spots.edit.missingId"));
       }
-      const euros = Number.parseFloat(price);
-      if (!Number.isFinite(euros) || euros < 0) {
+      const points = parsePointsInput(price);
+      if (points == null) {
         throw new Error(t("account.spots.edit.invalidPrice"));
       }
       const body: Parameters<typeof updateSpot>[1] = {
-        price_cents: Math.round(euros * 100),
+        price_cents: points,
         auto_cancel_no_show: autoCancel,
       };
       if (hasPreferredTime) {
@@ -234,7 +235,7 @@ export default function EditSpotScreen() {
           style={accountStyles.input}
           value={price}
           onChangeText={setPrice}
-          keyboardType="decimal-pad"
+          keyboardType="number-pad"
           placeholderTextColor="#7A93A0"
         />
       </View>
@@ -320,7 +321,7 @@ export default function EditSpotScreen() {
               <View key={offer.id} style={accountStyles.row}>
                 <View style={{ flex: 1 }}>
                   <Text style={accountStyles.rowTitle}>
-                    €{(offer.amount_cents / 100).toFixed(2)} ·{" "}
+                    {formatPoints(offer.amount_cents)} pts ·{" "}
                     {formatDateTime(offer.exchange_at)}
                   </Text>
                   <Text style={accountStyles.rowMeta}>

@@ -53,6 +53,19 @@ func (f *fakeStore) OffersForSpot(context.Context, string, string) ([]domain.Off
 	return out, nil
 }
 
+func (f *fakeStore) OffersByDriver(_ context.Context, driverID string, limit int) ([]domain.Offer, error) {
+	out := make([]domain.Offer, 0)
+	for _, offer := range f.offers {
+		if offer.DriverID == driverID {
+			out = append(out, offer)
+		}
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
 func (f *fakeStore) OfferByID(_ context.Context, id string) (domain.Offer, error) {
 	offer, ok := f.offers[id]
 	if !ok {

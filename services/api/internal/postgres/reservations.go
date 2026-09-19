@@ -191,16 +191,16 @@ func (db *DB) ReservationByID(ctx context.Context, id string) (domain.Reservatio
 	`, id))
 }
 
-// ActiveByDriver lists live reservations for a driver.
-func (db *DB) ActiveByDriver(ctx context.Context, driverID string) ([]domain.Reservation, error) {
+// ActiveByUser lists live reservations where the caller is driver or owner.
+func (db *DB) ActiveByUser(ctx context.Context, userID string) ([]domain.Reservation, error) {
 	rows, err := db.Pool.Query(ctx, `
 		SELECT `+reservationColumns+`
 		  FROM reservations r
 		  JOIN spots s ON s.id = r.spot_id
-		 WHERE r.driver_id = $1
+		 WHERE (r.driver_id = $1 OR s.owner_id = $1)
 		   AND r.status IN ('pending', 'confirmed', 'arrived')
 		 ORDER BY r.created_at DESC
-	`, driverID)
+	`, userID)
 	if err != nil {
 		return nil, translate(err, "list active reservations")
 	}
@@ -216,6 +216,38 @@ func (db *DB) ActiveByDriver(ctx context.Context, driverID string) ([]domain.Res
 	}
 	if err := rows.Err(); err != nil {
 		return nil, translate(err, "stream active reservations")
+	}
+	return out, nil
+}
+
+// ListByUser lists recent reservations for the caller as driver or owner.
+func (db *DB) ListByUser(ctx context.Context, userID string, limit int) ([]domain.Reservation, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := db.Pool.Query(ctx, `
+		SELECT `+reservationColumns+`
+		  FROM reservations r
+		  JOIN spots s ON s.id = r.spot_id
+		 WHERE r.driver_id = $1 OR s.owner_id = $1
+		 ORDER BY r.created_at DESC
+		 LIMIT $2
+	`, userID, limit)
+	if err != nil {
+		return nil, translate(err, "list reservations")
+	}
+	defer rows.Close()
+
+	var out []domain.Reservation
+	for rows.Next() {
+		res, scanErr := scanReservation(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		out = append(out, res)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, translate(err, "stream reservations")
 	}
 	return out, nil
 }
@@ -238,48 +270,209 @@ func (db *DB) Reconfirm(ctx context.Context, id, driverID string) error {
 	return nil
 }
 
-// MarkOwnerReady records the owner's readiness without starting a clock before
-// exchange_at; the sweep predicates apply max(owner_ready_at, exchange_at).
+// MarkOwnerReady is “Salir ya”: completes the reservation and credits the
+// owner when the leave gate allows it (driver arrived/ready, or past
+// exchange_at + grace).
 func (db *DB) MarkOwnerReady(ctx context.Context, id, ownerID string, at time.Time) error {
-	tag, err := db.q().Exec(ctx, `
-		UPDATE reservations r
-		   SET owner_ready_at = $3
-		  FROM spots s
-		 WHERE r.id = $1
-		   AND r.spot_id = s.id
-		   AND s.owner_id = $2
-		   AND r.status IN ('confirmed', 'arrived')
-		   AND r.owner_ready_at IS NULL
-	`, id, ownerID, at)
+	tx, err := db.begin(ctx)
 	if err != nil {
-		return translate(err, "mark owner ready")
+		return translate(err, "begin owner leave")
 	}
-	if tag.RowsAffected() == 0 {
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var (
+		spotID          string
+		status          string
+		price           int
+		exchangeAt      time.Time
+		driverReadyAt   *time.Time
+		driverArrivedAt *time.Time
+		lon, lat        float64
+	)
+	err = tx.QueryRow(ctx, `
+		SELECT r.spot_id, r.status, r.price_cents, r.exchange_at,
+		       r.driver_ready_at, r.driver_arrived_at,
+		       ST_X(s.geom), ST_Y(s.geom)
+		  FROM reservations r
+		  JOIN spots s ON s.id = r.spot_id
+		 WHERE r.id = $1
+		   AND s.owner_id = $2
+		   FOR UPDATE OF r, s
+	`, id, ownerID).Scan(
+		&spotID, &status, &price, &exchangeAt, &driverReadyAt, &driverArrivedAt, &lon, &lat,
+	)
+	if err != nil {
+		return translate(err, "lock reservation for owner leave")
+	}
+
+	res := domain.Reservation{
+		Status: domain.ReservationStatus(status), ExchangeAt: exchangeAt,
+		DriverReadyAt: driverReadyAt, DriverArrivedAt: driverArrivedAt,
+	}
+	if !res.CanOwnerLeave(at) {
 		return domain.ErrConflict
 	}
-	return nil
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE reservations
+		   SET status = 'completed', owner_ready_at = $2, completed_at = $2
+		 WHERE id = $1
+		   AND status IN ('confirmed', 'arrived')
+	`, id, at); err != nil {
+		return translate(err, "complete owner-leave reservation")
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE spots SET status = 'completed' WHERE id = $1
+	`, spotID); err != nil {
+		return translate(err, "complete owner-leave spot")
+	}
+	if price > 0 {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO ledger_entries (user_id, reservation_id, kind, amount_cents, memo)
+			VALUES ($1, $2, $3, $4, $5)
+		`, ownerID, id, string(domain.LedgerCredit),
+			domain.ReleaseCents(price), "handover complete: owner left"); err != nil {
+			return translate(err, "credit owner after leave")
+		}
+	}
+
+	if err := notifySpot(ctx, tx, domain.SpotEvent{
+		Type: domain.EventSpotRemoved, SpotID: spotID, OwnerID: ownerID,
+		Lon: lon, Lat: lat, Status: domain.SpotCompleted, PriceCents: price,
+	}); err != nil {
+		return translate(err, "notify owner leave")
+	}
+	return translate(tx.Commit(ctx), "commit owner leave")
 }
 
-// MarkDriverArrived records “I arrived”. It is valid before exchange_at.
+// MarkDriverArrived records “I’m here”: arrival and ready in one step so the
+// owner is notified immediately and the leave deadline can start. There is no
+// separate “ready to enter” signal in the product UI.
 func (db *DB) MarkDriverArrived(ctx context.Context, id, driverID string, at time.Time) error {
-	tag, err := db.q().Exec(ctx, `
+	tx, err := db.begin(ctx)
+	if err != nil {
+		return translate(err, "begin mark driver arrived")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var (
+		spotID   string
+		ownerID  string
+		price    int
+		lon, lat float64
+	)
+	err = tx.QueryRow(ctx, `
+		SELECT r.spot_id, s.owner_id, r.price_cents, ST_X(s.geom), ST_Y(s.geom)
+		  FROM reservations r
+		  JOIN spots s ON s.id = r.spot_id
+		 WHERE r.id = $1
+		   AND r.driver_id = $2
+		   FOR UPDATE OF r
+	`, id, driverID).Scan(&spotID, &ownerID, &price, &lon, &lat)
+	if err != nil {
+		return translate(err, "lock reservation for driver arrived")
+	}
+
+	tag, err := tx.Exec(ctx, `
 		UPDATE reservations
-		   SET driver_arrived_at = $3, status = 'arrived'
+		   SET driver_arrived_at = $2,
+		       driver_ready_at = $2,
+		       status = 'arrived'
 		 WHERE id = $1
-		   AND driver_id = $2
 		   AND status IN ('confirmed', 'arrived')
 		   AND driver_arrived_at IS NULL
-	`, id, driverID, at)
+		   AND driver_ready_at IS NULL
+	`, id, at)
 	if err != nil {
 		return translate(err, "mark driver arrived")
 	}
 	if tag.RowsAffected() == 0 {
 		return domain.ErrConflict
 	}
+
+	if err := notifySpot(ctx, tx, domain.SpotEvent{
+		Type:       domain.EventReservationUpdated,
+		SpotID:     spotID,
+		OwnerID:    ownerID,
+		Lon:        lon,
+		Lat:        lat,
+		Status:     domain.SpotHandover,
+		PriceCents: price,
+		HolderID:   driverID,
+	}); err != nil {
+		return translate(err, "notify driver arrived")
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return translate(err, "commit driver arrived")
+	}
 	return nil
 }
 
-// MarkDriverReady completes the reservation and credits the owner atomically.
+// ClearDriverArrived retracts “I’m here” (arrival + ready) so the driver can
+// leave the area and signal again before the owner completes the handover.
+func (db *DB) ClearDriverArrived(ctx context.Context, id, driverID string) error {
+	tx, err := db.begin(ctx)
+	if err != nil {
+		return translate(err, "begin clear driver arrived")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var (
+		spotID   string
+		ownerID  string
+		price    int
+		lon, lat float64
+	)
+	err = tx.QueryRow(ctx, `
+		SELECT r.spot_id, s.owner_id, r.price_cents, ST_X(s.geom), ST_Y(s.geom)
+		  FROM reservations r
+		  JOIN spots s ON s.id = r.spot_id
+		 WHERE r.id = $1
+		   AND r.driver_id = $2
+		   FOR UPDATE OF r
+	`, id, driverID).Scan(&spotID, &ownerID, &price, &lon, &lat)
+	if err != nil {
+		return translate(err, "lock reservation for clear driver arrived")
+	}
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE reservations
+		   SET driver_arrived_at = NULL,
+		       driver_ready_at = NULL,
+		       status = 'confirmed'
+		 WHERE id = $1
+		   AND driver_id = $2
+		   AND status IN ('confirmed', 'arrived')
+		   AND owner_ready_at IS NULL
+		   AND (driver_arrived_at IS NOT NULL OR driver_ready_at IS NOT NULL)
+	`, id, driverID)
+	if err != nil {
+		return translate(err, "clear driver arrived")
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrConflict
+	}
+
+	if err := notifySpot(ctx, tx, domain.SpotEvent{
+		Type:       domain.EventReservationUpdated,
+		SpotID:     spotID,
+		OwnerID:    ownerID,
+		Lon:        lon,
+		Lat:        lat,
+		Status:     domain.SpotReserved,
+		PriceCents: price,
+		HolderID:   driverID,
+	}); err != nil {
+		return translate(err, "notify clear driver arrived")
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return translate(err, "commit clear driver arrived")
+	}
+	return nil
+}
+
+// MarkDriverReady records that the driver is ready to enter. It does not
+// settle money — only owner leave (or stalled-owner resolution) does.
 func (db *DB) MarkDriverReady(ctx context.Context, id, driverID string, at time.Time) error {
 	tx, err := db.begin(ctx)
 	if err != nil {
@@ -288,53 +481,112 @@ func (db *DB) MarkDriverReady(ctx context.Context, id, driverID string, at time.
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var (
-		spotID       string
-		ownerID      string
-		status       string
-		price        int
-		exchangeAt   time.Time
-		ownerReadyAt *time.Time
-		lon          float64
-		lat          float64
+		spotID  string
+		ownerID string
+		price   int
+		lon     float64
+		lat     float64
+	)
+	if err := tx.QueryRow(ctx, `
+		SELECT r.spot_id, s.owner_id, r.price_cents, ST_X(s.geom), ST_Y(s.geom)
+		  FROM reservations r
+		  JOIN spots s ON s.id = r.spot_id
+		 WHERE r.id = $1 AND r.driver_id = $2
+		   FOR UPDATE OF r
+	`, id, driverID).Scan(&spotID, &ownerID, &price, &lon, &lat); err != nil {
+		return translate(err, "lock reservation for driver ready")
+	}
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE reservations
+		   SET driver_ready_at = $2
+		 WHERE id = $1
+		   AND status IN ('confirmed', 'arrived')
+		   AND driver_arrived_at IS NOT NULL
+		   AND driver_ready_at IS NULL
+	`, id, at)
+	if err != nil {
+		return translate(err, "mark driver ready")
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrConflict
+	}
+
+	if err := notifySpot(ctx, tx, domain.SpotEvent{
+		Type:       domain.EventReservationUpdated,
+		SpotID:     spotID,
+		OwnerID:    ownerID,
+		Lon:        lon,
+		Lat:        lat,
+		Status:     domain.SpotHandover,
+		PriceCents: price,
+		HolderID:   driverID,
+	}); err != nil {
+		return translate(err, "notify driver ready")
+	}
+	return translate(tx.Commit(ctx), "commit driver ready")
+}
+
+// DriverConfirmEntered completes after a stalled owner: driver got in, owner
+// forgot “Salir ya”. Credits the owner.
+func (db *DB) DriverConfirmEntered(ctx context.Context, id, driverID string, at time.Time) error {
+	tx, err := db.begin(ctx)
+	if err != nil {
+		return translate(err, "begin driver confirm entered")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var (
+		spotID        string
+		ownerID       string
+		status        string
+		price         int
+		exchangeAt    time.Time
+		driverReadyAt *time.Time
+		lon, lat      float64
 	)
 	if err := tx.QueryRow(ctx, `
 		SELECT r.spot_id, s.owner_id, r.status, r.price_cents,
-		       r.exchange_at, r.owner_ready_at, ST_X(s.geom), ST_Y(s.geom)
+		       r.exchange_at, r.driver_ready_at, ST_X(s.geom), ST_Y(s.geom)
 		  FROM reservations r
 		  JOIN spots s ON s.id = r.spot_id
 		 WHERE r.id = $1 AND r.driver_id = $2
 		   FOR UPDATE OF r, s
 	`, id, driverID).Scan(
-		&spotID, &ownerID, &status, &price, &exchangeAt, &ownerReadyAt, &lon, &lat,
+		&spotID, &ownerID, &status, &price, &exchangeAt, &driverReadyAt, &lon, &lat,
 	); err != nil {
-		return translate(err, "lock reservation for driver ready")
+		return translate(err, "lock reservation for confirm entered")
 	}
 
-	if (status != string(domain.ResConfirmed) && status != string(domain.ResArrived)) ||
-		ownerReadyAt == nil ||
-		at.After(domain.DriverNoShowDeadline(*ownerReadyAt, exchangeAt)) {
+	res := domain.Reservation{
+		Status: domain.ReservationStatus(status), ExchangeAt: exchangeAt,
+		DriverReadyAt: driverReadyAt,
+	}
+	if !res.DriverCanResolveStalledOwner(at) {
 		return domain.ErrConflict
 	}
 
 	if _, err := tx.Exec(ctx, `
 		UPDATE reservations
-		   SET status = 'completed', driver_ready_at = $2, completed_at = $2
+		   SET status = 'completed',
+		       owner_ready_at = COALESCE(owner_ready_at, $2),
+		       completed_at = $2
 		 WHERE id = $1
 	`, id, at); err != nil {
-		return translate(err, "complete driver-ready reservation")
+		return translate(err, "complete confirm-entered reservation")
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE spots SET status = 'completed' WHERE id = $1
 	`, spotID); err != nil {
-		return translate(err, "complete driver-ready spot")
+		return translate(err, "complete confirm-entered spot")
 	}
 	if price > 0 {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO ledger_entries (user_id, reservation_id, kind, amount_cents, memo)
 			VALUES ($1, $2, $3, $4, $5)
 		`, ownerID, id, string(domain.LedgerCredit),
-			domain.ReleaseCents(price), "handover complete"); err != nil {
-			return translate(err, "credit owner after driver ready")
+			domain.ReleaseCents(price), "handover complete: driver confirmed entry"); err != nil {
+			return translate(err, "credit owner after confirm entered")
 		}
 	}
 
@@ -342,9 +594,88 @@ func (db *DB) MarkDriverReady(ctx context.Context, id, driverID string, at time.
 		Type: domain.EventSpotRemoved, SpotID: spotID, OwnerID: ownerID,
 		Lon: lon, Lat: lat, Status: domain.SpotCompleted, PriceCents: price,
 	}); err != nil {
-		return translate(err, "notify driver-ready completion")
+		return translate(err, "notify confirm entered")
 	}
-	return translate(tx.Commit(ctx), "commit driver ready")
+	return translate(tx.Commit(ctx), "commit confirm entered")
+}
+
+// DriverReportOwnerNoShow cancels with a full release after a stalled owner
+// never vacated.
+func (db *DB) DriverReportOwnerNoShow(ctx context.Context, id, driverID string, at time.Time) error {
+	tx, err := db.begin(ctx)
+	if err != nil {
+		return translate(err, "begin report owner no-show")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var (
+		spotID        string
+		ownerID       string
+		status        string
+		price         int
+		exchangeAt    time.Time
+		listedUntil   time.Time
+		driverReadyAt *time.Time
+		lon, lat      float64
+	)
+	if err := tx.QueryRow(ctx, `
+		SELECT r.spot_id, s.owner_id, r.status, r.price_cents,
+		       r.exchange_at, s.expires_at, r.driver_ready_at, ST_X(s.geom), ST_Y(s.geom)
+		  FROM reservations r
+		  JOIN spots s ON s.id = r.spot_id
+		 WHERE r.id = $1 AND r.driver_id = $2
+		   FOR UPDATE OF r, s
+	`, id, driverID).Scan(
+		&spotID, &ownerID, &status, &price, &exchangeAt, &listedUntil, &driverReadyAt, &lon, &lat,
+	); err != nil {
+		return translate(err, "lock reservation for owner no-show report")
+	}
+
+	res := domain.Reservation{
+		Status: domain.ReservationStatus(status), ExchangeAt: exchangeAt,
+		DriverReadyAt: driverReadyAt,
+	}
+	if !res.DriverCanResolveStalledOwner(at) {
+		return domain.ErrConflict
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE reservations
+		   SET status = 'cancelled', cancelled_at = $2, cancel_reason = 'owner_no_show'
+		 WHERE id = $1
+	`, id, at); err != nil {
+		return translate(err, "cancel for owner no-show")
+	}
+
+	nextSpot := domain.SpotExpired
+	eventType := domain.EventSpotRemoved
+	if listedUntil.After(at) {
+		nextSpot, eventType = domain.SpotAvailable, domain.EventSpotAdded
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE spots SET status = $2
+		 WHERE id = $1 AND status IN ('reserved', 'handover')
+	`, spotID, string(nextSpot)); err != nil {
+		return translate(err, "update spot after owner no-show")
+	}
+
+	if price > 0 {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO ledger_entries (user_id, reservation_id, kind, amount_cents, memo)
+			VALUES ($1, $2, $3, $4, $5)
+		`, driverID, id, string(domain.LedgerRelease),
+			domain.ReleaseCents(price), "deposit released: owner no-show after ready"); err != nil {
+			return translate(err, "release after owner no-show")
+		}
+	}
+
+	if err := notifySpot(ctx, tx, domain.SpotEvent{
+		Type: eventType, SpotID: spotID, OwnerID: ownerID,
+		Lon: lon, Lat: lat, Status: nextSpot, PriceCents: price,
+	}); err != nil {
+		return translate(err, "notify owner no-show")
+	}
+	return translate(tx.Commit(ctx), "commit owner no-show report")
 }
 
 // CancelByDriver is retained for callers compiled against the old port.
@@ -363,10 +694,12 @@ func (db *DB) Cancel(ctx context.Context, id, actorID string, at time.Time) erro
 	var spotID, driverID, ownerID, status string
 	var price int
 	var exchangeAt, listedUntil time.Time
+	var driverReadyAt *time.Time
 	var lon, lat float64
 	if err := tx.QueryRow(ctx, `
 		SELECT r.spot_id, r.driver_id, s.owner_id, r.status, r.price_cents,
-		       r.exchange_at, s.expires_at, ST_X(s.geom), ST_Y(s.geom)
+		       r.exchange_at, s.expires_at, r.driver_ready_at,
+		       ST_X(s.geom), ST_Y(s.geom)
 		  FROM reservations r
 		  JOIN spots s ON s.id = r.spot_id
 		 WHERE r.id = $1
@@ -374,7 +707,7 @@ func (db *DB) Cancel(ctx context.Context, id, actorID string, at time.Time) erro
 		   FOR UPDATE OF r, s
 	`, id, actorID).Scan(
 		&spotID, &driverID, &ownerID, &status, &price,
-		&exchangeAt, &listedUntil, &lon, &lat,
+		&exchangeAt, &listedUntil, &driverReadyAt, &lon, &lat,
 	); err != nil {
 		return translate(err, "lock reservation for cancel")
 	}
@@ -383,10 +716,19 @@ func (db *DB) Cancel(ctx context.Context, id, actorID string, at time.Time) erro
 	}
 
 	ownerCancel := actorID == ownerID
-	release := ownerCancel || exchangeAt.Sub(at) >= domain.DriverFairCancelWindow
+	res := domain.Reservation{
+		Status:        domain.ReservationStatus(status),
+		ExchangeAt:    exchangeAt,
+		DriverReadyAt: driverReadyAt,
+	}
+	// Owner cancel always releases; driver follows FairCancel (window or stall).
+	release := ownerCancel || res.FairCancel(at)
 	reason := "driver"
 	if ownerCancel {
 		reason = "owner"
+	}
+	if !ownerCancel && !release {
+		reason = "driver_late"
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE reservations
@@ -560,18 +902,14 @@ func (db *DB) Sweep(ctx context.Context) (reservations.SweepResult, error) {
 		return reservations.SweepResult{}, err
 	}
 
-	result.DriverNoShows, err = sweepReservations(ctx, tx, `
-		r.owner_ready_at IS NOT NULL
-		AND r.driver_ready_at IS NULL
-		AND s.auto_cancel_no_show
-		AND now() > GREATEST(r.owner_ready_at, r.exchange_at) + interval '10 minutes'
-	`, "driver_no_show", false)
-	if err != nil {
-		return reservations.SweepResult{}, err
-	}
+	// Driver no-show after “owner ready” no longer applies: owner-ready is
+	// “Salir ya” and completes immediately. Keep the counter at zero.
+	result.DriverNoShows = 0
+
 	result.OwnerNoShows, err = sweepReservations(ctx, tx, `
 		r.driver_arrived_at IS NOT NULL
 		AND r.owner_ready_at IS NULL
+		AND r.driver_ready_at IS NULL
 		AND now() >= r.exchange_at
 		AND now() > GREATEST(r.driver_arrived_at, r.exchange_at) + interval '10 minutes'
 	`, "owner_no_show", true)

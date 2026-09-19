@@ -24,6 +24,14 @@ export default function AccountLayout() {
       <Stack.Screen name="vehicles/[id]" options={{ title: t("account.nav.editVehicle") }} />
       <Stack.Screen name="spots/index" options={{ title: t("account.nav.mySpots") }} />
       <Stack.Screen name="spots/[id]" options={{ title: t("account.nav.editSpot") }} />
+      <Stack.Screen
+        name="reservations/index"
+        options={{ title: t("account.nav.myReservations") }}
+      />
+      <Stack.Screen
+        name="reservations/[id]"
+        options={{ title: t("account.nav.reservationDetail") }}
+      />
     </Stack>
   );
 }

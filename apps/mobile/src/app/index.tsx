@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import BottomSheet from "@gorhom/bottom-sheet";
 import {
   Camera,
-  Map,
+  Map as MapView,
   NativeUserLocation,
   type CameraRef,
   type MapRef,
@@ -21,8 +21,18 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 
-import type { SpotFeature, VehicleResponse } from "@/api/client";
-import { ApiError, createOffer, listVehicles, withdrawSpot } from "@/api/client";
+import type { OfferResponse, SpotFeature, VehicleResponse } from "@/api/client";
+import {
+  ApiError,
+  createOffer,
+  fetchActiveReservations,
+  fetchMySpots,
+  getSpot,
+  listMyOffers,
+  listVehicles,
+  withdrawOffer,
+  withdrawSpot,
+} from "@/api/client";
 import { apiErrorMessage } from "@/api/errors";
 import { getAccessToken } from "@/api/session";
 import {
@@ -45,7 +55,9 @@ import {
   initialFollowState,
   locationComponentReady,
 } from "@/map/followUser";
+import { ExchangeLayers } from "@/map/ExchangeLayers";
 import { MySpotLayers } from "@/map/MySpotLayers";
+import { OfferedSpotLayers } from "@/map/OfferedSpotLayers";
 import { UncertaintyCircle } from "@/map/UncertaintyCircle";
 import { partitionMapSpots } from "@/map/partitionMapSpots";
 import {
@@ -80,9 +92,11 @@ export default function MapScreen() {
   const [mapReady, setMapReady] = useState(false);
   const [spotsArmed, setSpotsArmed] = useState(false);
   const [mineArmed, setMineArmed] = useState(false);
+  const [offeredArmed, setOfferedArmed] = useState(false);
   const [announcing, setAnnouncing] = useState(false);
   const [offerBusy, setOfferBusy] = useState(false);
   const [vehicles, setVehicles] = useState<VehicleResponse[]>([]);
+  const [myOffers, setMyOffers] = useState<OfferResponse[]>([]);
   const [announceOpen, setAnnounceOpen] = useState(false);
   const [announceVehicles, setAnnounceVehicles] = useState<VehicleResponse[]>([]);
   const [announceCoords, setAnnounceCoords] = useState<[number, number] | null>(
@@ -117,17 +131,138 @@ export default function MapScreen() {
     busy,
     markOwnerReady,
     markDriverArrived,
+    clearDriverArrived,
     markDriverReady,
+    confirmEntered,
+    reportOwnerNoShow,
     cancel,
+    refresh: refreshActiveReservation,
   } = useActiveReservation(signedIn);
+
+  const [mySpotFeatures, setMySpotFeatures] = useState<SpotFeature[]>([]);
+
+  const refreshMyOffers = useCallback(async () => {
+    if (!signedIn) {
+      setMyOffers([]);
+      return;
+    }
+    try {
+      const list = await listMyOffers();
+      setMyOffers(list);
+    } catch {
+      setMyOffers([]);
+    }
+  }, [signedIn]);
+
+  const refreshMySpotsOverlay = useCallback(async () => {
+    if (!signedIn) {
+      setMySpotFeatures([]);
+      return;
+    }
+    try {
+      const collection = await fetchMySpots();
+      // Completed / cancelled / expired listings are history — keep them off the map.
+      setMySpotFeatures(
+        collection.features.filter((f) => {
+          const status = f.properties.status;
+          return (
+            status === "available" ||
+            status === "reserved" ||
+            status === "handover"
+          );
+        }),
+      );
+    } catch {
+      setMySpotFeatures([]);
+    }
+  }, [signedIn]);
+
+  useEffect(() => {
+    void refreshMyOffers();
+    void refreshMySpotsOverlay();
+  }, [refreshMyOffers, refreshMySpotsOverlay]);
+
+  // Refresh owner pins when an exchange starts, changes, or ends (active → null).
+  // Ending without a refresh left a stale reserved pin on the map after complete.
+  const activeExchangeKey = active ? `${active.id}:${active.status}` : "none";
+  const prevActiveExchangeKey = useRef(activeExchangeKey);
+  useEffect(() => {
+    const prev = prevActiveExchangeKey.current;
+    prevActiveExchangeKey.current = activeExchangeKey;
+    void refreshMySpotsOverlay();
+    if (prev !== "none" && activeExchangeKey === "none") {
+      setSelected(null);
+      sheetRef.current?.close();
+      void refetch();
+    }
+  }, [activeExchangeKey, refreshMySpotsOverlay, refetch]);
+
+  const pendingOfferBySpotId = useMemo(() => {
+    const map = new Map<string, OfferResponse>();
+    for (const offer of myOffers) {
+      if (offer.status === "pending") {
+        map.set(String(offer.spot_id), offer);
+      }
+    }
+    return map;
+  }, [myOffers]);
+
+  const pendingOfferForSelected = selected
+    ? (pendingOfferBySpotId.get(String(selected.id)) ?? null)
+    : null;
+
+  const mySpotsById = useMemo(() => {
+    const map = new Map<string, SpotFeature>();
+    for (const feature of mySpotFeatures) {
+      map.set(String(feature.id), feature);
+    }
+    return map;
+  }, [mySpotFeatures]);
 
   useEffect(() => {
     if (!signedIn) {
       setVehicles([]);
       return;
     }
-    void listVehicles().then(setVehicles).catch(() => setVehicles([]));
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await listVehicles();
+        if (!cancelled) {
+          setVehicles(list);
+        }
+      } catch {
+        if (!cancelled) {
+          setVehicles([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [signedIn]);
+
+  const refreshVehicles = useCallback(async () => {
+    if (!signedIn) {
+      setVehicles([]);
+      return [] as VehicleResponse[];
+    }
+    try {
+      const list = await listVehicles();
+      setVehicles(list);
+      return list;
+    } catch {
+      setVehicles([]);
+      return [] as VehicleResponse[];
+    }
+  }, [signedIn]);
+
+  useEffect(() => {
+    if (!selected || !signedIn) {
+      return;
+    }
+    void refreshVehicles();
+  }, [selected, signedIn, refreshVehicles]);
 
   // Keep the sheet in sync when the viewport fetch flips exact_location
   // (e.g. after an offer is accepted and the driver becomes the holder).
@@ -148,29 +283,155 @@ export default function MapScreen() {
     }
   }, [featureById, selected]);
 
+  // Prefer the exact active-exchange spot once it loads for the open sheet.
+  useEffect(() => {
+    if (!selected?.id || !activeSpot) {
+      return;
+    }
+    if (String(activeSpot.id) !== String(selected.id)) {
+      return;
+    }
+    if (
+      activeSpot.properties.exact_location !== selected.properties.exact_location ||
+      activeSpot.geometry.coordinates[0] !== selected.geometry.coordinates[0] ||
+      activeSpot.geometry.coordinates[1] !== selected.geometry.coordinates[1]
+    ) {
+      setSelected(activeSpot);
+    }
+  }, [activeSpot, selected]);
+
   const spotData = useMemo(() => {
-    const features = collection.features.map((feature) => ({
-      type: "Feature" as const,
-      properties: {
-        id: String(feature.id ?? ""),
-        price_cents: feature.properties.price_cents,
-        status: feature.properties.status,
-        is_mine: Boolean(feature.properties.is_mine),
-      },
-      geometry: {
-        type: "Point" as const,
-        coordinates: [
-          Number(feature.geometry.coordinates[0]),
-          Number(feature.geometry.coordinates[1]),
-        ] as [number, number],
-      },
-    }));
-    const { mine, others } = partitionMapSpots(features);
+    const byId = new Map<
+      string,
+      {
+        type: "Feature";
+        properties: {
+          id: string;
+          price_cents: number;
+          status: string;
+          is_mine: boolean;
+          has_my_offer: boolean;
+        };
+        geometry: { type: "Point"; coordinates: [number, number] };
+      }
+    >();
+
+    for (const feature of collection.features) {
+      const id = String(feature.id ?? "");
+      byId.set(id, {
+        type: "Feature",
+        properties: {
+          id,
+          price_cents: feature.properties.price_cents,
+          status: feature.properties.status,
+          is_mine: Boolean(feature.properties.is_mine),
+          has_my_offer: pendingOfferBySpotId.has(id),
+        },
+        geometry: {
+          type: "Point",
+          coordinates: [
+            Number(feature.geometry.coordinates[0]),
+            Number(feature.geometry.coordinates[1]),
+          ],
+        },
+      });
+    }
+
+    // Owner listings (including reserved/handover) stay on the map via /spots/mine.
+    for (const feature of mySpotFeatures) {
+      const status = feature.properties.status;
+      if (
+        status !== "available" &&
+        status !== "reserved" &&
+        status !== "handover"
+      ) {
+        continue;
+      }
+      const id = String(feature.id ?? "");
+      byId.set(id, {
+        type: "Feature",
+        properties: {
+          id,
+          price_cents: feature.properties.price_cents,
+          status,
+          is_mine: true,
+          has_my_offer: false,
+        },
+        geometry: {
+          type: "Point",
+          coordinates: [
+            Number(feature.geometry.coordinates[0]),
+            Number(feature.geometry.coordinates[1]),
+          ],
+        },
+      });
+    }
+
+    const { mine, offered, others } = partitionMapSpots([...byId.values()]);
     return {
       others: { type: "FeatureCollection" as const, features: others },
       mine: { type: "FeatureCollection" as const, features: mine },
+      offered: { type: "FeatureCollection" as const, features: offered },
     };
-  }, [collection.features]);
+  }, [collection.features, pendingOfferBySpotId, mySpotFeatures]);
+
+  // Driver exchange pin only — owner reserved spots already appear in MySpotLayers.
+  const exchangeData = useMemo(() => {
+    if (!activeSpot || !isDriver || isOwner) {
+      return { type: "FeatureCollection" as const, features: [] };
+    }
+    return {
+      type: "FeatureCollection" as const,
+      features: [
+        {
+          type: "Feature" as const,
+          properties: { id: String(activeSpot.id ?? "") },
+          geometry: {
+            type: "Point" as const,
+            coordinates: [
+              Number(activeSpot.geometry.coordinates[0]),
+              Number(activeSpot.geometry.coordinates[1]),
+            ] as [number, number],
+          },
+        },
+      ],
+    };
+  }, [activeSpot, isDriver, isOwner]);
+
+  // Owner with an active exchange: ensure their reserved pin is present even if
+  // /spots/mine has not refreshed yet.
+  const ownerExchangeMine = useMemo(() => {
+    if (!activeSpot || !isOwner) {
+      return spotData.mine;
+    }
+    const id = String(activeSpot.id ?? "");
+    if (spotData.mine.features.some((f) => f.properties.id === id)) {
+      return spotData.mine;
+    }
+    return {
+      type: "FeatureCollection" as const,
+      features: [
+        ...spotData.mine.features,
+        {
+          type: "Feature" as const,
+          properties: {
+            id,
+            price_cents: activeSpot.properties.price_cents,
+            status: activeSpot.properties.status,
+            is_mine: true,
+            has_my_offer: false,
+          },
+          geometry: {
+            type: "Point" as const,
+            coordinates: [
+              Number(activeSpot.geometry.coordinates[0]),
+              Number(activeSpot.geometry.coordinates[1]),
+            ] as [number, number],
+          },
+        },
+      ],
+    };
+  }, [spotData.mine, activeSpot, isOwner]);
 
   useEffect(() => {
     if (mapReady && spotData.others.features.length > 0) {
@@ -179,10 +440,16 @@ export default function MapScreen() {
   }, [mapReady, spotData.others.features.length]);
 
   useEffect(() => {
-    if (mapReady && spotData.mine.features.length > 0) {
+    if (mapReady && ownerExchangeMine.features.length > 0) {
       setMineArmed(true);
     }
-  }, [mapReady, spotData.mine.features.length]);
+  }, [mapReady, ownerExchangeMine.features.length]);
+
+  useEffect(() => {
+    if (mapReady && spotData.offered.features.length > 0) {
+      setOfferedArmed(true);
+    }
+  }, [mapReady, spotData.offered.features.length]);
 
   useEffect(() => {
     if (!location.ready) {
@@ -249,11 +516,32 @@ export default function MapScreen() {
 
   const onPressFeature = useCallback(
     (id: string) => {
-      const spot = featureById(id);
-      setSelected(spot);
-      sheetRef.current?.snapToIndex(0);
+      void (async () => {
+        const fromActive =
+          activeSpot && String(activeSpot.id) === id ? activeSpot : null;
+        const fromMine = mySpotsById.get(id);
+        const fromDiscovery = featureById(id);
+        // Prefer party views (active exchange / own listing) over discovery fuzz.
+        let spot = fromActive ?? fromMine ?? fromDiscovery;
+        if (!spot) {
+          try {
+            spot = await getSpot(id);
+          } catch {
+            return;
+          }
+        }
+        setSelected(spot);
+        const openExchange =
+          !!fromActive ||
+          spot.properties.status === "reserved" ||
+          spot.properties.status === "handover";
+        sheetRef.current?.snapToIndex(openExchange ? 1 : 0);
+        if (openExchange) {
+          void refreshActiveReservation();
+        }
+      })();
     },
-    [featureById],
+    [featureById, mySpotsById, activeSpot, refreshActiveReservation],
   );
 
   const onPressMap = useCallback(
@@ -299,10 +587,10 @@ export default function MapScreen() {
       setSpotsArmed(true);
       setMineArmed(true);
       sheetRef.current?.snapToIndex(0);
-      await refetch();
+      await Promise.all([refetch(), refreshMySpotsOverlay()]);
       Alert.alert(t("map.alert.announced.title"), message);
     },
-    [refetch, t],
+    [refetch, refreshMySpotsOverlay, t],
   );
 
   const openAnnounce = useCallback(
@@ -359,6 +647,7 @@ export default function MapScreen() {
           preferredDepartureAt: values.preferredDepartureAt,
           autoCancelNoShow: values.autoCancelNoShow,
           vehicleId: values.vehicleId,
+          notes: t("announce.notes.longPress"),
         });
         setAnnounceOpen(false);
         setAnnounceCoords(null);
@@ -436,7 +725,7 @@ export default function MapScreen() {
                   await withdrawSpot(id);
                   setSelected(null);
                   sheetRef.current?.close();
-                  await refetch();
+                  await Promise.all([refetch(), refreshMySpotsOverlay()]);
                 } catch (err) {
                   Alert.alert(
                     t("map.alert.withdrawFailed.title"),
@@ -454,7 +743,7 @@ export default function MapScreen() {
 
   return (
     <View style={styles.fill}>
-      <Map
+      <MapView
         ref={mapRef}
         style={styles.fill}
         mapStyle={mapStyleUrl}
@@ -480,8 +769,21 @@ export default function MapScreen() {
         {spotsArmed ? (
           <SpotLayers data={spotData.others} onPressFeature={onPressFeature} />
         ) : null}
+        {offeredArmed ? (
+          <OfferedSpotLayers
+            data={spotData.offered}
+            onPressFeature={onPressFeature}
+          />
+        ) : null}
         {mineArmed ? (
-          <MySpotLayers data={spotData.mine} onPressFeature={onPressFeature} />
+          <MySpotLayers data={ownerExchangeMine} onPressFeature={onPressFeature} />
+        ) : null}
+        {exchangeData.features.length > 0 ? (
+          <ExchangeLayers
+            data={exchangeData}
+            role="driver"
+            onPressFeature={onPressFeature}
+          />
         ) : null}
         {selected &&
         !selected.properties.exact_location &&
@@ -492,7 +794,7 @@ export default function MapScreen() {
             lat={selected.geometry.coordinates[1]}
           />
         ) : null}
-      </Map>
+      </MapView>
 
       {!ready ? (
         <View style={styles.banner} pointerEvents="none">
@@ -613,6 +915,7 @@ export default function MapScreen() {
         ref={sheetRef}
         spot={selected}
         active={active}
+        pendingOffer={pendingOfferForSelected}
         vehicles={vehicles}
         isOwner={isOwner}
         isDriver={isDriver}
@@ -631,22 +934,98 @@ export default function MapScreen() {
               amount_cents: amountCents,
             });
             Alert.alert(t("map.alert.offerSent.title"), t("map.alert.offerSent.message"));
-            await refetch();
+            await Promise.all([
+              refetch(),
+              refreshMyOffers(),
+              refreshMySpotsOverlay(),
+              refreshActiveReservation(),
+            ]);
           } catch (err) {
-            Alert.alert(
-              t("map.alert.offerFailed.title"),
-              err instanceof Error ? err.message : t("common.error"),
-            );
+            Alert.alert(t("map.alert.offerFailed.title"), apiErrorMessage(err, t));
           } finally {
             setOfferBusy(false);
           }
         }}
+        onWithdrawOffer={async (offer) => {
+          setOfferBusy(true);
+          try {
+            await withdrawOffer(offer.id);
+            await Promise.all([refreshMyOffers(), refreshMySpotsOverlay()]);
+          } catch (err) {
+            Alert.alert(
+              t("spotSheet.offer.withdrawFailed.title"),
+              apiErrorMessage(err, t),
+            );
+            throw err;
+          } finally {
+            setOfferBusy(false);
+          }
+        }}
+        onAddVehicle={() => {
+          sheetRef.current?.close();
+          router.push("/account/vehicles/new?from=offer" as Href);
+        }}
         onOwnerReady={() => void markOwnerReady()}
         onDriverArrived={() => void markDriverArrived()}
+        onClearDriverArrived={() => void clearDriverArrived()}
         onDriverReady={() => void markDriverReady()}
-        onCancel={() => void cancel()}
+        onDriverConfirmEntered={() => {
+          Alert.alert(
+            t("exchange.stall.confirmTitle"),
+            t("exchange.stall.confirmMessage"),
+            [
+              { text: t("common.cancel"), style: "cancel" },
+              {
+                text: t("common.confirm"),
+                onPress: () => void confirmEntered(),
+              },
+            ],
+          );
+        }}
+        onDriverReportOwnerNoShow={() => {
+          Alert.alert(
+            t("exchange.stall.reportTitle"),
+            t("exchange.stall.reportMessage"),
+            [
+              { text: t("common.cancel"), style: "cancel" },
+              {
+                text: t("spotSheet.exchange.stallReportNoShow"),
+                style: "destructive",
+                onPress: () => void reportOwnerNoShow(),
+              },
+            ],
+          );
+        }}
+        onCancel={() => {
+          void cancel().then(() => {
+            void refreshActiveReservation();
+            void refreshMySpotsOverlay();
+          });
+        }}
         onEdit={onEditSpot}
+        onViewOffers={onEditSpot}
         onWithdraw={onWithdrawSpot}
+        onManageExchange={() => {
+          void (async () => {
+            await refreshActiveReservation();
+            const spotId = String(selected?.id ?? "");
+            try {
+              const list = await fetchActiveReservations();
+              const match = spotId
+                ? list.find((r) => String(r.spot_id) === spotId)
+                : list[0];
+              if (match) {
+                sheetRef.current?.close();
+                router.push(`/account/reservations/${match.id}` as Href);
+                return;
+              }
+            } catch {
+              /* fall through */
+            }
+            sheetRef.current?.close();
+            router.push("/account/reservations" as Href);
+          })();
+        }}
       />
 
       <AnnounceModal

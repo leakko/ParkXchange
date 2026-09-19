@@ -178,6 +178,37 @@ func (db *DB) OffersForSpot(ctx context.Context, spotID, ownerID string) ([]doma
 	return found, nil
 }
 
+// OffersByDriver lists a driver's offers, newest first.
+func (db *DB) OffersByDriver(ctx context.Context, driverID string, limit int) ([]domain.Offer, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := db.q().Query(ctx, `
+		SELECT `+offerColumns+`
+		  FROM offers
+		 WHERE driver_id = $1
+		 ORDER BY created_at DESC
+		 LIMIT $2
+	`, driverID, limit)
+	if err != nil {
+		return nil, translate(err, "list driver offers")
+	}
+	defer rows.Close()
+
+	var found []domain.Offer
+	for rows.Next() {
+		offer, scanErr := scanOffer(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		found = append(found, offer)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, translate(err, "stream driver offers")
+	}
+	return found, nil
+}
+
 // OfferByID loads one offer.
 func (db *DB) OfferByID(ctx context.Context, id string) (domain.Offer, error) {
 	return scanOffer(db.q().QueryRow(ctx, `

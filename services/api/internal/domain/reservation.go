@@ -8,8 +8,9 @@ import "time"
 const ReconfirmWindow = 15 * time.Minute
 
 // NoShowGrace is the post-exchange courtesy window once a party has marked
-// ready (driver no-show after owner ready, or owner no-show after driver
-// arrived — see use cases).
+// ready (owner may leave without driver ready after exchange_at + grace;
+// owner must leave by max(driver_ready, exchange_at) + grace or the driver
+// may resolve the stall).
 const NoShowGrace = 10 * time.Minute
 
 // OwnerSafetyNet cancels an unresolved reservation this long after
@@ -140,30 +141,82 @@ func (r Reservation) exchangeInstant() time.Time {
 }
 
 // FairCancel reports whether a driver cancel at `now` should release the
-// deposit (≥ DriverFairCancelWindow before exchange_at).
+// deposit. True when there is still ≥ DriverFairCancelWindow before
+// exchange_at, or when the owner has already stalled past the leave
+// deadline after the driver marked ready (driver must not be punished for
+// walking away from a no-show owner).
 func (r Reservation) FairCancel(now time.Time) bool {
+	if r.DriverCanResolveStalledOwner(now) {
+		return true
+	}
 	return r.exchangeInstant().Sub(now) >= DriverFairCancelWindow
 }
 
-// DriverNoShowDeadline is when the driver must have marked ready after the
-// owner marked ready: max(ownerReady, exchangeAt) + NoShowGrace.
+// DriverNoShowDeadline is legacy naming for max(anchor, exchangeAt) + NoShowGrace.
+// Prefer OwnerLeaveDeadline when the anchor is driver_ready_at.
 func DriverNoShowDeadline(ownerReady, exchangeAt time.Time) time.Time {
+	return graceDeadline(ownerReady, exchangeAt)
+}
+
+// OwnerLeaveDeadline is when the owner must have pressed “Salir ya” after the
+// driver marked ready: max(driverReady, exchangeAt) + NoShowGrace.
+func OwnerLeaveDeadline(driverReady, exchangeAt time.Time) time.Time {
+	return graceDeadline(driverReady, exchangeAt)
+}
+
+// OwnerNoShowDeadline is when the owner must have left after the driver
+// signalled arrival, once exchange_at has passed:
+// max(driverArrived, exchangeAt) + NoShowGrace.
+func OwnerNoShowDeadline(driverArrived, exchangeAt time.Time) time.Time {
+	return graceDeadline(driverArrived, exchangeAt)
+}
+
+func graceDeadline(anchor, exchangeAt time.Time) time.Time {
 	start := exchangeAt
-	if ownerReady.After(start) {
-		start = ownerReady
+	if anchor.After(start) {
+		start = anchor
 	}
 	return start.Add(NoShowGrace)
 }
 
-// OwnerNoShowDeadline is when the owner must have marked ready after the
-// driver signalled arrival, once exchange_at has passed:
-// max(driverArrived, exchangeAt) + NoShowGrace.
-func OwnerNoShowDeadline(driverArrived, exchangeAt time.Time) time.Time {
-	start := exchangeAt
-	if driverArrived.After(start) {
-		start = driverArrived
+// OwnerLeaveBlockReason explains why “Salir ya” is not allowed yet.
+// Empty means the owner may leave and complete the exchange.
+const (
+	OwnerLeaveOK               = ""
+	OwnerLeaveNotLive          = "not_live"
+	OwnerLeaveWaitingDriver    = "waiting_driver"
+)
+
+// OwnerLeaveBlockReason reports why the owner cannot press “Salir ya” at now.
+//
+// Before exchange_at + NoShowGrace the driver must already be at the spot
+// (arrived or ready). After that courtesy window the owner may leave (and be
+// paid) without a driver signal.
+func (r Reservation) OwnerLeaveBlockReason(now time.Time) string {
+	if !r.CanComplete() {
+		return OwnerLeaveNotLive
 	}
-	return start.Add(NoShowGrace)
+	if r.DriverReadyAt != nil || r.DriverArrivedAt != nil {
+		return OwnerLeaveOK
+	}
+	if !now.Before(r.exchangeInstant().Add(NoShowGrace)) {
+		return OwnerLeaveOK
+	}
+	return OwnerLeaveWaitingDriver
+}
+
+// CanOwnerLeave reports whether “Salir ya” may complete the reservation now.
+func (r Reservation) CanOwnerLeave(now time.Time) bool {
+	return r.OwnerLeaveBlockReason(now) == OwnerLeaveOK
+}
+
+// DriverCanResolveStalledOwner reports whether the driver may choose
+// “entered / owner forgot” or “owner never left” after the leave deadline.
+func (r Reservation) DriverCanResolveStalledOwner(now time.Time) bool {
+	if !r.Status.Live() || r.DriverReadyAt == nil {
+		return false
+	}
+	return !now.Before(OwnerLeaveDeadline(*r.DriverReadyAt, r.exchangeInstant()))
 }
 
 // SafetyNetDeadline is exchange_at + OwnerSafetyNet.

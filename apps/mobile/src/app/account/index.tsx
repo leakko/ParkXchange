@@ -6,6 +6,7 @@ import { getMe } from "@/api/client";
 import { accountStyles } from "@/account/theme";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
+import { formatPoints } from "@/i18n/formatPoints";
 
 export default function AccountHubScreen() {
   const { t } = useTranslation();
@@ -80,7 +81,7 @@ export default function AccountHubScreen() {
           count: user.rating_count,
         })
       : t("account.rating.countOnly", { count: user.rating_count });
-  const balance = `€${(user.balance_cents / 100).toFixed(2)}`;
+  const balance = `${formatPoints(user.balance_cents)} pts`;
 
   return (
     <ScrollView style={accountStyles.screen} contentContainerStyle={accountStyles.scroll}>
@@ -118,6 +119,15 @@ export default function AccountHubScreen() {
         <View>
           <Text style={accountStyles.rowTitle}>{t("account.spots.title")}</Text>
           <Text style={accountStyles.rowMeta}>{t("account.spots.manage")}</Text>
+        </View>
+      </Pressable>
+      <Pressable
+        style={accountStyles.row}
+        onPress={() => router.push("/account/reservations" as Href)}
+      >
+        <View>
+          <Text style={accountStyles.rowTitle}>{t("account.reservations.title")}</Text>
+          <Text style={accountStyles.rowMeta}>{t("account.reservations.manage")}</Text>
         </View>
       </Pressable>
 

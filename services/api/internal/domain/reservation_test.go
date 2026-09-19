@@ -143,4 +143,76 @@ func TestFairCancelVersusForfeit(t *testing.T) {
 	if res.FairCancel(exchange.Add(-29 * time.Minute)) {
 		t.Error("cancelling inside 30 minutes before exchange should forfeit")
 	}
+	if res.FairCancel(exchange) {
+		t.Error("cancelling at exchange_at should forfeit")
+	}
+	if res.FairCancel(exchange.Add(time.Minute)) {
+		t.Error("cancelling after exchange_at should forfeit")
+	}
+
+	ready := exchange.Add(-5 * time.Minute)
+	stalled := domain.Reservation{
+		ExchangeAt:    exchange,
+		Status:        domain.ResArrived,
+		DriverReadyAt: &ready,
+	}
+	deadline := domain.OwnerLeaveDeadline(ready, exchange)
+	if stalled.FairCancel(deadline.Add(-time.Second)) {
+		t.Error("before the owner leave deadline a late cancel still forfeits")
+	}
+	if !stalled.FairCancel(deadline) {
+		t.Error("after the owner stalls the driver cancel must release the deposit")
+	}
+}
+
+func TestOwnerCanLeaveRequiresDriverReadyUntilGrace(t *testing.T) {
+	t.Parallel()
+
+	exchange := time.Date(2026, 9, 19, 18, 0, 0, 0, time.UTC)
+	res := domain.Reservation{
+		Status:     domain.ResConfirmed,
+		ExchangeAt: exchange,
+	}
+
+	if res.CanOwnerLeave(exchange.Add(5 * time.Minute)) {
+		t.Error("owner must not leave before grace without driver signal")
+	}
+	if got := res.OwnerLeaveBlockReason(exchange.Add(5 * time.Minute)); got != domain.OwnerLeaveWaitingDriver {
+		t.Errorf("block = %q, want waiting_driver", got)
+	}
+
+	arrived := exchange.Add(-2 * time.Minute)
+	res.DriverArrivedAt = &arrived
+	if !res.CanOwnerLeave(exchange.Add(1 * time.Minute)) {
+		t.Error("owner may leave once the driver has arrived")
+	}
+
+	res.DriverArrivedAt = nil
+	ready := exchange.Add(-2 * time.Minute)
+	res.DriverReadyAt = &ready
+	if !res.CanOwnerLeave(exchange.Add(1 * time.Minute)) {
+		t.Error("owner may leave once the driver is ready")
+	}
+
+	res.DriverReadyAt = nil
+	if !res.CanOwnerLeave(exchange.Add(domain.NoShowGrace)) {
+		t.Error("owner may leave after exchange_at + grace without driver signal")
+	}
+}
+
+func TestDriverCanResolveStalledOwner(t *testing.T) {
+	t.Parallel()
+
+	exchange := time.Date(2026, 9, 19, 18, 0, 0, 0, time.UTC)
+	ready := exchange.Add(-5 * time.Minute)
+	res := domain.Reservation{
+		Status: domain.ResArrived, ExchangeAt: exchange, DriverReadyAt: &ready,
+	}
+	deadline := domain.OwnerLeaveDeadline(ready, exchange)
+	if res.DriverCanResolveStalledOwner(deadline.Add(-time.Nanosecond)) {
+		t.Error("driver must wait until the owner leave deadline")
+	}
+	if !res.DriverCanResolveStalledOwner(deadline) {
+		t.Error("driver may resolve once the deadline has passed")
+	}
 }

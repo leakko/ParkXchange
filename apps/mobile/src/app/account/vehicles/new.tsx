@@ -20,7 +20,7 @@ export default function NewVehicleScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const params = useLocalSearchParams<{ from?: string }>();
-  const fromAnnounce = params.from === "announce";
+  const fromAnnounce = params.from === "announce" || params.from === "offer";
   const queryClient = useQueryClient();
 
   const create = useMutation({

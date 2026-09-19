@@ -137,6 +137,19 @@ func (s *Service) ListForSpot(ctx context.Context, spotID string, viewer domain.
 	return found, nil
 }
 
+// ListMine returns the caller's offers, newest first.
+func (s *Service) ListMine(ctx context.Context, viewer domain.Claims) ([]domain.Offer, error) {
+	if !viewer.Authenticated() {
+		return nil, unauthenticated()
+	}
+
+	found, err := s.store.OffersByDriver(ctx, viewer.UserID, 50)
+	if err != nil {
+		return nil, domain.Internal(err)
+	}
+	return found, nil
+}
+
 // Accept chooses one pending offer. Occupancy, the hold, reservation creation
 // and sibling rejection are one Store operation.
 func (s *Service) Accept(ctx context.Context, offerID string, viewer domain.Claims) (domain.Reservation, error) {

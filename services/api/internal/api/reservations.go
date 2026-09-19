@@ -55,6 +55,18 @@ func (a *API) handleActiveReservations(w http.ResponseWriter, r *http.Request) e
 	return web.JSON(w, http.StatusOK, out)
 }
 
+func (a *API) handleListReservations(w http.ResponseWriter, r *http.Request) error {
+	found, err := a.reserves.List(r.Context(), claimsFrom(r.Context()))
+	if err != nil {
+		return err
+	}
+	out := make([]reservationResponse, 0, len(found))
+	for _, res := range found {
+		out = append(out, toReservationResponse(res))
+	}
+	return web.JSON(w, http.StatusOK, out)
+}
+
 func (a *API) handleCancelReservation(w http.ResponseWriter, r *http.Request) error {
 	if err := a.reserves.Cancel(r.Context(), r.PathValue("id"), claimsFrom(r.Context())); err != nil {
 		return err
@@ -80,8 +92,35 @@ func (a *API) handleDriverArrived(w http.ResponseWriter, r *http.Request) error 
 	return web.NoContent(w)
 }
 
+func (a *API) handleClearDriverArrived(w http.ResponseWriter, r *http.Request) error {
+	if err := a.reserves.ClearDriverArrived(
+		r.Context(), r.PathValue("id"), claimsFrom(r.Context()),
+	); err != nil {
+		return err
+	}
+	return web.NoContent(w)
+}
+
 func (a *API) handleDriverReady(w http.ResponseWriter, r *http.Request) error {
 	if err := a.reserves.MarkDriverReady(
+		r.Context(), r.PathValue("id"), claimsFrom(r.Context()),
+	); err != nil {
+		return err
+	}
+	return web.NoContent(w)
+}
+
+func (a *API) handleDriverConfirmEntered(w http.ResponseWriter, r *http.Request) error {
+	if err := a.reserves.DriverConfirmEntered(
+		r.Context(), r.PathValue("id"), claimsFrom(r.Context()),
+	); err != nil {
+		return err
+	}
+	return web.NoContent(w)
+}
+
+func (a *API) handleDriverReportOwnerNoShow(w http.ResponseWriter, r *http.Request) error {
+	if err := a.reserves.DriverReportOwnerNoShow(
 		r.Context(), r.PathValue("id"), claimsFrom(r.Context()),
 	); err != nil {
 		return err

@@ -66,6 +66,18 @@ func (a *API) handleListSpotOffers(w http.ResponseWriter, r *http.Request) error
 	return web.JSON(w, http.StatusOK, out)
 }
 
+func (a *API) handleListMyOffers(w http.ResponseWriter, r *http.Request) error {
+	found, err := a.offers.ListMine(r.Context(), claimsFrom(r.Context()))
+	if err != nil {
+		return err
+	}
+	out := make([]offerResponse, 0, len(found))
+	for _, offer := range found {
+		out = append(out, toOfferResponse(offer))
+	}
+	return web.JSON(w, http.StatusOK, out)
+}
+
 func (a *API) handleAcceptOffer(w http.ResponseWriter, r *http.Request) error {
 	reservation, err := a.offers.Accept(
 		r.Context(), r.PathValue("id"), claimsFrom(r.Context()))

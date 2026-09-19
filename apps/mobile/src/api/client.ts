@@ -383,6 +383,14 @@ export async function listOffers(spotId: string): Promise<OfferResponse[]> {
   return (await res.json()) as OfferResponse[];
 }
 
+export async function listMyOffers(): Promise<OfferResponse[]> {
+  const res = await apiFetch("/v1/offers/mine");
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as OfferResponse[];
+}
+
 async function postOfferAction(id: string, action: string): Promise<Response> {
   const res = await apiFetch(`/v1/offers/${id}/${action}`, { method: "POST" });
   if (!res.ok) {
@@ -412,6 +420,22 @@ export async function fetchActiveReservations(): Promise<ReservationResponse[]> 
   return (await res.json()) as ReservationResponse[];
 }
 
+export async function fetchReservations(): Promise<ReservationResponse[]> {
+  const res = await apiFetch("/v1/reservations");
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as ReservationResponse[];
+}
+
+export async function getReservation(id: string): Promise<ReservationResponse> {
+  const res = await apiFetch(`/v1/reservations/${id}`);
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as ReservationResponse;
+}
+
 async function postReservationAction(id: string, action: string): Promise<void> {
   const res = await apiFetch(`/v1/reservations/${id}/${action}`, { method: "POST" });
   if (!res.ok) {
@@ -423,5 +447,11 @@ export const cancelReservation = (id: string) => postReservationAction(id, "canc
 export const ownerReady = (id: string) => postReservationAction(id, "owner-ready");
 export const driverArrived = (id: string) =>
   postReservationAction(id, "driver-arrived");
+export const clearDriverArrived = (id: string) =>
+  postReservationAction(id, "clear-driver-arrived");
 export const driverReady = (id: string) =>
   postReservationAction(id, "driver-ready");
+export const driverConfirmEntered = (id: string) =>
+  postReservationAction(id, "driver-confirm-entered");
+export const driverReportOwnerNoShow = (id: string) =>
+  postReservationAction(id, "driver-report-owner-no-show");

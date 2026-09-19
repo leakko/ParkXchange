@@ -22,6 +22,8 @@ type Store interface {
 
 	// OffersForSpot returns offers only when ownerID owns the spot.
 	OffersForSpot(ctx context.Context, spotID, ownerID string) ([]domain.Offer, error)
+	// OffersByDriver lists the driver's offers, newest first.
+	OffersByDriver(ctx context.Context, driverID string, limit int) ([]domain.Offer, error)
 	OfferByID(ctx context.Context, id string) (domain.Offer, error)
 
 	// AcceptOffer atomically reserves the spot, creates the reservation, holds

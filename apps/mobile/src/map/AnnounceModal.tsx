@@ -15,6 +15,7 @@ import {
 
 import type { VehicleResponse } from "@/api/client";
 import { useTranslation } from "@/i18n";
+import { parsePointsInput } from "@/i18n/formatPoints";
 import { searchAddresses, type AddressSuggestion } from "@/map/geocode";
 import { DateTimeField } from "@/ui/DateTimeField";
 
@@ -59,7 +60,7 @@ export function AnnounceModal({
   onSubmit,
 }: Props) {
   const { t } = useTranslation();
-  const [price, setPrice] = useState("1.50");
+  const [price, setPrice] = useState("50");
   const [hasPreferredTime, setHasPreferredTime] = useState(false);
   const [preferredTime, setPreferredTime] = useState(defaultPreferred);
   const [autoCancel, setAutoCancel] = useState(true);
@@ -77,6 +78,7 @@ export function AnnounceModal({
       return;
     }
     setPreferredTime(defaultPreferred());
+    setPrice("50");
     setVehicleOpen(false);
     setSuggestions([]);
     setAddressQuery("");
@@ -146,8 +148,8 @@ export function AnnounceModal({
       );
       return;
     }
-    const euros = Number.parseFloat(price);
-    if (!Number.isFinite(euros) || euros < 0) {
+    const points = parsePointsInput(price);
+    if (points == null) {
       Alert.alert(
         t("announce.alert.invalidPrice.title"),
         t("announce.alert.invalidPrice.message"),
@@ -162,7 +164,7 @@ export function AnnounceModal({
       return;
     }
     await onSubmit({
-      guidePriceCents: Math.round(euros * 100),
+      guidePriceCents: points,
       preferredDepartureAt: hasPreferredTime
         ? preferredTime.toISOString()
         : null,
@@ -318,7 +320,7 @@ export function AnnounceModal({
               style={styles.input}
               value={price}
               onChangeText={setPrice}
-              keyboardType="decimal-pad"
+              keyboardType="number-pad"
               placeholderTextColor="#7A93A0"
             />
             <View style={styles.toggleRow}>

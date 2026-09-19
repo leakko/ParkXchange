@@ -2,6 +2,7 @@ import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { forwardRef, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   StyleSheet,
@@ -11,19 +12,29 @@ import {
 } from "react-native";
 
 import type {
+  OfferResponse,
   ReservationResponse,
   SpotFeature,
   VehicleResponse,
 } from "@/api/client";
-import { spotVehiclePhotoUrl } from "@/api/client";
+import { listOffers, spotVehiclePhotoUrl } from "@/api/client";
 import { useAuthImage } from "@/hooks/useAuthImage";
 import { useTranslation } from "@/i18n";
+import { formatPoints, parsePointsInput } from "@/i18n/formatPoints";
 import { openNavigation } from "@/lib/navigation";
 import { DateTimeField } from "@/ui/DateTimeField";
+import {
+  driverCanResolveStalledOwner,
+  driverCancelOutcome,
+  ownerCanLeave,
+  ownerLeaveDeadline,
+  ownerLeaveWithoutReadyAt,
+} from "@/map/exchangeLeave";
 
 type Props = {
   spot: SpotFeature | null;
   active: ReservationResponse | null;
+  pendingOffer: OfferResponse | null;
   vehicles: VehicleResponse[];
   isOwner: boolean;
   isDriver: boolean;
@@ -34,29 +45,44 @@ type Props = {
     exchangeAt: string,
     amountCents: number,
   ) => Promise<void>;
+  onWithdrawOffer: (offer: OfferResponse) => Promise<void>;
+  onAddVehicle: () => void;
   onOwnerReady: () => void;
   onDriverArrived: () => void;
+  onClearDriverArrived: () => void;
   onDriverReady: () => void;
+  onDriverConfirmEntered: () => void;
+  onDriverReportOwnerNoShow: () => void;
   onCancel: () => void;
   onEdit: (spot: SpotFeature) => void;
+  onViewOffers: (spot: SpotFeature) => void;
   onWithdraw: (spot: SpotFeature) => void;
+  onManageExchange?: () => void;
 };
 
 export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
   {
     spot,
     active,
+    pendingOffer,
     vehicles,
     isOwner,
     isDriver,
     busy,
     onMakeOffer,
+    onWithdrawOffer,
+    onAddVehicle,
     onOwnerReady,
     onDriverArrived,
+    onClearDriverArrived,
     onDriverReady,
+    onDriverConfirmEntered,
+    onDriverReportOwnerNoShow,
     onCancel,
     onEdit,
+    onViewOffers,
     onWithdraw,
+    onManageExchange,
   },
   ref,
 ) {
@@ -66,7 +92,8 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
   const [vehicleId, setVehicleId] = useState("");
   const [exchangeAt, setExchangeAt] = useState(() => new Date(Date.now() + 60 * 60 * 1000));
   const [amount, setAmount] = useState("");
-  const price = spot ? (spot.properties.price_cents / 100).toFixed(2) : "";
+  const [pendingOfferCount, setPendingOfferCount] = useState(0);
+  const points = spot ? formatPoints(spot.properties.price_cents) : "";
   const coords = spot?.geometry.coordinates;
   const exact = !!spot?.properties.exact_location;
   const isActiveForSpot =
@@ -81,23 +108,109 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
 
   useEffect(() => {
     setMakingOffer(false);
-    setVehicleId(vehicles[0]?.id ?? "");
-    setAmount(price);
-    const suggested = spot?.properties.preferred_departure_at
-      ? new Date(spot.properties.preferred_departure_at)
-      : new Date(Date.now() + 60 * 60 * 1000);
+    setVehicleId(pendingOffer?.vehicle_id ?? vehicles[0]?.id ?? "");
+    setAmount(
+      pendingOffer
+        ? formatPoints(pendingOffer.amount_cents)
+        : points,
+    );
+    const suggested = pendingOffer
+      ? new Date(pendingOffer.exchange_at)
+      : spot?.properties.preferred_departure_at
+        ? new Date(spot.properties.preferred_departure_at)
+        : new Date(Date.now() + 60 * 60 * 1000);
     setExchangeAt(suggested);
-  }, [price, spot, vehicles]);
+  }, [points, spot, vehicles, pendingOffer]);
+
+  useEffect(() => {
+    if (
+      !spot?.id ||
+      !spot.properties.is_mine ||
+      spot.properties.status !== "available"
+    ) {
+      setPendingOfferCount(0);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const offers = await listOffers(String(spot.id));
+        if (!cancelled) {
+          setPendingOfferCount(offers.filter((o) => o.status === "pending").length);
+        }
+      } catch {
+        if (!cancelled) {
+          setPendingOfferCount(0);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [spot?.id, spot?.properties.is_mine, spot?.properties.status]);
+
+  const beginOffer = () => {
+    if (vehicles.length === 0) {
+      Alert.alert(t("spotSheet.offer.needVehicle.title"), t("spotSheet.offer.needVehicle.message"), [
+        { text: t("common.cancel"), style: "cancel" },
+        { text: t("spotSheet.offer.needVehicle.add"), onPress: onAddVehicle },
+      ]);
+      return;
+    }
+    setMakingOffer(true);
+  };
+
+  const beginEditOffer = () => {
+    if (!pendingOffer) {
+      return;
+    }
+    if (vehicles.length === 0) {
+      Alert.alert(t("spotSheet.offer.needVehicle.title"), t("spotSheet.offer.needVehicle.message"), [
+        { text: t("common.cancel"), style: "cancel" },
+        { text: t("spotSheet.offer.needVehicle.add"), onPress: onAddVehicle },
+      ]);
+      return;
+    }
+    setVehicleId(pendingOffer.vehicle_id);
+    setAmount(formatPoints(pendingOffer.amount_cents));
+    setExchangeAt(new Date(pendingOffer.exchange_at));
+    setMakingOffer(true);
+  };
 
   const submitOffer = async () => {
-    if (!spot || !vehicleId) {
+    if (!spot) {
       return;
     }
-    const euros = Number.parseFloat(amount);
-    if (!Number.isFinite(exchangeAt.getTime()) || !Number.isFinite(euros) || euros < 0) {
+    if (!vehicleId) {
+      Alert.alert(
+        t("spotSheet.offer.needVehicle.title"),
+        t("spotSheet.offer.needVehicle.message"),
+        [
+          { text: t("common.cancel"), style: "cancel" },
+          { text: t("spotSheet.offer.needVehicle.add"), onPress: onAddVehicle },
+        ],
+      );
       return;
     }
-    await onMakeOffer(spot, vehicleId, exchangeAt.toISOString(), Math.round(euros * 100));
+    const offerPoints = parsePointsInput(amount);
+    if (!Number.isFinite(exchangeAt.getTime())) {
+      Alert.alert(
+        t("announce.alert.invalidDate.title"),
+        t("announce.alert.invalidDate.message"),
+      );
+      return;
+    }
+    if (offerPoints == null) {
+      Alert.alert(
+        t("announce.alert.invalidPrice.title"),
+        t("announce.alert.invalidPrice.message"),
+      );
+      return;
+    }
+    if (pendingOffer) {
+      await onWithdrawOffer(pendingOffer);
+    }
+    await onMakeOffer(spot, vehicleId, exchangeAt.toISOString(), offerPoints);
     setMakingOffer(false);
   };
 
@@ -127,7 +240,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
             <Text style={styles.meta}>
               {t("spotSheet.meta", {
                 sizeClass: spot.properties.size_class,
-                price,
+                points,
                 status: spot.properties.status,
               })}
             </Text>
@@ -168,28 +281,62 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
               </Text>
             ) : null}
 
-            <Text style={styles.freeAt}>
-              {spot.properties.preferred_departure_at
-                ? t("spotSheet.freeAt", {
-                    datetime: formatDateTime(spot.properties.preferred_departure_at),
-                  })
-                : t("spotSheet.flexibleDeparture")}
-            </Text>
-            <Text style={styles.listedUntil}>
-              {t("spotSheet.listedUntil", {
-                datetime: formatDateTime(spot.properties.listed_until),
-              })}
-            </Text>
+            {isActiveForSpot && active ? (
+              <Text style={styles.freeAt}>
+                {t("spotSheet.exchange.time", {
+                  datetime: formatDateTime(active.exchange_at),
+                })}
+              </Text>
+            ) : pendingOffer && !isActiveForSpot ? (
+              <Text style={styles.freeAt}>
+                {t("spotSheet.offer.pending.meta", {
+                  points: formatPoints(pendingOffer.amount_cents),
+                  datetime: formatDateTime(pendingOffer.exchange_at),
+                })}
+              </Text>
+            ) : (
+              <>
+                <Text style={styles.freeAt}>
+                  {spot.properties.preferred_departure_at
+                    ? t("spotSheet.freeAt", {
+                        datetime: formatDateTime(
+                          spot.properties.preferred_departure_at,
+                        ),
+                      })
+                    : t("spotSheet.flexibleDeparture")}
+                </Text>
+                {spot.properties.status === "available" ? (
+                  <Text style={styles.listedUntil}>
+                    {t("spotSheet.listedUntil", {
+                      datetime: formatDateTime(spot.properties.listed_until),
+                    })}
+                  </Text>
+                ) : null}
+              </>
+            )}
 
             <View style={styles.actions}>
-              {spot.properties.is_mine ? (
+              {spot.properties.is_mine &&
+              spot.properties.status === "available" &&
+              !isActiveForSpot ? (
                 <>
                   <Pressable
                     style={styles.primary}
                     disabled={busy}
+                    onPress={() => onViewOffers(spot)}
+                  >
+                    <Text style={styles.primaryText}>
+                      {pendingOfferCount > 0
+                        ? t("spotSheet.viewOffers", { count: pendingOfferCount })
+                        : t("spotSheet.viewOffersEmpty")}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.secondary}
+                    disabled={busy}
                     onPress={() => onEdit(spot)}
                   >
-                    <Text style={styles.primaryText}>{t("spotSheet.edit")}</Text>
+                    <Text style={styles.secondaryText}>{t("spotSheet.edit")}</Text>
                   </Pressable>
                   <Pressable
                     style={styles.danger}
@@ -203,24 +350,66 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
 
               {!spot.properties.is_mine &&
               !isActiveForSpot &&
-              spot.properties.status === "available" ? (
+              spot.properties.status === "available" &&
+              pendingOffer &&
+              !makingOffer ? (
+                <View style={styles.offerForm}>
+                  <Text style={styles.formLabel}>{t("spotSheet.offer.pending.title")}</Text>
+                  <Pressable
+                    style={styles.primary}
+                    disabled={busy}
+                    onPress={beginEditOffer}
+                  >
+                    <Text style={styles.primaryText}>
+                      {t("spotSheet.offer.pending.edit")}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.danger}
+                    disabled={busy}
+                    onPress={() => void onWithdrawOffer(pendingOffer)}
+                  >
+                    <Text style={styles.dangerText}>
+                      {t("spotSheet.offer.pending.withdraw")}
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : null}
+
+              {!spot.properties.is_mine &&
+              !isActiveForSpot &&
+              spot.properties.status === "available" &&
+              (makingOffer || !pendingOffer) ? (
                 makingOffer ? (
                   <View style={styles.offerForm}>
                     <Text style={styles.formLabel}>{t("spotSheet.offer.yourVehicle")}</Text>
-                    {vehicles.map((candidate) => (
-                      <Pressable
-                        key={candidate.id}
-                        style={[
-                          styles.vehicleChoice,
-                          candidate.id === vehicleId && styles.vehicleChoiceActive,
-                        ]}
-                        onPress={() => setVehicleId(candidate.id)}
-                      >
-                        <Text style={styles.secondaryText}>
-                          {candidate.plate} · {candidate.make_model}
+                    {vehicles.length === 0 ? (
+                      <>
+                        <Text style={styles.help}>
+                          {t("spotSheet.offer.needVehicle.message")}
                         </Text>
-                      </Pressable>
-                    ))}
+                        <Pressable style={styles.secondary} onPress={onAddVehicle}>
+                          <Text style={styles.secondaryText}>
+                            {t("spotSheet.offer.needVehicle.add")}
+                          </Text>
+                        </Pressable>
+                      </>
+                    ) : (
+                      vehicles.map((candidate) => (
+                        <Pressable
+                          key={candidate.id}
+                          style={[
+                            styles.vehicleChoice,
+                            candidate.id === vehicleId && styles.vehicleChoiceActive,
+                          ]}
+                          onPress={() => setVehicleId(candidate.id)}
+                        >
+                          <Text style={styles.secondaryText}>
+                            {candidate.plate} · {candidate.make_model}
+                          </Text>
+                        </Pressable>
+                      ))
+                    )}
                     <Text style={styles.formLabel}>
                       {t("spotSheet.offer.exchangeDatetime")}
                     </Text>
@@ -230,11 +419,14 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                       style={styles.input}
                       value={amount}
                       onChangeText={setAmount}
-                      keyboardType="decimal-pad"
+                      keyboardType="number-pad"
                       placeholderTextColor="#7A93A0"
                     />
                     <Pressable
-                      style={styles.primary}
+                      style={[
+                        styles.primary,
+                        (busy || !vehicleId) && styles.primaryDisabled,
+                      ]}
                       disabled={busy || !vehicleId}
                       onPress={() => void submitOffer()}
                     >
@@ -252,55 +444,175 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                   <Pressable
                     style={styles.primary}
                     disabled={busy}
-                    onPress={() => setMakingOffer(true)}
+                    onPress={beginOffer}
                   >
                     <Text style={styles.primaryText}>{t("spotSheet.offer.makeOffer")}</Text>
                   </Pressable>
                 )
               ) : null}
 
-              {isActiveForSpot ? (
+              {spot.properties.is_mine &&
+              (spot.properties.status === "reserved" ||
+                spot.properties.status === "handover") &&
+              !isActiveForSpot ? (
                 <>
-                  <Text style={styles.exchangeTime}>
-                    {t("spotSheet.exchange.time", {
-                      datetime: formatDateTime(active.exchange_at),
-                    })}
+                  <Text style={styles.help}>
+                    {t("account.spots.reservedNoReservation")}
                   </Text>
-                  {isOwner && !active.owner_ready_at ? (
-                    <Pressable style={styles.primary} disabled={busy} onPress={onOwnerReady}>
-                      <Text style={styles.primaryText}>{t("spotSheet.exchange.ownerReady")}</Text>
-                    </Pressable>
-                  ) : null}
-                  {isDriver && !active.driver_arrived_at ? (
+                  {onManageExchange ? (
                     <Pressable
-                      style={styles.secondary}
+                      style={styles.primary}
                       disabled={busy}
-                      onPress={onDriverArrived}
+                      onPress={onManageExchange}
                     >
-                      <Text style={styles.secondaryText}>
-                        {t("spotSheet.exchange.driverArrived")}
+                      <Text style={styles.primaryText}>
+                        {t("account.spots.openExchange")}
                       </Text>
                     </Pressable>
                   ) : null}
-                  {isDriver &&
-                  !!active.owner_ready_at &&
-                  !!active.driver_arrived_at &&
-                  !active.driver_ready_at ? (
-                    <Pressable style={styles.primary} disabled={busy} onPress={onDriverReady}>
-                      <Text style={styles.primaryText}>{t("spotSheet.exchange.driverReady")}</Text>
+                </>
+              ) : null}
+
+              {isActiveForSpot && active ? (
+                <>
+                  {isOwner && !active.driver_arrived_at && !active.driver_ready_at ? (
+                    <Text style={styles.help}>{t("spotSheet.exchange.waitingDriver")}</Text>
+                  ) : null}
+                  {isOwner && (active.driver_ready_at || active.driver_arrived_at) ? (
+                    <Text style={styles.help}>
+                      {active.driver_ready_at
+                        ? t("spotSheet.exchange.ownerLeavingSoon", {
+                            datetime: formatDateTime(
+                              (ownerLeaveDeadline(active) ?? new Date()).toISOString(),
+                            ),
+                          })
+                        : t("spotSheet.exchange.driverIsHere")}
+                    </Text>
+                  ) : null}
+                  {isOwner ? (
+                    <Pressable
+                      style={[
+                        styles.primary,
+                        !ownerCanLeave(active) && styles.primaryDisabled,
+                      ]}
+                      disabled={busy}
+                      onPress={() => {
+                        if (ownerCanLeave(active)) {
+                          onOwnerReady();
+                          return;
+                        }
+                        Alert.alert(
+                          t("spotSheet.exchange.ownerLeaveBlocked.title"),
+                          t("spotSheet.exchange.ownerLeaveBlocked.waitingDriver", {
+                            datetime: formatDateTime(
+                              ownerLeaveWithoutReadyAt(active).toISOString(),
+                            ),
+                          }),
+                        );
+                      }}
+                    >
+                      <Text style={styles.primaryText}>
+                        {t("spotSheet.exchange.ownerReady")}
+                      </Text>
                     </Pressable>
+                  ) : null}
+                  {isDriver && !active.driver_arrived_at && !active.driver_ready_at ? (
+                    <Pressable
+                      style={[styles.primary, busy && styles.primaryDisabled]}
+                      disabled={busy}
+                      onPress={onDriverArrived}
+                    >
+                      {busy ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={styles.primaryText}>
+                          {t("spotSheet.exchange.driverArrived")}
+                        </Text>
+                      )}
+                    </Pressable>
+                  ) : null}
+                  {isDriver &&
+                  (!!active.driver_arrived_at || !!active.driver_ready_at) &&
+                  !driverCanResolveStalledOwner(active) ? (
+                    <>
+                      <Text style={styles.help}>
+                        {t("spotSheet.exchange.driverArrivedOn")}
+                      </Text>
+                      <Pressable
+                        style={[styles.secondary, busy && styles.primaryDisabled]}
+                        disabled={busy}
+                        onPress={onClearDriverArrived}
+                      >
+                        {busy ? (
+                          <ActivityIndicator color="#F4F7FA" />
+                        ) : (
+                          <Text style={styles.secondaryText}>
+                            {t("spotSheet.exchange.driverArrivedClear")}
+                          </Text>
+                        )}
+                      </Pressable>
+                    </>
+                  ) : null}
+                  {isDriver && driverCanResolveStalledOwner(active) ? (
+                    <>
+                      <Text style={styles.help}>{t("spotSheet.exchange.stallHelp")}</Text>
+                      <Pressable
+                        style={styles.primary}
+                        disabled={busy}
+                        onPress={onDriverConfirmEntered}
+                      >
+                        <Text style={styles.primaryText}>
+                          {t("spotSheet.exchange.stallConfirmEntered")}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.danger}
+                        disabled={busy}
+                        onPress={onDriverReportOwnerNoShow}
+                      >
+                        <Text style={styles.dangerText}>
+                          {t("spotSheet.exchange.stallReportNoShow")}
+                        </Text>
+                      </Pressable>
+                    </>
                   ) : null}
                   <Pressable
                     style={styles.danger}
                     disabled={busy}
-                    onPress={onCancel}
+                    onPress={() => {
+                      const message = isOwner
+                        ? t("spotSheet.exchange.cancelConfirm.message")
+                        : active
+                          ? {
+                              fair: t("spotSheet.exchange.cancelConfirm.driverFair"),
+                              late: t("spotSheet.exchange.cancelConfirm.driverLate"),
+                              stall: t("spotSheet.exchange.cancelConfirm.driverStall"),
+                            }[driverCancelOutcome(active)]
+                          : t("spotSheet.exchange.cancelConfirm.driverFair");
+                      Alert.alert(
+                        t("spotSheet.exchange.cancelConfirm.title"),
+                        message,
+                        [
+                          { text: t("common.cancel"), style: "cancel" },
+                          {
+                            text: t("spotSheet.exchange.cancelConfirm.confirm"),
+                            style: "destructive",
+                            onPress: onCancel,
+                          },
+                        ],
+                      );
+                    }}
                   >
                     <Text style={styles.dangerText}>{t("spotSheet.exchange.cancel")}</Text>
                   </Pressable>
                 </>
               ) : null}
 
-              {exact && coords && coords[0] != null && coords[1] != null ? (
+              {exact &&
+              !spot.properties.is_mine &&
+              coords &&
+              coords[0] != null &&
+              coords[1] != null ? (
                 <Pressable
                   style={styles.secondary}
                   onPress={() =>
@@ -366,6 +678,7 @@ const styles = StyleSheet.create({
   actions: { marginTop: 14, gap: 8 },
   offerForm: { gap: 8 },
   formLabel: { color: "#9DB4C0", fontSize: 12, marginTop: 4 },
+  help: { color: "#7A93A0", fontSize: 13, lineHeight: 18 },
   input: {
     backgroundColor: "#0F2740",
     borderWidth: 1,
@@ -391,6 +704,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: "center",
   },
+  primaryDisabled: { opacity: 0.45 },
   primaryText: { color: "#fff", fontWeight: "600", fontSize: 15 },
   secondary: {
     backgroundColor: "#16324F",
