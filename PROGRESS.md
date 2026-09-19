@@ -21,19 +21,22 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** none — location privacy reveal implemented on `main`
-  (annulus fuzz 12–30 m, gated vehicle/phone, mobile uncertainty circle)
+- **Phase in progress:** auth UI + Google Sign-In on `feat/auth-ui-google`
+  (email/password login+register, soft-gate, password reset, Google ID-token,
+  optional phone; announce requires phone)
 - **Last updated:** 2026-09-19
-- **Phases complete:** 12 of 12 (MVP)
-- **Blockers:** none open
+- **Phases complete:** 12 of 12 (MVP) + post-MVP auth UI in progress
+- **Blockers:** operator must set `GOOGLE_WEB_CLIENT_ID` / Resend env and
+  `EXPO_PUBLIC_GOOGLE_*` client IDs; rebuild native app after Expo auth packages
 
 ---
 
 ## Next immediate step
 
-Smoke the map: select a stranger spot → 30 m circle, no car/phone; after
-accepted reservation → exact pin + vehicle + phone. Then BlaBlaCar-style rating
-spec (follow-up). Remaining infra: `infra/pulumi/README.md`.
+Wire secrets into `.env`, smoke: register → login → forgot (API log link) →
+reset; Google Sign-In; guest map + soft-gate on announce/account/offer.
+Merge `feat/auth-ui-google` when demo passes. Then BlaBlaCar-style rating
+spec. Remaining infra: `infra/pulumi/README.md`.
 
 ---
 

@@ -50,6 +50,7 @@ const config: ExpoConfig = {
     ],
     "expo-secure-store",
     "expo-localization",
+    "expo-web-browser",
     [
       "expo-notifications",
       {

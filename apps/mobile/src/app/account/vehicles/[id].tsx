@@ -19,20 +19,20 @@ import { VehicleForm, type VehicleFormValues } from "@/account/VehicleForm";
 import type { PickedVehiclePhoto } from "@/account/pickVehiclePhoto";
 import { accountStyles } from "@/account/theme";
 import { useAuthImage } from "@/hooks/useAuthImage";
-import { useDevSession } from "@/hooks/useDevSession";
+import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
 
 export default function EditVehicleScreen() {
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { ready } = useDevSession();
+  const { signedIn } = useSession();
   const queryClient = useQueryClient();
 
   const vehicles = useQuery({
     queryKey: ["vehicles"],
     queryFn: listVehicles,
-    enabled: ready,
+    enabled: signedIn,
   });
 
   const vehicle = vehicles.data?.find((v) => v.id === id);
@@ -91,7 +91,7 @@ export default function EditVehicleScreen() {
     },
   });
 
-  if (!ready || vehicles.isLoading) {
+  if (!signedIn || vehicles.isLoading) {
     return (
       <View style={[accountStyles.screen, { justifyContent: "center", alignItems: "center" }]}>
         <ActivityIndicator color="#F4F7FA" />

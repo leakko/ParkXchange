@@ -12,20 +12,21 @@ import {
 
 import { changePassword, getMe, updateMe } from "@/api/client";
 import { accountStyles } from "@/account/theme";
-import { useDevSession } from "@/hooks/useDevSession";
+import { useSession } from "@/hooks/useSession";
 import { useTranslation, type AppLocale } from "@/i18n";
 
 export default function ProfileScreen() {
   const { t, locale, setLocale } = useTranslation();
-  const { ready } = useDevSession();
+  const { signedIn } = useSession();
   const queryClient = useQueryClient();
   const me = useQuery({
     queryKey: ["me"],
     queryFn: getMe,
-    enabled: ready,
+    enabled: signedIn,
   });
 
   const [displayName, setDisplayName] = useState("");
+  const [phone, setPhone] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -33,6 +34,7 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (me.data) {
       setDisplayName(me.data.display_name);
+      setPhone(me.data.phone ?? "");
     }
   }, [me.data]);
 
@@ -41,6 +43,20 @@ export default function ProfileScreen() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["me"] });
       Alert.alert(t("account.profile.saved.title"), t("account.profile.saved.displayName"));
+    },
+    onError: (err) => {
+      Alert.alert(
+        t("account.profile.saveFailed.title"),
+        err instanceof Error ? err.message : t("common.error"),
+      );
+    },
+  });
+
+  const savePhone = useMutation({
+    mutationFn: () => updateMe({ phone: phone.trim() }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["me"] });
+      Alert.alert(t("account.profile.saved.title"), t("account.profile.saved.phone"));
     },
     onError: (err) => {
       Alert.alert(
@@ -77,7 +93,7 @@ export default function ProfileScreen() {
     },
   });
 
-  if (!ready || me.isLoading) {
+  if (!signedIn || me.isLoading) {
     return (
       <View style={[accountStyles.screen, { justifyContent: "center", alignItems: "center" }]}>
         <ActivityIndicator color="#F4F7FA" />
@@ -139,6 +155,33 @@ export default function ProfileScreen() {
           <ActivityIndicator color="#fff" />
         ) : (
           <Text style={accountStyles.primaryText}>{t("account.profile.saveName")}</Text>
+        )}
+      </Pressable>
+
+      <Text style={[accountStyles.sectionTitle, { marginTop: 24 }]}>
+        {t("account.profile.phone.section")}
+      </Text>
+      <View style={accountStyles.field}>
+        <Text style={accountStyles.label}>{t("account.profile.phone.label")}</Text>
+        <TextInput
+          style={accountStyles.input}
+          value={phone}
+          onChangeText={setPhone}
+          keyboardType="phone-pad"
+          placeholder="+34600111222"
+          placeholderTextColor="#7A93A0"
+        />
+      </View>
+      <Text style={accountStyles.meta}>{t("account.profile.phone.hint")}</Text>
+      <Pressable
+        style={accountStyles.primary}
+        disabled={savePhone.isPending}
+        onPress={() => savePhone.mutate()}
+      >
+        {savePhone.isPending ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={accountStyles.primaryText}>{t("account.profile.savePhone")}</Text>
         )}
       </Pressable>
 

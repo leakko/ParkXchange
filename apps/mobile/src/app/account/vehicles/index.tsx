@@ -10,20 +10,20 @@ import {
 
 import { listVehicles } from "@/api/client";
 import { accountStyles } from "@/account/theme";
-import { useDevSession } from "@/hooks/useDevSession";
+import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
 
 export default function VehiclesListScreen() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { ready } = useDevSession();
+  const { signedIn } = useSession();
   const vehicles = useQuery({
     queryKey: ["vehicles"],
     queryFn: listVehicles,
-    enabled: ready,
+    enabled: signedIn,
   });
 
-  if (!ready || vehicles.isLoading) {
+  if (!signedIn || vehicles.isLoading) {
     return (
       <View style={[accountStyles.screen, { justifyContent: "center", alignItems: "center" }]}>
         <ActivityIndicator color="#F4F7FA" />

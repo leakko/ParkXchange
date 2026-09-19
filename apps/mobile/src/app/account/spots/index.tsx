@@ -11,7 +11,7 @@ import {
 
 import { fetchMySpots, withdrawSpot, type SpotFeature } from "@/api/client";
 import { accountStyles } from "@/account/theme";
-import { useDevSession } from "@/hooks/useDevSession";
+import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
 
 function spotTitle(
@@ -25,12 +25,12 @@ function spotTitle(
 export default function MySpotsScreen() {
   const { t, formatDateTime } = useTranslation();
   const router = useRouter();
-  const { ready } = useDevSession();
+  const { signedIn } = useSession();
   const queryClient = useQueryClient();
   const spots = useQuery({
     queryKey: ["spots", "mine"],
     queryFn: fetchMySpots,
-    enabled: ready,
+    enabled: signedIn,
   });
 
   const withdraw = useMutation({
@@ -46,7 +46,7 @@ export default function MySpotsScreen() {
     },
   });
 
-  if (!ready || spots.isLoading) {
+  if (!signedIn || spots.isLoading) {
     return (
       <View style={[accountStyles.screen, { justifyContent: "center", alignItems: "center" }]}>
         <ActivityIndicator color="#F4F7FA" />

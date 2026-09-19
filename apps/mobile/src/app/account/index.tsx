@@ -4,18 +4,26 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 
 import { getMe } from "@/api/client";
 import { accountStyles } from "@/account/theme";
-import { useDevSession } from "@/hooks/useDevSession";
+import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
 
 export default function AccountHubScreen() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { ready, signedOut, signOut, retry } = useDevSession();
+  const { ready, signedIn, signedOut, signOut } = useSession();
   const me = useQuery({
     queryKey: ["me"],
     queryFn: getMe,
-    enabled: ready,
+    enabled: signedIn,
   });
+
+  if (!ready) {
+    return (
+      <View style={[accountStyles.screen, { justifyContent: "center", alignItems: "center" }]}>
+        <ActivityIndicator color="#F4F7FA" />
+      </View>
+    );
+  }
 
   if (signedOut) {
     return (
@@ -24,17 +32,19 @@ export default function AccountHubScreen() {
         <Text style={accountStyles.meta}>{t("account.signedOut.message")}</Text>
         <Pressable
           style={[accountStyles.primary, { marginTop: 16 }]}
-          onPress={() => {
-            void retry();
-          }}
+          onPress={() =>
+            router.push(
+              `/auth/login?returnTo=${encodeURIComponent("/account")}` as Href,
+            )
+          }
         >
-          <Text style={accountStyles.primaryText}>{t("account.devLogin")}</Text>
+          <Text style={accountStyles.primaryText}>{t("account.signIn")}</Text>
         </Pressable>
       </View>
     );
   }
 
-  if (!ready || me.isLoading) {
+  if (me.isLoading) {
     return (
       <View style={[accountStyles.screen, { justifyContent: "center", alignItems: "center" }]}>
         <ActivityIndicator color="#F4F7FA" />
@@ -50,11 +60,13 @@ export default function AccountHubScreen() {
         </Text>
         <Pressable
           style={[accountStyles.primary, { marginTop: 16 }]}
-          onPress={() => {
-            void retry();
-          }}
+          onPress={() =>
+            router.push(
+              `/auth/login?returnTo=${encodeURIComponent("/account")}` as Href,
+            )
+          }
         >
-          <Text style={accountStyles.primaryText}>{t("account.devLogin")}</Text>
+          <Text style={accountStyles.primaryText}>{t("account.signIn")}</Text>
         </Pressable>
       </View>
     );
@@ -81,32 +93,36 @@ export default function AccountHubScreen() {
         {rating} · {t("account.balance", { amount: balance })}
       </Text>
 
-      <View style={accountStyles.section}>
-        <Pressable
-          style={accountStyles.row}
-          onPress={() => router.push("/account/profile" as Href)}
-        >
+      <Pressable
+        style={accountStyles.row}
+        onPress={() => router.push("/account/profile" as Href)}
+      >
+        <View>
           <Text style={accountStyles.rowTitle}>{t("account.profile.title")}</Text>
-          <Text style={accountStyles.link}>{t("account.profile.edit")}</Text>
-        </Pressable>
-        <Pressable
-          style={accountStyles.row}
-          onPress={() => router.push("/account/vehicles" as Href)}
-        >
+          <Text style={accountStyles.rowMeta}>{t("account.profile.edit")}</Text>
+        </View>
+      </Pressable>
+      <Pressable
+        style={accountStyles.row}
+        onPress={() => router.push("/account/vehicles" as Href)}
+      >
+        <View>
           <Text style={accountStyles.rowTitle}>{t("account.vehicles.title")}</Text>
-          <Text style={accountStyles.link}>{t("account.vehicles.manage")}</Text>
-        </Pressable>
-        <Pressable
-          style={accountStyles.row}
-          onPress={() => router.push("/account/spots" as Href)}
-        >
+          <Text style={accountStyles.rowMeta}>{t("account.vehicles.manage")}</Text>
+        </View>
+      </Pressable>
+      <Pressable
+        style={accountStyles.row}
+        onPress={() => router.push("/account/spots" as Href)}
+      >
+        <View>
           <Text style={accountStyles.rowTitle}>{t("account.spots.title")}</Text>
-          <Text style={accountStyles.link}>{t("account.spots.manage")}</Text>
-        </Pressable>
-      </View>
+          <Text style={accountStyles.rowMeta}>{t("account.spots.manage")}</Text>
+        </View>
+      </Pressable>
 
       <Pressable
-        style={[accountStyles.danger, { marginTop: 16 }]}
+        style={[accountStyles.danger, { marginTop: 24 }]}
         onPress={() => {
           void signOut();
         }}

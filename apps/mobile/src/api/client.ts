@@ -73,6 +73,72 @@ export async function login(email: string, password: string): Promise<SessionRes
   return (await res.json()) as SessionResponse;
 }
 
+export async function register(body: {
+  email: string;
+  password: string;
+  display_name: string;
+  phone?: string;
+}): Promise<SessionResponse> {
+  const res = await apiFetch("/v1/auth/register", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as SessionResponse;
+}
+
+export async function loginWithGoogle(idToken: string): Promise<SessionResponse> {
+  const res = await apiFetch("/v1/auth/google", {
+    method: "POST",
+    body: JSON.stringify({ id_token: idToken }),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as SessionResponse;
+}
+
+export async function forgotPassword(email: string): Promise<void> {
+  const res = await apiFetch("/v1/auth/password/forgot", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+}
+
+export async function resetPassword(token: string, password: string): Promise<void> {
+  const res = await apiFetch("/v1/auth/password/reset", {
+    method: "POST",
+    body: JSON.stringify({ token, password }),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+}
+
+export async function refreshSession(refreshToken: string): Promise<SessionResponse> {
+  const res = await fetch(`${apiUrl}/v1/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as SessionResponse;
+}
+
+export async function logout(refreshToken: string): Promise<void> {
+  await apiFetch("/v1/auth/logout", {
+    method: "POST",
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+}
+
 export async function issueWsTicket(): Promise<TicketResponse> {
   const res = await apiFetch("/v1/ws/tickets", { method: "POST" });
   if (!res.ok) {
@@ -131,7 +197,10 @@ export async function getMe(): Promise<UserResponse> {
   return (await res.json()) as UserResponse;
 }
 
-export async function updateMe(body: { display_name: string }): Promise<UserResponse> {
+export async function updateMe(body: {
+  display_name?: string;
+  phone?: string;
+}): Promise<UserResponse> {
   const res = await apiFetch("/v1/me", {
     method: "PATCH",
     body: JSON.stringify(body),

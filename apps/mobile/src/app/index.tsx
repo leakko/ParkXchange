@@ -34,7 +34,7 @@ import {
   useDiscovery,
   type Viewport,
 } from "@/hooks/useDiscovery";
-import { useDevSession } from "@/hooks/useDevSession";
+import { useSession } from "@/hooks/useSession";
 import { useMapLocation } from "@/hooks/useMapLocation";
 import {
   announceAt,
@@ -72,8 +72,7 @@ export default function MapScreen() {
   const lastJumpCoordsRef = useRef<[number, number] | null>(null);
   const timeWindow = useMemo(() => defaultTimeWindow(), []);
 
-  const { ready, error: sessionError, signedOut, retry: retrySession } =
-    useDevSession();
+  const { ready, signedIn, error: sessionError, retry: retrySession } = useSession();
   const location = useMapLocation();
   const [follow, dispatchFollow] = useReducer(
     followReducer,
@@ -104,9 +103,18 @@ export default function MapScreen() {
     location.coords,
   );
 
+  const requireSignIn = useCallback(
+    (returnTo: string = "/") => {
+      router.push(
+        `/auth/login?returnTo=${encodeURIComponent(returnTo)}` as Href,
+      );
+    },
+    [router],
+  );
+
   const { collection, featureById, isLoading, error, refetch } = useDiscovery(
     viewport,
-    ready,
+    signedIn,
   );
   const {
     active,
@@ -118,14 +126,15 @@ export default function MapScreen() {
     markDriverArrived,
     markDriverReady,
     cancel,
-  } = useActiveReservation(ready);
+  } = useActiveReservation(signedIn);
 
   useEffect(() => {
-    if (!ready) {
+    if (!signedIn) {
+      setVehicles([]);
       return;
     }
     void listVehicles().then(setVehicles).catch(() => setVehicles([]));
-  }, [ready]);
+  }, [signedIn]);
 
   // Keep the sheet in sync when the viewport fetch flips exact_location
   // (e.g. after an offer is accepted and the driver becomes the holder).
@@ -483,20 +492,16 @@ export default function MapScreen() {
         ) : null}
       </Map>
 
-      {signedOut ? (
-        <View style={styles.banner}>
-          <Text style={styles.bannerText}>{t("map.banner.signedOut")}</Text>
-          <Pressable onPress={() => void retrySession()}>
-            <Text style={styles.link}>{t("map.banner.devLogin")}</Text>
-          </Pressable>
-        </View>
-      ) : null}
-      {!signedOut && (!ready || isLoading) ? (
+      {!ready ? (
         <View style={styles.banner} pointerEvents="none">
           <ActivityIndicator color="#F4F7FA" />
-          <Text style={styles.bannerText}>
-            {!ready ? t("map.banner.signingIn") : t("map.banner.loadingSpots")}
-          </Text>
+          <Text style={styles.bannerText}>{t("map.banner.checkingSession")}</Text>
+        </View>
+      ) : null}
+      {ready && isLoading ? (
+        <View style={styles.banner} pointerEvents="none">
+          <ActivityIndicator color="#F4F7FA" />
+          <Text style={styles.bannerText}>{t("map.banner.loadingSpots")}</Text>
         </View>
       ) : null}
       {ready && !isLoading ? (
@@ -545,7 +550,13 @@ export default function MapScreen() {
 
       <Pressable
         style={styles.accountFab}
-        onPress={() => router.push("/account" as Href)}
+        onPress={() => {
+          if (!signedIn) {
+            requireSignIn("/account");
+            return;
+          }
+          router.push("/account" as Href);
+        }}
         accessibilityRole="button"
         accessibilityLabel={t("map.fab.account")}
       >
@@ -568,7 +579,13 @@ export default function MapScreen() {
       <Pressable
         style={styles.fab}
         disabled={announcing || !ready}
-        onPress={() => void doAnnounceHere()}
+        onPress={() => {
+          if (!signedIn) {
+            requireSignIn("/");
+            return;
+          }
+          void doAnnounceHere();
+        }}
       >
         {announcing ? (
           <ActivityIndicator color="#fff" />
@@ -586,6 +603,10 @@ export default function MapScreen() {
         isDriver={isDriver}
         busy={busy || offerBusy}
         onMakeOffer={async (spot, vehicleId, exchangeAt, amountCents) => {
+          if (!signedIn) {
+            requireSignIn("/");
+            return;
+          }
           const spotId = String(spot.id ?? "");
           setOfferBusy(true);
           try {
