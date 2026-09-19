@@ -281,25 +281,35 @@ func TestNewSpotValidation(t *testing.T) {
 		}
 	})
 
-	// The window has to survive the trip as offsets, because the database
-	// resolves it against its own clock.
-	t.Run("a future start becomes a positive offset", func(t *testing.T) {
+	t.Run("default listing is seven days", func(t *testing.T) {
 		t.Parallel()
 
 		input := valid
-		input.AvailableFrom = now.Add(10 * time.Minute)
-		input.ExpiresAt = now.Add(40 * time.Minute)
-
+		input.ExpiresAt = time.Time{}
 		draft, err := domain.NewSpot(input, now)
 		if err != nil {
 			t.Fatalf("NewSpot: %v", err)
 		}
-
-		if draft.AvailableIn != 10*time.Minute {
-			t.Errorf("AvailableIn = %v, want 10m", draft.AvailableIn)
+		if draft.ExpiresIn != domain.ListingDuration {
+			t.Errorf("ExpiresIn = %v, want ListingDuration", draft.ExpiresIn)
 		}
-		if draft.ExpiresIn != 40*time.Minute {
-			t.Errorf("ExpiresIn = %v, want 40m", draft.ExpiresIn)
+		if !draft.AutoCancelNoShow {
+			t.Error("AutoCancelNoShow should default true")
+		}
+	})
+
+	t.Run("preferred departure is kept", func(t *testing.T) {
+		t.Parallel()
+		pref := now.Add(2 * time.Hour)
+		input := valid
+		input.ExpiresAt = now.Add(domain.ListingDuration)
+		input.PreferredDepartureAt = &pref
+		draft, err := domain.NewSpot(input, now)
+		if err != nil {
+			t.Fatalf("NewSpot: %v", err)
+		}
+		if draft.PreferredDepartureAt == nil || !draft.PreferredDepartureAt.Equal(pref.UTC()) {
+			t.Errorf("PreferredDepartureAt = %v, want %v", draft.PreferredDepartureAt, pref.UTC())
 		}
 	})
 
@@ -326,19 +336,17 @@ func TestNewSpotValidation(t *testing.T) {
 			func(in *domain.NewSpotInput) { in.ExpiresAt = now.Add(30 * time.Second) }, "expires_at",
 		},
 		"window too long": {
-			func(in *domain.NewSpotInput) { in.ExpiresAt = now.Add(25 * time.Hour) }, "expires_at",
+			func(in *domain.NewSpotInput) { in.ExpiresAt = now.Add(8 * 24 * time.Hour) }, "expires_at",
 		},
 		"expiry in the past": {
 			func(in *domain.NewSpotInput) { in.ExpiresAt = now.Add(-time.Hour) }, "expires_at",
 		},
-		"start more than a day away": {
+		"preferred after listing": {
 			func(in *domain.NewSpotInput) {
-				in.AvailableFrom = now.Add(25 * time.Hour)
-				in.ExpiresAt = now.Add(26 * time.Hour)
-			}, "available_from",
-		},
-		"missing expiry": {
-			func(in *domain.NewSpotInput) { in.ExpiresAt = time.Time{} }, "expires_at",
+				in.ExpiresAt = now.Add(2 * time.Hour)
+				p := now.Add(3 * time.Hour)
+				in.PreferredDepartureAt = &p
+			}, "preferred_departure_at",
 		},
 		"notes too long": {
 			func(in *domain.NewSpotInput) { in.Notes = longString(domain.MaxNotesLength + 1) }, "notes",
@@ -447,7 +455,7 @@ func TestApplySpotUpdateRejectsInvalidPriceAndNotes(t *testing.T) {
 	}
 }
 
-func TestApplySpotUpdateRebuildsTheWindow(t *testing.T) {
+func TestApplySpotUpdateExtendsListing(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
@@ -457,17 +465,12 @@ func TestApplySpotUpdateRebuildsTheWindow(t *testing.T) {
 		AvailableFrom: now, ExpiresAt: now.Add(30 * time.Minute),
 	}
 
-	availableFrom := now.Add(5 * time.Minute)
 	expiresAt := now.Add(45 * time.Minute)
 	update, err := domain.ApplySpotUpdate(existing, domain.UpdateSpotInput{
-		AvailableFrom: &availableFrom,
-		ExpiresAt:     &expiresAt,
+		ExpiresAt: &expiresAt,
 	}, now)
 	if err != nil {
 		t.Fatalf("ApplySpotUpdate: %v", err)
-	}
-	if update.AvailableIn == nil || *update.AvailableIn != 5*time.Minute {
-		t.Errorf("AvailableIn = %v, want 5m", update.AvailableIn)
 	}
 	if update.ExpiresIn == nil || *update.ExpiresIn != 45*time.Minute {
 		t.Errorf("ExpiresIn = %v, want 45m", update.ExpiresIn)

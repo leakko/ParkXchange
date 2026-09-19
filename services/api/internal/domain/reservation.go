@@ -2,14 +2,23 @@ package domain
 
 import "time"
 
-// ReconfirmWindow is how close the handover has to be before a claim is born
-// confirmed and a pending claim must be reconfirmed.
-//
-// Advance booking lets a driver take a spot off the map for up to a day. The
-// handshake exists so that a claim made at breakfast about an 18:00 handover
-// is still a living intention at 17:45. Inside this window the two sides are
-// about to meet, so the extra step is friction without a corresponding gain.
+// ReconfirmWindow is legacy advance-booking handshake. Kept until the
+// reservation adapters drop reconfirm columns; new product path uses the
+// ready/arrived clocks below.
 const ReconfirmWindow = 15 * time.Minute
+
+// NoShowGrace is the post-exchange courtesy window once a party has marked
+// ready (driver no-show after owner ready, or owner no-show after driver
+// arrived — see use cases).
+const NoShowGrace = 10 * time.Minute
+
+// OwnerSafetyNet cancels an unresolved reservation this long after
+// exchange_at when nobody has completed the handshake.
+const OwnerSafetyNet = 60 * time.Minute
+
+// DriverFairCancelWindow: cancelling with at least this much time left before
+// exchange_at releases the deposit; later than that forfeits to the owner.
+const DriverFairCancelWindow = 30 * time.Minute
 
 // SignupGrantCents is credited to every new account so a first claim is
 // possible. A new user's balance is otherwise zero, and a hold against zero
@@ -63,24 +72,30 @@ func (s ReservationStatus) Terminal() bool {
 	return len(reservationTransitions[s]) == 0
 }
 
-// Reservation is a claim on a parking spot for a specific window.
-//
-// StartsAt and EndsAt are a copy of the spot's availability window at the
-// moment of the claim, not a live join. The driver agreed to that window; a
-// later edit of the spot must not rewrite it. They are also what the
-// per-driver overlap exclusion is written against, and a constraint cannot
-// reach into another table.
+// Reservation is an accepted offer for a concrete exchange_at.
 type Reservation struct {
 	ID       string
 	SpotID   string
 	DriverID string
 	OwnerID  string
+	OfferID  string
 
 	Status     ReservationStatus
 	PriceCents int
 
-	StartsAt      time.Time
-	EndsAt        time.Time
+	// ExchangeAt is the agreed handover instant (copied from the offer).
+	ExchangeAt time.Time
+
+	// StartsAt/EndsAt remain for adapters during migration; StartsAt mirrors
+	// ExchangeAt, EndsAt is a short post-exchange bound for overlap indexes.
+	StartsAt time.Time
+	EndsAt   time.Time
+
+	OwnerReadyAt    *time.Time
+	DriverArrivedAt *time.Time
+	DriverReadyAt   *time.Time
+	DriverVehicleID string
+
 	ReconfirmBy   time.Time
 	ReconfirmedAt *time.Time
 
@@ -116,13 +131,44 @@ func (r Reservation) CanCancel() bool {
 	return r.Status.Live()
 }
 
-// FairCancel reports whether walking away now should release the deposit
-// rather than forfeit it.
-//
-// Before the window opens the driver has not yet failed to show up; after it
-// opens, cancelling is a no-show by another name.
+// exchangeInstant is the agreed handover time, preferring ExchangeAt.
+func (r Reservation) exchangeInstant() time.Time {
+	if !r.ExchangeAt.IsZero() {
+		return r.ExchangeAt
+	}
+	return r.StartsAt
+}
+
+// FairCancel reports whether a driver cancel at `now` should release the
+// deposit (≥ DriverFairCancelWindow before exchange_at).
 func (r Reservation) FairCancel(now time.Time) bool {
-	return now.Before(r.StartsAt)
+	return r.exchangeInstant().Sub(now) >= DriverFairCancelWindow
+}
+
+// DriverNoShowDeadline is when the driver must have marked ready after the
+// owner marked ready: max(ownerReady, exchangeAt) + NoShowGrace.
+func DriverNoShowDeadline(ownerReady, exchangeAt time.Time) time.Time {
+	start := exchangeAt
+	if ownerReady.After(start) {
+		start = ownerReady
+	}
+	return start.Add(NoShowGrace)
+}
+
+// OwnerNoShowDeadline is when the owner must have marked ready after the
+// driver signalled arrival, once exchange_at has passed:
+// max(driverArrived, exchangeAt) + NoShowGrace.
+func OwnerNoShowDeadline(driverArrived, exchangeAt time.Time) time.Time {
+	start := exchangeAt
+	if driverArrived.After(start) {
+		start = driverArrived
+	}
+	return start.Add(NoShowGrace)
+}
+
+// SafetyNetDeadline is exchange_at + OwnerSafetyNet.
+func SafetyNetDeadline(exchangeAt time.Time) time.Time {
+	return exchangeAt.Add(OwnerSafetyNet)
 }
 
 // NeedsReconfirm reports whether a claim made at `now` for a handover at
@@ -140,10 +186,6 @@ func InitialStatus(startsAt, now time.Time) ReservationStatus {
 }
 
 // ReconfirmDeadline is when a pending reservation must be reconfirmed.
-//
-// For a claim born confirmed the deadline is still recorded (the column is
-// NOT NULL) and equals startsAt, which satisfies reconfirm_by <= starts_at
-// without inventing a time in the past.
 func ReconfirmDeadline(startsAt, now time.Time) time.Time {
 	deadline := startsAt.Add(-ReconfirmWindow)
 	if !deadline.After(now) {

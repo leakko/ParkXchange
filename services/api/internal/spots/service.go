@@ -166,23 +166,8 @@ func (s *Service) Update(ctx context.Context, spotID string, viewer domain.Claim
 		PriceCents: patch.PriceCents,
 		Notes:      patch.Notes,
 	}
-	if patch.AvailableIn != nil || patch.ExpiresIn != nil {
-		availableFrom := spot.AvailableFrom
-		expiresAt := spot.ExpiresAt
-		if patch.AvailableIn != nil {
-			availableFrom = now.Add(*patch.AvailableIn)
-		}
-		if patch.ExpiresIn != nil {
-			if patch.AvailableIn != nil {
-				// Both set: ExpiresIn is already lead time + duration from now.
-				expiresAt = now.Add(*patch.ExpiresIn)
-			} else {
-				// Duration alone: ExpiresIn is the offer length from the
-				// (unchanged) start, not from now.
-				expiresAt = availableFrom.Add(*patch.ExpiresIn)
-			}
-		}
-		in.AvailableFrom = &availableFrom
+	if patch.ExpiresIn != nil {
+		expiresAt := now.Add(*patch.ExpiresIn)
 		in.ExpiresAt = &expiresAt
 	}
 
@@ -192,11 +177,10 @@ func (s *Service) Update(ctx context.Context, spotID string, viewer domain.Claim
 	}
 
 	storePatch := SpotPatch{
-		AvailableIn: validated.AvailableIn,
-		ExpiresIn:   validated.ExpiresIn,
-		PriceCents:  validated.PriceCents,
-		Notes:       validated.Notes,
-		VehicleID:   patch.VehicleID,
+		ExpiresIn:  validated.ExpiresIn,
+		PriceCents: validated.PriceCents,
+		Notes:      validated.Notes,
+		VehicleID:  patch.VehicleID,
 	}
 
 	updated, err := s.store.UpdateAvailableSpot(ctx, spotID, viewer.UserID, storePatch)

@@ -19,17 +19,23 @@ const (
 	// client that sends cents where it meant euros.
 	MaxPriceCents = 2000
 
-	// MinDuration stops a spot that expires before anyone could drive to it.
+	// MinDuration is the shortest listing still worth publishing. Kept small
+	// so tests and demos can use short windows; production create defaults to
+	// ListingDuration.
 	MinDuration = 2 * time.Minute
 
-	// MaxDuration keeps the table from filling with stale offers that nobody
-	// ever cancels.
-	MaxDuration = 24 * time.Hour
+	// ListingDuration is how long a published spot stays on the map unless
+	// withdrawn or accepted. The product anchors exchanges to concrete
+	// dates, not to "minutes remaining", but the listing itself still ends.
+	ListingDuration = 7 * 24 * time.Hour
 
-	// MaxLeadTime is how far ahead an offer may be announced. Past a day the
-	// promise that a public street space will still be there is not one this
-	// product can keep.
-	MaxLeadTime = 24 * time.Hour
+	// MaxDuration is the upper bound on listed_until - created_at.
+	MaxDuration = ListingDuration
+
+	// MaxLeadTime is how far ahead a preferred departure may be set. It
+	// matches the listing lifetime: an exchange cannot be preferred after
+	// the listing has ended.
+	MaxLeadTime = ListingDuration
 
 	MaxNotesLength       = 280
 	MaxAddressHintLength = 160
@@ -133,11 +139,26 @@ type Spot struct {
 	AddressHint   string
 	Size          SpotSize
 	Status        SpotStatus
-	PriceCents    int
-	Notes         string
+	PriceCents int
+	Notes      string
+
+	// PreferredDepartureAt is an optional hint for seekers. Offers may propose
+	// any exchange_at up to ListedUntil; this is not a hard constraint.
+	PreferredDepartureAt *time.Time
+
+	// AutoCancelNoShow: after owner ready and the post-exchange no-show
+	// window, cancel automatically (forfeit to owner) when true; otherwise
+	// the owner must cancel manually after the same courtesy floor.
+	AutoCancelNoShow bool
+
+	// AvailableFrom is retained for adapters until the schema drops it; the
+	// product does not surface "when the car was parked". New spots start
+	// immediately (offset zero).
 	AvailableFrom time.Time
-	ExpiresAt     time.Time
-	CreatedAt     time.Time
+
+	// ExpiresAt is the listing end (listed_until). Not the exchange time.
+	ExpiresAt time.Time
+	CreatedAt time.Time
 }
 
 // Expired reports whether the offer has run out, independently of the stored
@@ -220,15 +241,18 @@ type SpotDraft struct {
 	PriceCents  int
 	Notes       string
 
-	// AvailableIn is how long until the offer starts. Zero means immediately.
+	PreferredDepartureAt *time.Time
+	AutoCancelNoShow     bool
+
+	// AvailableIn is always zero for new listings (immediate). Kept so the
+	// postgres insert can still stamp available_from = now() until dropped.
 	AvailableIn time.Duration
 
-	// ExpiresIn is how long until the offer ends, measured from the same
-	// instant as AvailableIn.
+	// ExpiresIn is how long until the listing ends, from the DB clock.
 	ExpiresIn time.Duration
 }
 
-// NewSpotInput is an offer that has not been validated.
+// NewSpotInput is a listing that has not been validated.
 type NewSpotInput struct {
 	OwnerID     string
 	VehicleID   string
@@ -239,17 +263,21 @@ type NewSpotInput struct {
 	PriceCents  int
 	Notes       string
 
-	// AvailableFrom is optional; zero means "right now".
-	AvailableFrom time.Time
-	ExpiresAt     time.Time
+	// PreferredDepartureAt is optional.
+	PreferredDepartureAt *time.Time
+
+	// AutoCancelNoShow defaults to true when the pointer is nil.
+	AutoCancelNoShow *bool
+
+	// ExpiresAt is optional; zero means now + ListingDuration.
+	ExpiresAt time.Time
 }
 
-// NewSpot validates an offer and returns the draft to persist.
+// NewSpot validates a listing and returns the draft to persist.
 //
 // now is passed in rather than read from the clock so the rules are testable
-// without sleeping and without a package-level clock variable that tests would
-// have to mutate. Note that it is used only to check the window's shape, never
-// to stamp a timestamp that gets stored: see SpotDraft for why.
+// without sleeping. Offsets are persisted relative to the database clock; see
+// SpotDraft.
 func NewSpot(in NewSpotInput, now time.Time) (SpotDraft, error) {
 	fields := make(map[string]string)
 
@@ -282,29 +310,40 @@ func NewSpot(in NewSpotInput, now time.Time) (SpotDraft, error) {
 		fields["address_hint"] = "must be at most 160 characters"
 	}
 
-	availableFrom := in.AvailableFrom
-	if availableFrom.IsZero() {
-		availableFrom = now
-	}
-
-	if availableFrom.Sub(now) > MaxLeadTime {
-		fields["available_from"] = "must be at most 24 hours from now"
+	expiresAt := in.ExpiresAt
+	if expiresAt.IsZero() {
+		expiresAt = now.Add(ListingDuration)
 	}
 
 	switch {
-	case in.ExpiresAt.IsZero():
-		fields["expires_at"] = "is required"
-	case in.ExpiresAt.Sub(availableFrom) < MinDuration:
-		fields["expires_at"] = "must be at least 2 minutes after the spot becomes available"
-	case in.ExpiresAt.Sub(availableFrom) > MaxDuration:
-		fields["expires_at"] = "must be at most 24 hours after the spot becomes available"
-	case !in.ExpiresAt.After(now):
+	case expiresAt.Sub(now) < MinDuration:
+		fields["expires_at"] = "must be at least 2 minutes from now"
+	case expiresAt.Sub(now) > MaxDuration:
+		fields["expires_at"] = "must be at most 7 days from now"
+	case !expiresAt.After(now):
 		fields["expires_at"] = "must be in the future"
 	}
 
+	var preferred *time.Time
+	if in.PreferredDepartureAt != nil && !in.PreferredDepartureAt.IsZero() {
+		p := in.PreferredDepartureAt.UTC()
+		preferred = &p
+		switch {
+		case !p.After(now):
+			fields["preferred_departure_at"] = "must be in the future"
+		case p.After(expiresAt):
+			fields["preferred_departure_at"] = "must be at or before the listing ends"
+		case p.Sub(now) > MaxLeadTime:
+			fields["preferred_departure_at"] = "must be at most 7 days from now"
+		}
+	}
+
+	autoCancel := true
+	if in.AutoCancelNoShow != nil {
+		autoCancel = *in.AutoCancelNoShow
+	}
+
 	if in.OwnerID == "" {
-		// Not a client-facing field: reaching here without an owner means the
-		// caller skipped authentication, which is a programming error.
 		return SpotDraft{}, Internal(Invalid("owner_required", "a spot needs an owner"))
 	}
 
@@ -317,52 +356,49 @@ func NewSpot(in NewSpotInput, now time.Time) (SpotDraft, error) {
 		return SpotDraft{}, InvalidFields(fields)
 	}
 
-	// Offsets, not timestamps. A negative AvailableIn would mean the offer
-	// started in the past, which is harmless but pointless, so it is clamped
-	// to "immediately".
-	availableIn := availableFrom.Sub(now)
-	if availableIn < 0 {
-		availableIn = 0
-	}
-
 	return SpotDraft{
-		OwnerID:     in.OwnerID,
-		VehicleID:   vehicleID,
-		Lon:         in.Lon,
-		Lat:         in.Lat,
-		AddressHint: addressHint,
-		Size:        size,
-		PriceCents:  in.PriceCents,
-		Notes:       notes,
-		AvailableIn: availableIn,
-		ExpiresIn:   in.ExpiresAt.Sub(now),
+		OwnerID:              in.OwnerID,
+		VehicleID:            vehicleID,
+		Lon:                  in.Lon,
+		Lat:                  in.Lat,
+		AddressHint:          addressHint,
+		Size:                 size,
+		PriceCents:           in.PriceCents,
+		Notes:                notes,
+		PreferredDepartureAt: preferred,
+		AutoCancelNoShow:     autoCancel,
+		AvailableIn:          0,
+		ExpiresIn:            expiresAt.Sub(now),
 	}, nil
 }
 
-// UpdateSpotInput is a partial edit to an available offer.
+// UpdateSpotInput is a partial edit to an available listing.
 //
 // Location and size_class are intentionally absent: moving or resizing a
 // published offer is out of scope for this delivery.
 type UpdateSpotInput struct {
-	AvailableFrom *time.Time
-	ExpiresAt     *time.Time
-	PriceCents    *int
-	Notes         *string
+	PreferredDepartureAt *time.Time
+	ClearPreferred       bool
+	ExpiresAt            *time.Time
+	PriceCents           *int
+	Notes                *string
+	AutoCancelNoShow     *bool
 }
 
 // SpotUpdate is the validated change set ready to persist.
 type SpotUpdate struct {
-	AvailableIn *time.Duration
-	ExpiresIn   *time.Duration
-	PriceCents  *int
-	Notes       *string
+	PreferredDepartureAt *time.Time
+	ClearPreferred       bool
+	ExpiresIn            *time.Duration
+	PriceCents           *int
+	Notes                *string
+	AutoCancelNoShow     *bool
 }
 
 // ApplySpotUpdate validates a partial edit against an existing available spot.
 //
 // Ownership and status checks belong in the use case: this only shapes the
-// fields that may change. A missing window half is filled from the existing
-// row so a caller can lengthen the offer without restating the start.
+// fields that may change.
 func ApplySpotUpdate(existing Spot, in UpdateSpotInput, now time.Time) (SpotUpdate, error) {
 	fields := make(map[string]string)
 	out := SpotUpdate{}
@@ -387,37 +423,37 @@ func ApplySpotUpdate(existing Spot, in UpdateSpotInput, now time.Time) (SpotUpda
 		}
 	}
 
-	if in.AvailableFrom != nil || in.ExpiresAt != nil {
-		availableFrom := existing.AvailableFrom
-		expiresAt := existing.ExpiresAt
-		if in.AvailableFrom != nil {
-			availableFrom = *in.AvailableFrom
-		}
-		if in.ExpiresAt != nil {
-			expiresAt = *in.ExpiresAt
-		}
+	if in.AutoCancelNoShow != nil {
+		out.AutoCancelNoShow = in.AutoCancelNoShow
+	}
 
-		if availableFrom.Sub(now) > MaxLeadTime {
-			fields["available_from"] = "must be at most 24 hours from now"
-		}
-
+	expiresAt := existing.ExpiresAt
+	if in.ExpiresAt != nil {
+		expiresAt = *in.ExpiresAt
 		switch {
-		case expiresAt.IsZero():
-			fields["expires_at"] = "is required"
-		case expiresAt.Sub(availableFrom) < MinDuration:
-			fields["expires_at"] = "must be at least 2 minutes after the spot becomes available"
-		case expiresAt.Sub(availableFrom) > MaxDuration:
-			fields["expires_at"] = "must be at most 24 hours after the spot becomes available"
+		case expiresAt.Sub(now) < MinDuration:
+			fields["expires_at"] = "must be at least 2 minutes from now"
+		case expiresAt.Sub(now) > MaxDuration:
+			fields["expires_at"] = "must be at most 7 days from now"
 		case !expiresAt.After(now):
 			fields["expires_at"] = "must be in the future"
 		default:
-			availableIn := availableFrom.Sub(now)
-			if availableIn < 0 {
-				availableIn = 0
-			}
 			expiresIn := expiresAt.Sub(now)
-			out.AvailableIn = &availableIn
 			out.ExpiresIn = &expiresIn
+		}
+	}
+
+	if in.ClearPreferred {
+		out.ClearPreferred = true
+	} else if in.PreferredDepartureAt != nil {
+		p := in.PreferredDepartureAt.UTC()
+		switch {
+		case !p.After(now):
+			fields["preferred_departure_at"] = "must be in the future"
+		case p.After(expiresAt):
+			fields["preferred_departure_at"] = "must be at or before the listing ends"
+		default:
+			out.PreferredDepartureAt = &p
 		}
 	}
 
