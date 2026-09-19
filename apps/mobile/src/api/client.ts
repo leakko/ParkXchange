@@ -8,6 +8,8 @@ export type SpotFeature = components["schemas"]["SpotFeature"];
 export type SessionResponse = components["schemas"]["SessionResponse"];
 export type TicketResponse = components["schemas"]["TicketResponse"];
 export type ReservationResponse = components["schemas"]["ReservationResponse"];
+export type OfferResponse = components["schemas"]["OfferResponse"];
+export type CreateOfferRequest = components["schemas"]["CreateOfferRequest"];
 export type CreateSpotRequest = components["schemas"]["CreateSpotRequest"];
 export type UpdateSpotRequest = components["schemas"]["UpdateSpotRequest"];
 export type UserResponse = components["schemas"]["UserResponse"];
@@ -107,6 +109,14 @@ export async function createSpot(body: CreateSpotRequest): Promise<SpotFeature> 
     method: "POST",
     body: JSON.stringify(body),
   });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as SpotFeature;
+}
+
+export async function getSpot(id: string): Promise<SpotFeature> {
+  const res = await apiFetch(`/v1/spots/${id}`);
   if (!res.ok) {
     throw await parseError(res);
   }
@@ -235,13 +245,48 @@ export function spotVehiclePhotoUrl(spotId: string): string {
   return `${apiUrl}/v1/spots/${spotId}/vehicle/photo`;
 }
 
-export async function claimSpot(spotId: string): Promise<ReservationResponse> {
-  const res = await apiFetch(`/v1/spots/${spotId}/reservations`, { method: "POST" });
+export async function createOffer(
+  spotId: string,
+  body: CreateOfferRequest,
+): Promise<OfferResponse> {
+  const res = await apiFetch(`/v1/spots/${spotId}/offers`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
   if (!res.ok) {
     throw await parseError(res);
   }
+  return (await res.json()) as OfferResponse;
+}
+
+export async function listOffers(spotId: string): Promise<OfferResponse[]> {
+  const res = await apiFetch(`/v1/spots/${spotId}/offers`);
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as OfferResponse[];
+}
+
+async function postOfferAction(id: string, action: string): Promise<Response> {
+  const res = await apiFetch(`/v1/offers/${id}/${action}`, { method: "POST" });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return res;
+}
+
+export async function acceptOffer(id: string): Promise<ReservationResponse> {
+  const res = await postOfferAction(id, "accept");
   return (await res.json()) as ReservationResponse;
 }
+
+export const rejectOffer = async (id: string): Promise<void> => {
+  await postOfferAction(id, "reject");
+};
+
+export const withdrawOffer = async (id: string): Promise<void> => {
+  await postOfferAction(id, "withdraw");
+};
 
 export async function fetchActiveReservations(): Promise<ReservationResponse[]> {
   const res = await apiFetch("/v1/reservations/active");
@@ -258,6 +303,9 @@ async function postReservationAction(id: string, action: string): Promise<void> 
   }
 }
 
-export const reconfirmReservation = (id: string) => postReservationAction(id, "reconfirm");
 export const cancelReservation = (id: string) => postReservationAction(id, "cancel");
-export const completeReservation = (id: string) => postReservationAction(id, "complete");
+export const ownerReady = (id: string) => postReservationAction(id, "owner-ready");
+export const driverArrived = (id: string) =>
+  postReservationAction(id, "driver-arrived");
+export const driverReady = (id: string) =>
+  postReservationAction(id, "driver-ready");

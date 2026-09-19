@@ -16,7 +16,7 @@ export function VehiclePickModal({ visible, vehicles, onPick, onCancel }: Props)
       <Pressable style={styles.backdrop} onPress={onCancel}>
         <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
           <Text style={styles.title}>Which vehicle?</Text>
-          <Text style={styles.sub}>Claimers will see this car at the spot.</Text>
+          <Text style={styles.sub}>Drivers will see this car at the exchange.</Text>
           {vehicles.map((v) => (
             <Pressable
               key={v.id}

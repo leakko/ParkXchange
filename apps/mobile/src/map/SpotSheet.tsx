@@ -1,15 +1,20 @@
-import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
-import { forwardRef, useMemo } from "react";
+import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { forwardRef, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
-import type { ReservationResponse, SpotFeature } from "@/api/client";
+import type {
+  ReservationResponse,
+  SpotFeature,
+  VehicleResponse,
+} from "@/api/client";
 import { spotVehiclePhotoUrl } from "@/api/client";
 import { useAuthImage } from "@/hooks/useAuthImage";
 import { openNavigation } from "@/lib/navigation";
@@ -17,30 +22,52 @@ import { openNavigation } from "@/lib/navigation";
 type Props = {
   spot: SpotFeature | null;
   active: ReservationResponse | null;
+  vehicles: VehicleResponse[];
+  isOwner: boolean;
+  isDriver: boolean;
   busy?: boolean;
-  onClaim: (spot: SpotFeature) => void;
-  onReconfirm: () => void;
-  onComplete: () => void;
+  onMakeOffer: (
+    spot: SpotFeature,
+    vehicleId: string,
+    exchangeAt: string,
+    amountCents: number,
+  ) => Promise<void>;
+  onOwnerReady: () => void;
+  onDriverArrived: () => void;
+  onDriverReady: () => void;
   onCancel: () => void;
   onEdit: (spot: SpotFeature) => void;
   onWithdraw: (spot: SpotFeature) => void;
 };
 
+function localDateTimeInput(value: Date): string {
+  const offset = value.getTimezoneOffset() * 60_000;
+  return new Date(value.getTime() - offset).toISOString().slice(0, 16);
+}
+
 export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
   {
     spot,
     active,
+    vehicles,
+    isOwner,
+    isDriver,
     busy,
-    onClaim,
-    onReconfirm,
-    onComplete,
+    onMakeOffer,
+    onOwnerReady,
+    onDriverArrived,
+    onDriverReady,
     onCancel,
     onEdit,
     onWithdraw,
   },
   ref,
 ) {
-  const snapPoints = useMemo(() => ["36%", "62%"], []);
+  const snapPoints = useMemo(() => ["36%", "82%"], []);
+  const [makingOffer, setMakingOffer] = useState(false);
+  const [vehicleId, setVehicleId] = useState("");
+  const [exchangeAt, setExchangeAt] = useState("");
+  const [amount, setAmount] = useState("");
   const price = spot ? (spot.properties.price_cents / 100).toFixed(2) : "";
   const coords = spot?.geometry.coordinates;
   const isActiveForSpot =
@@ -52,6 +79,29 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
       : null;
   const { uri: photoUri } = useAuthImage(photoUrl);
 
+  useEffect(() => {
+    setMakingOffer(false);
+    setVehicleId(vehicles[0]?.id ?? "");
+    setAmount(price);
+    const suggested = spot?.properties.preferred_departure_at
+      ? new Date(spot.properties.preferred_departure_at)
+      : new Date(Date.now() + 60 * 60 * 1000);
+    setExchangeAt(localDateTimeInput(suggested));
+  }, [price, spot, vehicles]);
+
+  const submitOffer = async () => {
+    if (!spot || !vehicleId) {
+      return;
+    }
+    const parsedDate = new Date(exchangeAt);
+    const euros = Number.parseFloat(amount);
+    if (!Number.isFinite(parsedDate.getTime()) || !Number.isFinite(euros) || euros < 0) {
+      return;
+    }
+    await onMakeOffer(spot, vehicleId, parsedDate.toISOString(), Math.round(euros * 100));
+    setMakingOffer(false);
+  };
+
   return (
     <BottomSheet
       ref={ref}
@@ -61,7 +111,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
       backgroundStyle={styles.sheet}
       handleIndicatorStyle={styles.handle}
     >
-      <BottomSheetView style={styles.body}>
+      <BottomSheetScrollView contentContainerStyle={styles.body}>
         {spot ? (
           <>
             <Text style={styles.title}>{spot.properties.owner_name}</Text>
@@ -129,41 +179,99 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
               {!spot.properties.is_mine &&
               !isActiveForSpot &&
               spot.properties.status === "available" ? (
-                <Pressable
-                  style={styles.primary}
-                  disabled={busy}
-                  onPress={() => onClaim(spot)}
-                >
-                  {busy ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.primaryText}>Claim spot</Text>
-                  )}
-                </Pressable>
+                makingOffer ? (
+                  <View style={styles.offerForm}>
+                    <Text style={styles.formLabel}>Tu vehículo</Text>
+                    {vehicles.map((candidate) => (
+                      <Pressable
+                        key={candidate.id}
+                        style={[
+                          styles.vehicleChoice,
+                          candidate.id === vehicleId && styles.vehicleChoiceActive,
+                        ]}
+                        onPress={() => setVehicleId(candidate.id)}
+                      >
+                        <Text style={styles.secondaryText}>
+                          {candidate.plate} · {candidate.make_model}
+                        </Text>
+                      </Pressable>
+                    ))}
+                    <Text style={styles.formLabel}>Fecha y hora del intercambio</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={exchangeAt}
+                      onChangeText={setExchangeAt}
+                      placeholder="2026-09-19T18:00"
+                      placeholderTextColor="#7A93A0"
+                      autoCapitalize="none"
+                    />
+                    <Text style={styles.formLabel}>Oferta (€)</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={amount}
+                      onChangeText={setAmount}
+                      keyboardType="decimal-pad"
+                      placeholderTextColor="#7A93A0"
+                    />
+                    <Pressable
+                      style={styles.primary}
+                      disabled={busy || !vehicleId}
+                      onPress={() => void submitOffer()}
+                    >
+                      {busy ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={styles.primaryText}>Enviar oferta</Text>
+                      )}
+                    </Pressable>
+                    <Pressable onPress={() => setMakingOffer(false)}>
+                      <Text style={styles.cancelText}>Cancelar</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Pressable
+                    style={styles.primary}
+                    disabled={busy}
+                    onPress={() => setMakingOffer(true)}
+                  >
+                    <Text style={styles.primaryText}>Hacer oferta</Text>
+                  </Pressable>
+                )
               ) : null}
 
               {isActiveForSpot ? (
                 <>
-                  <Pressable
-                    style={styles.primary}
-                    disabled={busy}
-                    onPress={onReconfirm}
-                  >
-                    <Text style={styles.primaryText}>Reconfirm</Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.secondary}
-                    disabled={busy}
-                    onPress={onComplete}
-                  >
-                    <Text style={styles.secondaryText}>Complete handover</Text>
-                  </Pressable>
+                  <Text style={styles.exchangeTime}>
+                    Intercambio: {new Date(active.exchange_at).toLocaleString()}
+                  </Text>
+                  {isOwner && !active.owner_ready_at ? (
+                    <Pressable style={styles.primary} disabled={busy} onPress={onOwnerReady}>
+                      <Text style={styles.primaryText}>Listo para salir</Text>
+                    </Pressable>
+                  ) : null}
+                  {isDriver && !active.driver_arrived_at ? (
+                    <Pressable
+                      style={styles.secondary}
+                      disabled={busy}
+                      onPress={onDriverArrived}
+                    >
+                      <Text style={styles.secondaryText}>He llegado</Text>
+                    </Pressable>
+                  ) : null}
+                  {isDriver &&
+                  !!active.owner_ready_at &&
+                  !!active.driver_arrived_at &&
+                  !active.driver_ready_at ? (
+                    <Pressable style={styles.primary} disabled={busy} onPress={onDriverReady}>
+                      <Text style={styles.primaryText}>Listo</Text>
+                    </Pressable>
+                  ) : null}
                   <Pressable
                     style={styles.danger}
                     disabled={busy}
                     onPress={onCancel}
                   >
-                    <Text style={styles.dangerText}>Cancel claim</Text>
+                    <Text style={styles.dangerText}>Cancelar intercambio</Text>
                   </Pressable>
                 </>
               ) : null}
@@ -183,7 +291,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
         ) : (
           <View />
         )}
-      </BottomSheetView>
+      </BottomSheetScrollView>
     </BottomSheet>
   );
 });
@@ -209,6 +317,27 @@ const styles = StyleSheet.create({
   },
   window: { color: "#7A93A0", fontSize: 12, marginTop: 8 },
   actions: { marginTop: 14, gap: 8 },
+  offerForm: { gap: 8 },
+  formLabel: { color: "#9DB4C0", fontSize: 12, marginTop: 4 },
+  input: {
+    backgroundColor: "#0F2740",
+    borderWidth: 1,
+    borderColor: "#1F3A56",
+    borderRadius: 10,
+    color: "#F4F7FA",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  vehicleChoice: {
+    backgroundColor: "#16324F",
+    borderWidth: 1,
+    borderColor: "#1F3A56",
+    borderRadius: 10,
+    padding: 10,
+  },
+  vehicleChoiceActive: { borderColor: "#1B9AAA" },
+  cancelText: { color: "#9DB4C0", textAlign: "center", paddingVertical: 8 },
+  exchangeTime: { color: "#F4F7FA", fontSize: 14, fontWeight: "600" },
   primary: {
     backgroundColor: "#1B9AAA",
     borderRadius: 12,

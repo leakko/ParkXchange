@@ -6,31 +6,30 @@ import {
   Alert,
   Pressable,
   ScrollView,
+  Switch,
   Text,
   TextInput,
   View,
 } from "react-native";
 
 import {
+  acceptOffer,
   fetchMySpots,
+  listOffers,
   listVehicles,
+  rejectOffer,
   type SpotFeature,
   updateSpot,
   withdrawSpot,
 } from "@/api/client";
 import { accountStyles } from "@/account/theme";
 import { useDevSession } from "@/hooks/useDevSession";
+import { matchesPreferredMinute } from "@/map/exchange";
 
-/** Remaining offer window relative to now, for form defaults only. */
-function remainingWindow(spot: SpotFeature, now = Date.now()) {
-  const expires = new Date(spot.properties.listed_until).getTime();
-  const availableIn = 0;
-  const start = now;
-  const duration = Math.max(1, Math.ceil((expires - start) / 60_000));
-  return {
-    availableInMinutes: String(availableIn),
-    durationMinutes: String(duration),
-  };
+function localDateTimeInput(value: string): string {
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
 export default function EditSpotScreen() {
@@ -49,18 +48,20 @@ export default function EditSpotScreen() {
     queryFn: listVehicles,
     enabled: ready,
   });
+  const offers = useQuery({
+    queryKey: ["offers", id],
+    queryFn: () => listOffers(id),
+    enabled: ready && !!id,
+  });
 
   const spot = spots.data?.features.find((f) => String(f.id) === id);
 
   const [price, setPrice] = useState("");
   const [notes, setNotes] = useState("");
   const [vehicleId, setVehicleId] = useState("");
-  const [durationMinutes, setDurationMinutes] = useState("");
-  const [availableInMinutes, setAvailableInMinutes] = useState("");
-  const [windowBaseline, setWindowBaseline] = useState<{
-    durationMinutes: string;
-    availableInMinutes: string;
-  } | null>(null);
+  const [hasPreferredTime, setHasPreferredTime] = useState(false);
+  const [preferredTime, setPreferredTime] = useState("");
+  const [autoCancel, setAutoCancel] = useState(true);
 
   useEffect(() => {
     if (!spot) {
@@ -69,10 +70,13 @@ export default function EditSpotScreen() {
     setPrice((spot.properties.price_cents / 100).toFixed(2));
     setNotes(spot.properties.notes ?? "");
     setVehicleId(spot.properties.vehicle.id);
-    const window = remainingWindow(spot);
-    setDurationMinutes(window.durationMinutes);
-    setAvailableInMinutes(window.availableInMinutes);
-    setWindowBaseline(window);
+    setHasPreferredTime(!!spot.properties.preferred_departure_at);
+    setPreferredTime(
+      spot.properties.preferred_departure_at
+        ? localDateTimeInput(spot.properties.preferred_departure_at)
+        : localDateTimeInput(new Date(Date.now() + 60 * 60 * 1000).toISOString()),
+    );
+    setAutoCancel(spot.properties.auto_cancel_no_show);
   }, [spot]);
 
   const save = useMutation({
@@ -86,20 +90,16 @@ export default function EditSpotScreen() {
       }
       const body: Parameters<typeof updateSpot>[1] = {
         price_cents: Math.round(euros * 100),
+        auto_cancel_no_show: autoCancel,
       };
-      const windowChanged =
-        windowBaseline != null &&
-        (durationMinutes !== windowBaseline.durationMinutes ||
-          availableInMinutes !== windowBaseline.availableInMinutes);
-      if (windowChanged) {
-        const duration = Number.parseInt(durationMinutes, 10);
-        const delay = Number.parseInt(availableInMinutes, 10);
-        if (!Number.isFinite(duration) || duration <= 0) {
-          throw new Error("Duration must be a positive number of minutes");
+      if (hasPreferredTime) {
+        const preferred = new Date(preferredTime);
+        if (!Number.isFinite(preferred.getTime())) {
+          throw new Error("Enter a valid preferred departure date and time");
         }
-        if (!Number.isFinite(delay) || delay < 0) {
-          throw new Error("Available-in must be zero or more minutes");
-        }
+        body.preferred_departure_at = preferred.toISOString();
+      } else {
+        body.preferred_departure_at = null;
       }
       const trimmedNotes = notes.trim();
       if (trimmedNotes) {
@@ -118,6 +118,28 @@ export default function EditSpotScreen() {
     },
     onError: (err) => {
       Alert.alert("Save failed", err instanceof Error ? err.message : "error");
+    },
+  });
+
+  const decideOffer = useMutation({
+    mutationFn: async ({ offerId, accept }: { offerId: string; accept: boolean }) => {
+      if (accept) {
+        await acceptOffer(offerId);
+      } else {
+        await rejectOffer(offerId);
+      }
+    },
+    onSuccess: async (_, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["offers", id] }),
+        queryClient.invalidateQueries({ queryKey: ["spots", "mine"] }),
+      ]);
+      if (variables.accept) {
+        Alert.alert("Oferta aceptada", "El intercambio ya está reservado.");
+      }
+    },
+    onError: (err) => {
+      Alert.alert("No se pudo actualizar", err instanceof Error ? err.message : "error");
     },
   });
 
@@ -190,7 +212,7 @@ export default function EditSpotScreen() {
       </Text>
 
       <View style={accountStyles.field}>
-        <Text style={accountStyles.label}>Price (€)</Text>
+        <Text style={accountStyles.label}>Precio orientativo (€)</Text>
         <TextInput
           style={accountStyles.input}
           value={price}
@@ -209,25 +231,28 @@ export default function EditSpotScreen() {
           placeholderTextColor="#7A93A0"
         />
       </View>
-      <View style={accountStyles.field}>
-        <Text style={accountStyles.label}>Available in (minutes)</Text>
-        <TextInput
-          style={accountStyles.input}
-          value={availableInMinutes}
-          onChangeText={setAvailableInMinutes}
-          keyboardType="number-pad"
-          placeholderTextColor="#7A93A0"
-        />
+      <View style={[accountStyles.row, { marginBottom: 12 }]}>
+        <Text style={accountStyles.rowTitle}>Hora de salida preferida</Text>
+        <Switch value={hasPreferredTime} onValueChange={setHasPreferredTime} />
       </View>
-      <View style={accountStyles.field}>
-        <Text style={accountStyles.label}>Duration (minutes)</Text>
-        <TextInput
-          style={accountStyles.input}
-          value={durationMinutes}
-          onChangeText={setDurationMinutes}
-          keyboardType="number-pad"
-          placeholderTextColor="#7A93A0"
-        />
+      {hasPreferredTime ? (
+        <View style={accountStyles.field}>
+          <TextInput
+            style={accountStyles.input}
+            value={preferredTime}
+            onChangeText={setPreferredTime}
+            placeholder="2026-09-19T18:00"
+            placeholderTextColor="#7A93A0"
+            autoCapitalize="none"
+          />
+        </View>
+      ) : null}
+      <View style={[accountStyles.row, { marginBottom: 12 }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={accountStyles.rowTitle}>Auto-cancelar ausencia</Text>
+          <Text style={accountStyles.rowMeta}>Después del margen de cortesía.</Text>
+        </View>
+        <Switch value={autoCancel} onValueChange={setAutoCancel} />
       </View>
 
       <View style={accountStyles.field}>
@@ -269,6 +294,52 @@ export default function EditSpotScreen() {
           <Text style={accountStyles.primaryText}>Save spot</Text>
         )}
       </Pressable>
+
+      <View style={accountStyles.section}>
+        <Text style={accountStyles.sectionTitle}>Ofertas pendientes</Text>
+        {(offers.data ?? [])
+          .filter((offer) => offer.status === "pending")
+          .map((offer) => {
+            const preferred = matchesPreferredMinute(
+              offer.exchange_at,
+              spot.properties.preferred_departure_at,
+            );
+            return (
+              <View key={offer.id} style={accountStyles.row}>
+                <View style={{ flex: 1 }}>
+                  <Text style={accountStyles.rowTitle}>
+                    €{(offer.amount_cents / 100).toFixed(2)} ·{" "}
+                    {new Date(offer.exchange_at).toLocaleString()}
+                  </Text>
+                  <Text style={accountStyles.rowMeta}>
+                    {preferred ? "a tu hora" : "otra hora"}
+                  </Text>
+                </View>
+                <View style={{ gap: 6 }}>
+                  <Pressable
+                    style={[accountStyles.primary, { paddingHorizontal: 12 }]}
+                    disabled={decideOffer.isPending}
+                    onPress={() => decideOffer.mutate({ offerId: offer.id, accept: true })}
+                  >
+                    <Text style={accountStyles.primaryText}>Aceptar</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[accountStyles.danger, { paddingHorizontal: 12 }]}
+                    disabled={decideOffer.isPending}
+                    onPress={() => decideOffer.mutate({ offerId: offer.id, accept: false })}
+                  >
+                    <Text style={accountStyles.dangerText}>Rechazar</Text>
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })}
+        {offers.isLoading ? <ActivityIndicator color="#F4F7FA" /> : null}
+        {!offers.isLoading &&
+        !(offers.data ?? []).some((offer) => offer.status === "pending") ? (
+          <Text style={accountStyles.empty}>No hay ofertas pendientes.</Text>
+        ) : null}
+      </View>
 
       <Pressable
         style={[accountStyles.danger, { marginTop: 8 }]}

@@ -21,7 +21,7 @@ import {
 } from "react-native";
 
 import type { SpotFeature, VehicleResponse } from "@/api/client";
-import { withdrawSpot } from "@/api/client";
+import { createOffer, listVehicles, withdrawSpot } from "@/api/client";
 import {
   defaultMapCenter,
   fallbackZoom,
@@ -47,6 +47,10 @@ import {
 import { MySpotLayers } from "@/map/MySpotLayers";
 import { partitionMapSpots } from "@/map/partitionMapSpots";
 import { pickAnnounceVehicle } from "@/map/pickAnnounceVehicle";
+import {
+  AnnounceModal,
+  type AnnounceValues,
+} from "@/map/AnnounceModal";
 import { SpotLayers } from "@/map/SpotLayers";
 import { SpotSheet } from "@/map/SpotSheet";
 import { VehiclePickModal } from "@/map/VehiclePickModal";
@@ -77,6 +81,12 @@ export default function MapScreen() {
   const [spotsArmed, setSpotsArmed] = useState(false);
   const [mineArmed, setMineArmed] = useState(false);
   const [announcing, setAnnouncing] = useState(false);
+  const [offerBusy, setOfferBusy] = useState(false);
+  const [vehicles, setVehicles] = useState<VehicleResponse[]>([]);
+  const [announceDraft, setAnnounceDraft] = useState<{
+    vehicleId: string;
+    coordinates: [number, number] | null;
+  } | null>(null);
   const [androidVehicles, setAndroidVehicles] = useState<VehicleResponse[] | null>(
     null,
   );
@@ -90,13 +100,22 @@ export default function MapScreen() {
   );
   const {
     active,
+    activeSpot,
+    isOwner,
+    isDriver,
     busy,
-    claim,
-    reconfirm,
-    complete,
+    markOwnerReady,
+    markDriverArrived,
+    markDriverReady,
     cancel,
-    refresh: refreshActive,
   } = useActiveReservation(ready);
+
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
+    void listVehicles().then(setVehicles).catch(() => setVehicles([]));
+  }, [ready]);
 
   const spotData = useMemo(() => {
     const features = collection.features.map((feature) => ({
@@ -272,58 +291,37 @@ export default function MapScreen() {
     if (!vehicleId) {
       return;
     }
-    Alert.alert("Announce a spot", "When does it become available?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Now",
-        onPress: () => {
-          void (async () => {
-            setAnnouncing(true);
-            try {
-              const spot = await announceHere({
-                priceCents: 150,
-                durationMinutes: 30,
-                availableInMinutes: 0,
-                vehicleId,
-              });
-              await afterAnnounce(spot, "Your spot is on the map.");
-            } catch (err) {
-              Alert.alert(
-                "Announce failed",
-                err instanceof Error ? err.message : "error",
-              );
-            } finally {
-              setAnnouncing(false);
-            }
-          })();
-        },
-      },
-      {
-        text: "In 1 hour",
-        onPress: () => {
-          void (async () => {
-            setAnnouncing(true);
-            try {
-              const spot = await announceHere({
-                priceCents: 150,
-                durationMinutes: 30,
-                availableInMinutes: 60,
-                vehicleId,
-              });
-              await afterAnnounce(spot, "Your future spot is on the map.");
-            } catch (err) {
-              Alert.alert(
-                "Announce failed",
-                err instanceof Error ? err.message : "error",
-              );
-            } finally {
-              setAnnouncing(false);
-            }
-          })();
-        },
-      },
-    ]);
-  }, [afterAnnounce, resolveVehicleId]);
+    setAnnounceDraft({ vehicleId, coordinates: null });
+  }, [resolveVehicleId]);
+
+  const submitAnnouncement = useCallback(
+    async (values: AnnounceValues) => {
+      if (!announceDraft) {
+        return;
+      }
+      setAnnouncing(true);
+      try {
+        const opts = { ...values, vehicleId: announceDraft.vehicleId };
+        const spot = announceDraft.coordinates
+          ? await announceAt(
+              announceDraft.coordinates[0],
+              announceDraft.coordinates[1],
+              opts,
+            )
+          : await announceHere(opts);
+        setAnnounceDraft(null);
+        await afterAnnounce(spot, "La plaza estará publicada durante 7 días.");
+      } catch (err) {
+        Alert.alert(
+          "No se pudo anunciar",
+          err instanceof Error ? err.message : "error",
+        );
+      } finally {
+        setAnnouncing(false);
+      }
+    },
+    [afterAnnounce, announceDraft],
+  );
 
   const onLongPress = useCallback(
     (event: NativeSyntheticEvent<PressEvent>) => {
@@ -343,12 +341,7 @@ export default function MapScreen() {
                   if (!vehicleId) {
                     return;
                   }
-                  const spot = await announceAt(lon, lat, {
-                    priceCents: 150,
-                    durationMinutes: 30,
-                    vehicleId,
-                  });
-                  await afterAnnounce(spot, "Your spot is on the map.");
+                  setAnnounceDraft({ vehicleId, coordinates: [lon, lat] });
                 } catch (err) {
                   Alert.alert(
                     "Announce failed",
@@ -363,7 +356,7 @@ export default function MapScreen() {
         ],
       );
     },
-    [afterAnnounce, resolveVehicleId],
+    [resolveVehicleId],
   );
 
   const onEditSpot = useCallback(
@@ -470,11 +463,17 @@ export default function MapScreen() {
       {active ? (
         <View style={[styles.banner, styles.activeBanner]}>
           <Text style={styles.bannerText}>
-            Active exchange ·{" "}
-            {new Date(active.exchange_at).toLocaleString()}
+            Intercambio · {new Date(active.exchange_at).toLocaleString()}
           </Text>
-          <Pressable onPress={() => void reconfirm()} disabled={busy}>
-            <Text style={styles.link}>Reconfirm</Text>
+          <Pressable
+            onPress={() => {
+              if (activeSpot) {
+                setSelected(activeSpot);
+                sheetRef.current?.snapToIndex(1);
+              }
+            }}
+          >
+            <Text style={styles.link}>Abrir</Text>
           </Pressable>
         </View>
       ) : null}
@@ -525,12 +524,32 @@ export default function MapScreen() {
         ref={sheetRef}
         spot={selected}
         active={active}
-        busy={busy}
-        onClaim={(spot) => {
-          void claim(spot).then(() => refreshActive());
+        vehicles={vehicles}
+        isOwner={isOwner}
+        isDriver={isDriver}
+        busy={busy || offerBusy}
+        onMakeOffer={async (spot, vehicleId, exchangeAt, amountCents) => {
+          const spotId = String(spot.id ?? "");
+          setOfferBusy(true);
+          try {
+            await createOffer(spotId, {
+              vehicle_id: vehicleId,
+              exchange_at: exchangeAt,
+              amount_cents: amountCents,
+            });
+            Alert.alert("Oferta enviada", "El propietario puede aceptarla o rechazarla.");
+          } catch (err) {
+            Alert.alert(
+              "No se pudo enviar",
+              err instanceof Error ? err.message : "error",
+            );
+          } finally {
+            setOfferBusy(false);
+          }
         }}
-        onReconfirm={() => void reconfirm()}
-        onComplete={() => void complete()}
+        onOwnerReady={() => void markOwnerReady()}
+        onDriverArrived={() => void markDriverArrived()}
+        onDriverReady={() => void markDriverReady()}
         onCancel={() => void cancel()}
         onEdit={onEditSpot}
         onWithdraw={onWithdrawSpot}
@@ -541,6 +560,13 @@ export default function MapScreen() {
         vehicles={androidVehicles ?? []}
         onPick={(id) => closeAndroidVehiclePicker(id)}
         onCancel={() => closeAndroidVehiclePicker(null)}
+      />
+
+      <AnnounceModal
+        visible={announceDraft != null}
+        busy={announcing}
+        onCancel={() => setAnnounceDraft(null)}
+        onSubmit={submitAnnouncement}
       />
     </View>
   );

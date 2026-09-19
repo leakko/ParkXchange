@@ -21,8 +21,8 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** post-MVP offer-based dated exchange on
-  `feature/offer-based-exchange`; backend complete, mobile UX in progress
+- **Phase in progress:** none — post-MVP offer-based dated exchange complete
+  on `feature/offer-based-exchange` (manual mobile smoke remains)
 - **Last updated:** 2026-09-19
 - **Phases complete:** 12 of 12 (MVP)
 - **Blockers:** none open
@@ -31,9 +31,9 @@ If that test fails, fix the code, not the test.
 
 ## Next immediate step
 
-Finish mobile offer/handshake polish and verification, then merge
-`feature/offer-based-exchange` when ready. Remaining post-MVP infra work lives
-in `infra/pulumi/README.md` (EKS/Fargate, RDS, S3 PMTiles).
+Merge `feature/offer-based-exchange` when ready. Optionally run a final emulator
+smoke for mobile polish first. Remaining post-MVP infra work lives in
+`infra/pulumi/README.md` (EKS/Fargate, RDS, S3 PMTiles).
 
 ---
 
@@ -264,14 +264,16 @@ decisions 39–48 and ARCHITECTURE.md §3.13.
 - [ ] **Manual emulator smoke** for account UI / announce picker / sheet
       photos not re-run in the verification session (left to merge review)
 
-### Post-MVP — Offer-based dated exchange (2026-09-19) — **in progress**
+### Post-MVP — Offer-based dated exchange (2026-09-19) — **complete**
 
 - [x] Domain, migration, offer use cases, atomic PostgreSQL acceptance,
       reservation handshake/sweeper, HTTP API, and OpenAPI contract
 - [x] Seed uses the new spot schema: no `available_from`, seven-day
       `expires_at`, and a mix of spots with/without `preferred_departure_at`
-- [ ] Mobile offer creation/inbox and dated owner/driver handshake UX
-- [ ] Final automated verification and emulator smoke
+- [x] Mobile offer creation/inbox and dated owner/driver handshake UX,
+      including the client-side 150 m ready warning
+- [x] **Verified (automated):** mobile typecheck and 14/14 mobile unit tests
+- [ ] Manual emulator smoke for the new offer and handshake screens
 
 ---
 
@@ -872,5 +874,9 @@ so `replace ../../libs/go/geo` resolves. `libs/go/geo` has no `go.sum`; do not
 - Replaced immediate claim/reconfirm semantics in the domain and API with
   competing dated offers, owner acceptance, and a two-party ready handshake.
 - Updated the development seed for seven-day listings and optional preferred
-  departure times. Mobile offer and handshake UX remains the next branch task.
+  departure times.
+- Replaced the mobile claim/reconfirm UI with dated offer creation, owner
+  accept/reject, owner/driver handshake actions, cancellation, and a soft
+  geofence warning. Automated mobile verification is green; emulator polish is
+  optional before merge.
 
