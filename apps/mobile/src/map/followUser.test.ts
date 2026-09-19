@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   followReducer,
   initialFollowState,
+  locationComponentReady,
   resolveInitialView,
   trackUserLocationMode,
 } from "./followUser.ts";
@@ -58,6 +59,15 @@ describe("trackUserLocationMode", () => {
   it("returns default while following and undefined otherwise", () => {
     assert.equal(trackUserLocationMode(true), "default");
     assert.equal(trackUserLocationMode(false), undefined);
+  });
+});
+
+describe("locationComponentReady", () => {
+  it("requires both permission and a GPS fix", () => {
+    assert.equal(locationComponentReady(false, null), false);
+    assert.equal(locationComponentReady(true, null), false);
+    assert.equal(locationComponentReady(false, [2, 41]), false);
+    assert.equal(locationComponentReady(true, [2, 41]), true);
   });
 });
 

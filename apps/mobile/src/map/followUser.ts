@@ -35,6 +35,18 @@ export function trackUserLocationMode(
   return followUser ? "default" : undefined;
 }
 
+/**
+ * MapLibre's LocationComponent errors with "Failed to obtain last location
+ * update" (and often "Invalid geometry in line layer") if it is enabled before
+ * the OS has any cached fix. Gate the puck and camera tracking on a real fix.
+ */
+export function locationComponentReady(
+  locationGranted: boolean,
+  coords: [number, number] | null,
+): boolean {
+  return locationGranted && coords != null;
+}
+
 export function resolveInitialView(args: {
   granted: boolean;
   coords: [number, number] | null;

@@ -43,6 +43,7 @@ import {
 import {
   followReducer,
   initialFollowState,
+  locationComponentReady,
 } from "@/map/followUser";
 import { MySpotLayers } from "@/map/MySpotLayers";
 import { partitionMapSpots } from "@/map/partitionMapSpots";
@@ -93,6 +94,11 @@ export default function MapScreen() {
   const androidPickRef = useRef<{
     resolve: (id: string | null) => void;
   } | null>(null);
+
+  const puckReady = locationComponentReady(
+    follow.locationGranted,
+    location.coords,
+  );
 
   const { collection, featureById, isLoading, error, refetch } = useDiscovery(
     viewport,
@@ -426,9 +432,11 @@ export default function MapScreen() {
             center: defaultMapCenter,
             zoom: fallbackZoom,
           }}
-          {...(follow.followUser ? { trackUserLocation: "default" as const } : {})}
+          {...(follow.followUser && puckReady
+            ? { trackUserLocation: "default" as const }
+            : {})}
         />
-        {follow.locationGranted ? <NativeUserLocation /> : null}
+        {puckReady ? <NativeUserLocation /> : null}
         {spotsArmed ? (
           <SpotLayers data={spotData.others} onPressFeature={onPressFeature} />
         ) : null}
