@@ -48,6 +48,7 @@ const config: ExpoConfig = {
       },
     ],
     "expo-secure-store",
+    "expo-localization",
     [
       "expo-notifications",
       {
