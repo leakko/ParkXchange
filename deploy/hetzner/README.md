@@ -39,6 +39,10 @@ Repository → **Settings → Secrets and variables → Actions**.
 | `DEPLOY_POSTGRES_DB` | e.g. `parkxchange` |
 | `DEPLOY_JWT_SECRET` | ≥32 bytes (`openssl rand -base64 32`) |
 | `DEPLOY_LOCATION_FUZZ_SECRET` | ≥32 bytes, **different** from JWT (`openssl rand -base64 32`) |
+| `DEPLOY_RESEND_API_KEY` | Resend API key (password-reset email) |
+| `DEPLOY_EMAIL_FROM` | e.g. `ParkXchange <noreply@mail.park-xchange.com>` (domain verified in Resend) |
+| `DEPLOY_PASSWORD_RESET_DEEP_LINK_BASE` | optional; default `parkxchange://auth/reset` |
+| `DEPLOY_GOOGLE_WEB_CLIENT_ID` | optional; Google OAuth **web** client ID (empty disables Google on API) |
 
 The workflow also writes `CORS_ALLOWED_ORIGINS=*` (required when
 `API_ENV=production`). Tighten it later if you add a browser client.

@@ -63,6 +63,10 @@ jobs:
           POSTGRES_DB: ${{ secrets.DEPLOY_POSTGRES_DB }}
           JWT_SECRET: ${{ secrets.DEPLOY_JWT_SECRET }}
           LOCATION_FUZZ_SECRET: ${{ secrets.DEPLOY_LOCATION_FUZZ_SECRET }}
+          RESEND_API_KEY: ${{ secrets.DEPLOY_RESEND_API_KEY }}
+          EMAIL_FROM: ${{ secrets.DEPLOY_EMAIL_FROM }}
+          PASSWORD_RESET_DEEP_LINK_BASE: ${{ secrets.DEPLOY_PASSWORD_RESET_DEEP_LINK_BASE }}
+          GOOGLE_WEB_CLIENT_ID: ${{ secrets.DEPLOY_GOOGLE_WEB_CLIENT_ID }}
           API_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
           CLONE_URL: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           GHCR_USER: ${{ github.actor }}
@@ -71,7 +75,7 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: DOMAIN,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_DB,JWT_SECRET,LOCATION_FUZZ_SECRET,API_IMAGE,CLONE_URL,GHCR_USER,GHCR_TOKEN
+          envs: DOMAIN,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_DB,JWT_SECRET,LOCATION_FUZZ_SECRET,RESEND_API_KEY,EMAIL_FROM,PASSWORD_RESET_DEEP_LINK_BASE,GOOGLE_WEB_CLIENT_ID,API_IMAGE,CLONE_URL,GHCR_USER,GHCR_TOKEN
           script: |
             set -euo pipefail
             APP_DIR=/opt/parkxchange
@@ -109,6 +113,10 @@ jobs:
               "ACCESS_TOKEN_TTL=15m" \
               "REFRESH_TOKEN_TTL=720h" \
               "SWEEP_INTERVAL=15s" \
+              "RESEND_API_KEY=${RESEND_API_KEY}" \
+              "EMAIL_FROM=${EMAIL_FROM}" \
+              "PASSWORD_RESET_DEEP_LINK_BASE=${PASSWORD_RESET_DEEP_LINK_BASE:-parkxchange://auth/reset}" \
+              "GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID:-}" \
               > deploy/hetzner/.env
 
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
