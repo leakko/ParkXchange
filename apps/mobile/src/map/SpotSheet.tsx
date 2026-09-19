@@ -19,6 +19,7 @@ import { spotVehiclePhotoUrl } from "@/api/client";
 import { useAuthImage } from "@/hooks/useAuthImage";
 import { useTranslation } from "@/i18n";
 import { openNavigation } from "@/lib/navigation";
+import { DateTimeField } from "@/ui/DateTimeField";
 
 type Props = {
   spot: SpotFeature | null;
@@ -40,11 +41,6 @@ type Props = {
   onEdit: (spot: SpotFeature) => void;
   onWithdraw: (spot: SpotFeature) => void;
 };
-
-function localDateTimeInput(value: Date): string {
-  const offset = value.getTimezoneOffset() * 60_000;
-  return new Date(value.getTime() - offset).toISOString().slice(0, 16);
-}
 
 export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
   {
@@ -68,7 +64,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
   const snapPoints = useMemo(() => ["36%", "82%"], []);
   const [makingOffer, setMakingOffer] = useState(false);
   const [vehicleId, setVehicleId] = useState("");
-  const [exchangeAt, setExchangeAt] = useState("");
+  const [exchangeAt, setExchangeAt] = useState(() => new Date(Date.now() + 60 * 60 * 1000));
   const [amount, setAmount] = useState("");
   const price = spot ? (spot.properties.price_cents / 100).toFixed(2) : "";
   const coords = spot?.geometry.coordinates;
@@ -88,19 +84,18 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
     const suggested = spot?.properties.preferred_departure_at
       ? new Date(spot.properties.preferred_departure_at)
       : new Date(Date.now() + 60 * 60 * 1000);
-    setExchangeAt(localDateTimeInput(suggested));
+    setExchangeAt(suggested);
   }, [price, spot, vehicles]);
 
   const submitOffer = async () => {
     if (!spot || !vehicleId) {
       return;
     }
-    const parsedDate = new Date(exchangeAt);
     const euros = Number.parseFloat(amount);
-    if (!Number.isFinite(parsedDate.getTime()) || !Number.isFinite(euros) || euros < 0) {
+    if (!Number.isFinite(exchangeAt.getTime()) || !Number.isFinite(euros) || euros < 0) {
       return;
     }
-    await onMakeOffer(spot, vehicleId, parsedDate.toISOString(), Math.round(euros * 100));
+    await onMakeOffer(spot, vehicleId, exchangeAt.toISOString(), Math.round(euros * 100));
     setMakingOffer(false);
   };
 
@@ -155,12 +150,14 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
               </View>
             ) : null}
 
-            <Text style={styles.window}>
+            <Text style={styles.freeAt}>
               {spot.properties.preferred_departure_at
-                ? t("spotSheet.preferredDeparture", {
+                ? t("spotSheet.freeAt", {
                     datetime: formatDateTime(spot.properties.preferred_departure_at),
                   })
-                : t("spotSheet.flexibleDeparture")}{" "}
+                : t("spotSheet.flexibleDeparture")}
+            </Text>
+            <Text style={styles.listedUntil}>
               {t("spotSheet.listedUntil", {
                 datetime: formatDateTime(spot.properties.listed_until),
               })}
@@ -209,14 +206,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                     <Text style={styles.formLabel}>
                       {t("spotSheet.offer.exchangeDatetime")}
                     </Text>
-                    <TextInput
-                      style={styles.input}
-                      value={exchangeAt}
-                      onChangeText={setExchangeAt}
-                      placeholder={t("spotSheet.offer.datetimePlaceholder")}
-                      placeholderTextColor="#7A93A0"
-                      autoCapitalize="none"
-                    />
+                    <DateTimeField value={exchangeAt} onChange={setExchangeAt} />
                     <Text style={styles.formLabel}>{t("spotSheet.offer.amount")}</Text>
                     <TextInput
                       style={styles.input}
@@ -337,7 +327,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: "#16324F",
   },
-  window: { color: "#7A93A0", fontSize: 12, marginTop: 8 },
+  freeAt: {
+    color: "#F4F7FA",
+    fontSize: 17,
+    fontWeight: "600",
+    marginTop: 10,
+  },
+  listedUntil: { color: "#7A93A0", fontSize: 12, marginTop: 4 },
   actions: { marginTop: 14, gap: 8 },
   offerForm: { gap: 8 },
   formLabel: { color: "#9DB4C0", fontSize: 12, marginTop: 4 },

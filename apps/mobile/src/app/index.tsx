@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import BottomSheet from "@gorhom/bottom-sheet";
 import {
   Camera,
@@ -516,16 +517,23 @@ export default function MapScreen() {
       <Pressable
         style={styles.accountFab}
         onPress={() => router.push("/account" as Href)}
+        accessibilityRole="button"
+        accessibilityLabel={t("map.fab.account")}
       >
-        <Text style={styles.fabText}>{t("map.fab.account")}</Text>
+        <Ionicons name="person" size={22} color="#fff" />
       </Pressable>
 
       <Pressable
-        style={styles.locateFab}
+        style={[
+          styles.locateFab,
+          !follow.locationGranted ? styles.fabDisabled : null,
+        ]}
         disabled={!follow.locationGranted}
         onPress={onRecenter}
+        accessibilityRole="button"
+        accessibilityLabel={t("map.fab.locateMe")}
       >
-        <Text style={styles.fabText}>{t("map.fab.locateMe")}</Text>
+        <Ionicons name="locate" size={24} color="#fff" />
       </Pressable>
 
       <Pressable
@@ -616,26 +624,27 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 20,
     bottom: 164,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: "#16324F",
-    borderRadius: 999,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
     elevation: 4,
-    minWidth: 56,
     alignItems: "center",
+    justifyContent: "center",
   },
   locateFab: {
     position: "absolute",
     right: 20,
     bottom: 100,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: "#16324F",
-    borderRadius: 999,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
     elevation: 4,
-    minWidth: 56,
     alignItems: "center",
+    justifyContent: "center",
   },
+  fabDisabled: { opacity: 0.45 },
   fab: {
     position: "absolute",
     right: 20,

@@ -26,11 +26,10 @@ import { accountStyles } from "@/account/theme";
 import { useDevSession } from "@/hooks/useDevSession";
 import { useTranslation } from "@/i18n";
 import { matchesPreferredMinute } from "@/map/exchange";
+import { DateTimeField } from "@/ui/DateTimeField";
 
-function localDateTimeInput(value: string): string {
-  const date = new Date(value);
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+function defaultPreferred(): Date {
+  return new Date(Date.now() + 60 * 60 * 1000);
 }
 
 export default function EditSpotScreen() {
@@ -62,7 +61,7 @@ export default function EditSpotScreen() {
   const [notes, setNotes] = useState("");
   const [vehicleId, setVehicleId] = useState("");
   const [hasPreferredTime, setHasPreferredTime] = useState(false);
-  const [preferredTime, setPreferredTime] = useState("");
+  const [preferredTime, setPreferredTime] = useState(defaultPreferred);
   const [autoCancel, setAutoCancel] = useState(true);
 
   useEffect(() => {
@@ -75,8 +74,8 @@ export default function EditSpotScreen() {
     setHasPreferredTime(!!spot.properties.preferred_departure_at);
     setPreferredTime(
       spot.properties.preferred_departure_at
-        ? localDateTimeInput(spot.properties.preferred_departure_at)
-        : localDateTimeInput(new Date(Date.now() + 60 * 60 * 1000).toISOString()),
+        ? new Date(spot.properties.preferred_departure_at)
+        : defaultPreferred(),
     );
     setAutoCancel(spot.properties.auto_cancel_no_show);
   }, [spot]);
@@ -95,11 +94,10 @@ export default function EditSpotScreen() {
         auto_cancel_no_show: autoCancel,
       };
       if (hasPreferredTime) {
-        const preferred = new Date(preferredTime);
-        if (!Number.isFinite(preferred.getTime())) {
+        if (!Number.isFinite(preferredTime.getTime())) {
           throw new Error(t("account.spots.edit.invalidPreferredTime"));
         }
-        body.preferred_departure_at = preferred.toISOString();
+        body.preferred_departure_at = preferredTime.toISOString();
       } else {
         body.preferred_departure_at = null;
       }
@@ -256,14 +254,7 @@ export default function EditSpotScreen() {
       </View>
       {hasPreferredTime ? (
         <View style={accountStyles.field}>
-          <TextInput
-            style={accountStyles.input}
-            value={preferredTime}
-            onChangeText={setPreferredTime}
-            placeholder={t("account.spots.edit.datetimePlaceholder")}
-            placeholderTextColor="#7A93A0"
-            autoCapitalize="none"
-          />
+          <DateTimeField value={preferredTime} onChange={setPreferredTime} />
         </View>
       ) : null}
       <View style={[accountStyles.row, { marginBottom: 12 }]}>

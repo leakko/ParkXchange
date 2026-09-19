@@ -12,6 +12,7 @@ import {
 } from "react-native";
 
 import { useTranslation } from "@/i18n";
+import { DateTimeField } from "@/ui/DateTimeField";
 
 export type AnnounceValues = {
   guidePriceCents: number;
@@ -26,24 +27,25 @@ type Props = {
   onSubmit: (values: AnnounceValues) => Promise<void>;
 };
 
+function defaultPreferred(): Date {
+  return new Date(Date.now() + 60 * 60 * 1000);
+}
+
 export function AnnounceModal({ visible, busy, onCancel, onSubmit }: Props) {
   const { t } = useTranslation();
   const [price, setPrice] = useState("1.50");
   const [hasPreferredTime, setHasPreferredTime] = useState(false);
-  const [preferredTime, setPreferredTime] = useState("");
+  const [preferredTime, setPreferredTime] = useState(defaultPreferred);
   const [autoCancel, setAutoCancel] = useState(true);
 
   useEffect(() => {
     if (visible) {
-      const suggested = new Date(Date.now() + 60 * 60 * 1000);
-      const offset = suggested.getTimezoneOffset() * 60_000;
-      setPreferredTime(new Date(suggested.getTime() - offset).toISOString().slice(0, 16));
+      setPreferredTime(defaultPreferred());
     }
   }, [visible]);
 
   const submit = async () => {
     const euros = Number.parseFloat(price);
-    const preferred = hasPreferredTime ? new Date(preferredTime) : null;
     if (!Number.isFinite(euros) || euros < 0) {
       Alert.alert(
         t("announce.alert.invalidPrice.title"),
@@ -51,7 +53,7 @@ export function AnnounceModal({ visible, busy, onCancel, onSubmit }: Props) {
       );
       return;
     }
-    if (preferred && !Number.isFinite(preferred.getTime())) {
+    if (hasPreferredTime && !Number.isFinite(preferredTime.getTime())) {
       Alert.alert(
         t("announce.alert.invalidDate.title"),
         t("announce.alert.invalidDate.message"),
@@ -60,7 +62,9 @@ export function AnnounceModal({ visible, busy, onCancel, onSubmit }: Props) {
     }
     await onSubmit({
       guidePriceCents: Math.round(euros * 100),
-      preferredDepartureAt: preferred?.toISOString() ?? null,
+      preferredDepartureAt: hasPreferredTime
+        ? preferredTime.toISOString()
+        : null,
       autoCancelNoShow: autoCancel,
     });
   };
@@ -83,14 +87,7 @@ export function AnnounceModal({ visible, busy, onCancel, onSubmit }: Props) {
             <Switch value={hasPreferredTime} onValueChange={setHasPreferredTime} />
           </View>
           {hasPreferredTime ? (
-            <TextInput
-              style={styles.input}
-              value={preferredTime}
-              onChangeText={setPreferredTime}
-              placeholder={t("announce.datetimePlaceholder")}
-              placeholderTextColor="#7A93A0"
-              autoCapitalize="none"
-            />
+            <DateTimeField value={preferredTime} onChange={setPreferredTime} />
           ) : null}
           <View style={styles.toggleRow}>
             <View style={{ flex: 1 }}>

@@ -13,8 +13,15 @@ type MapLocation = {
   refresh: () => Promise<LonLat | null>;
 };
 
+const RETRY_DELAY_MS = 2500;
+const MAX_FIX_ATTEMPTS = 8;
+
 function toLonLat(position: Location.LocationObject): LonLat {
   return [position.coords.longitude, position.coords.latitude];
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -23,6 +30,7 @@ function toLonLat(position: Location.LocationObject): LonLat {
  *
  * Warming Fused Location (last-known + current) before MapLibre mounts avoids
  * "Failed to obtain last location update" when LocationComponent starts cold.
+ * Emulators often need a few retries before the first fix lands.
  */
 export function useMapLocation(): MapLocation {
   const [ready, setReady] = useState(false);
@@ -73,22 +81,36 @@ export function useMapLocation(): MapLocation {
         setGranted(true);
         // Seed Fused Location before MapLibre's LocationComponent mounts; watch
         // only when the provider is on so we do not throw on cold emulator start.
-        if (await Location.hasServicesEnabledAsync()) {
-          await readFix();
+        if (!(await Location.hasServicesEnabledAsync())) {
+          return;
+        }
+
+        let fix = await readFix();
+        for (
+          let attempt = 1;
+          !cancelled && fix == null && attempt < MAX_FIX_ATTEMPTS;
+          attempt++
+        ) {
+          await sleep(RETRY_DELAY_MS);
           if (cancelled) {
             return;
           }
-          subscription = await Location.watchPositionAsync(
-            {
-              accuracy: Location.Accuracy.Balanced,
-              distanceInterval: 5,
-              timeInterval: 2000,
-            },
-            (position) => {
-              setCoords(toLonLat(position));
-            },
-          );
+          fix = await readFix();
         }
+        if (cancelled) {
+          return;
+        }
+
+        subscription = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.Balanced,
+            distanceInterval: 5,
+            timeInterval: 2000,
+          },
+          (position) => {
+            setCoords(toLonLat(position));
+          },
+        );
       } finally {
         if (!cancelled) {
           setReady(true);
