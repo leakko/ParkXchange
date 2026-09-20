@@ -21,8 +21,9 @@ type reservationBody struct {
 	PriceCents      int        `json:"price_cents"`
 	ExchangeAt      time.Time  `json:"exchange_at"`
 	OwnerReadyAt    *time.Time `json:"owner_ready_at"`
-	DriverArrivedAt *time.Time `json:"driver_arrived_at"`
 	DriverReadyAt   *time.Time `json:"driver_ready_at"`
+	OwnerEnRouteAt  *time.Time `json:"owner_en_route_at"`
+	DriverEnRouteAt *time.Time `json:"driver_en_route_at"`
 }
 
 type offerBody struct {
@@ -88,13 +89,14 @@ func TestOfferAcceptanceAndHandshakePayOwner(t *testing.T) {
 
 	for _, step := range []struct {
 		path, token string
+		wantStatus  int
 	}{
-		{"/driver-arrived", driver.AccessToken},
-		{"/owner-ready", owner.AccessToken},
+		{"/ready", driver.AccessToken, http.StatusOK},
+		{"/ready", owner.AccessToken, http.StatusOK},
 	} {
 		resp := authedRequest(t, server, http.MethodPost,
 			"/v1/reservations/"+reservation.ID+step.path, step.token, nil)
-		if resp.StatusCode != http.StatusNoContent {
+		if resp.StatusCode != step.wantStatus {
 			t.Fatalf("%s status = %d (%s)", step.path, resp.StatusCode, errorCode(t, resp))
 		}
 	}

@@ -478,7 +478,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/reservations/{id}/owner-ready": {
+    "/v1/reservations/{id}/en-route": {
         parameters: {
             query?: never;
             header?: never;
@@ -487,18 +487,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Owner “Salir ya” — completes the exchange and credits the owner
-         * @description Allowed when the driver has marked ready, or after exchange_at plus the 10-minute courtesy window. Completes the reservation atomically.
-         */
-        post: operations["markOwnerReady"];
+        /** Mark that the caller is on the way to the exchange */
+        post: operations["markReservationEnRoute"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/reservations/{id}/driver-arrived": {
+    "/v1/reservations/{id}/ready": {
         parameters: {
             query?: never;
             header?: never;
@@ -507,83 +504,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record the driver's early “I arrived” signal */
-        post: operations["markDriverArrived"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/reservations/{id}/clear-driver-arrived": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Retract the driver's “I arrived” signal so they can mark it again */
-        post: operations["clearDriverArrived"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/reservations/{id}/driver-ready": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Mark the driver ready to enter (does not complete the exchange) */
-        post: operations["markDriverReady"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/reservations/{id}/driver-confirm-entered": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Driver confirms entry after a stalled owner forgot “Salir ya”
-         * @description Allowed after max(driver_ready_at, exchange_at) + 10 minutes. Completes the exchange and credits the owner.
-         */
-        post: operations["driverConfirmEntered"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/reservations/{id}/driver-report-owner-no-show": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Driver reports the owner never left after the leave deadline
-         * @description Allowed after max(driver_ready_at, exchange_at) + 10 minutes. Cancels with a full deposit release to the driver.
-         */
-        post: operations["driverReportOwnerNoShow"];
-        delete?: never;
+        /** Mark ready at the exchange point; completes when both parties are ready */
+        post: operations["markReservationReady"];
+        /** Retract the caller's ready signal */
+        delete: operations["clearReservationReady"];
         options?: never;
         head?: never;
         patch?: never;
@@ -883,9 +807,11 @@ export interface components {
             /** Format: date-time */
             exchange_at: string;
             /** Format: date-time */
-            owner_ready_at?: string | null;
+            owner_en_route_at?: string | null;
             /** Format: date-time */
-            driver_arrived_at?: string | null;
+            driver_en_route_at?: string | null;
+            /** Format: date-time */
+            owner_ready_at?: string | null;
             /** Format: date-time */
             driver_ready_at?: string | null;
             /** Format: date-time */
@@ -1848,7 +1774,7 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
-    markOwnerReady: {
+    markReservationEnRoute: {
         parameters: {
             query?: never;
             header?: never;
@@ -1859,7 +1785,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Exchange completed */
+            /** @description En-route recorded */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -1871,7 +1797,7 @@ export interface operations {
             409: components["responses"]["Error"];
         };
     };
-    markDriverArrived: {
+    markReservationReady: {
         parameters: {
             query?: never;
             header?: never;
@@ -1882,19 +1808,23 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Driver arrival recorded */
-            204: {
+            /** @description Ready recorded */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        completed: boolean;
+                    };
+                };
             };
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
             409: components["responses"]["Error"];
         };
     };
-    clearDriverArrived: {
+    clearReservationReady: {
         parameters: {
             query?: never;
             header?: never;
@@ -1905,76 +1835,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Driver arrival cleared */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Error"];
-            404: components["responses"]["Error"];
-            409: components["responses"]["Error"];
-        };
-    };
-    markDriverReady: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["ReservationID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Driver ready recorded */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Error"];
-            404: components["responses"]["Error"];
-            409: components["responses"]["Error"];
-        };
-    };
-    driverConfirmEntered: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["ReservationID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Exchange completed */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Error"];
-            404: components["responses"]["Error"];
-            409: components["responses"]["Error"];
-        };
-    };
-    driverReportOwnerNoShow: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["ReservationID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Cancelled and deposit released */
+            /** @description Ready cleared */
             204: {
                 headers: {
                     [name: string]: unknown;

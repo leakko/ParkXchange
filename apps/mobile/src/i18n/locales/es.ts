@@ -338,8 +338,25 @@ export const es = {
   "exchange.actionFailed.title": "Acción fallida",
   "exchange.completed.title": "Intercambio completado",
   "exchange.completed.message": "Ya puedes irte; el pago se ha liquidado.",
-  "exchange.driverReady.title": "El conductor está listo",
-  "exchange.driverReady.message": "Pulsa Salir ya cuando dejes la plaza.",
+  "exchange.driverReady.title": "El conductor está listo en el punto",
+  "exchange.driverReady.message":
+    "Confirma que estás en tu coche listo para salir cuando se meta.",
+  "exchange.confirm.title": "¿Seguro?",
+  "exchange.confirm.ownerReady":
+    "¿Seguro que estás dentro de tu coche, listo para salir en cuanto llegue el conductor?",
+  "exchange.confirm.driverReady":
+    "¿Seguro que estás detrás del coche del anuncio, listo para meterte en cuanto salga?",
+  "exchange.confirm.unready":
+    "Dejarás de figurar como listo. Se avisará a la otra parte y pueden pararse los relojes de espera.",
+  "exchange.confirm.enRoute": "¿Avisamos a la otra parte de que vas de camino?",
+  "exchange.actions.enRoute": "Voy de camino",
+  "exchange.actions.ownerReady": "Listo para salir",
+  "exchange.actions.driverReady": "Listo para aparcar",
+  "exchange.actions.unready": "Ya no estoy listo",
+  "exchange.status.waitingOther": "Esperando a que la otra parte marque listo.",
+  "exchange.status.ownerReady": "El dueño está listo en el coche.",
+  "exchange.status.driverReady": "El conductor está listo en el punto.",
+  "exchange.status.deadline": "Ventana de cortesía hasta {{datetime}}",
   "exchange.stall.confirmTitle": "¿Confirmas que entraste?",
   "exchange.stall.confirmMessage":
     "Se cerrará el intercambio y el dueño cobrará. Se le avisará de que olvidó marcar.",

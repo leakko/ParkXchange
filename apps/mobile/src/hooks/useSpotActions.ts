@@ -14,6 +14,7 @@ import {
   getMe,
   getSpot,
   ownerReady,
+  reservationReady,
   type ReservationResponse,
   type SpotFeature,
 } from "@/api/client";
@@ -57,15 +58,17 @@ export function useActiveReservation(enabled: boolean) {
             [
               { text: t("common.cancel"), style: "cancel" },
               {
-                text: t("spotSheet.exchange.ownerReady"),
+                text: t("exchange.actions.ownerReady"),
                 onPress: () => {
                   void (async () => {
                     try {
-                      await ownerReady(next.id);
-                      Alert.alert(
-                        t("exchange.completed.title"),
-                        t("exchange.completed.message"),
-                      );
+                      const result = await reservationReady(next.id);
+                      if (result.completed) {
+                        Alert.alert(
+                          t("exchange.completed.title"),
+                          t("exchange.completed.message"),
+                        );
+                      }
                       const again = await fetchActiveReservations();
                       const refreshed = again[0] ?? null;
                       setActive(refreshed);
@@ -232,7 +235,7 @@ export function useActiveReservation(enabled: boolean) {
         // Flip the sheet immediately; refresh reconciles with the server after.
         setActive({
           ...current,
-          driver_arrived_at: at,
+          driver_ready_at: at,
           driver_ready_at: at,
           status: "arrived",
         });
@@ -248,7 +251,7 @@ export function useActiveReservation(enabled: boolean) {
         // leave the sheet looking like “ready” after an undo tap.
         setActive({
           ...current,
-          driver_arrived_at: null,
+          driver_ready_at: null,
           driver_ready_at: null,
           status: "confirmed",
         });

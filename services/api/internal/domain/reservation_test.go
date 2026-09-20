@@ -10,8 +10,6 @@ import (
 func TestReservationTransitions(t *testing.T) {
 	t.Parallel()
 
-	now := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
-
 	tests := []struct {
 		from domain.ReservationStatus
 		to   domain.ReservationStatus
@@ -21,10 +19,10 @@ func TestReservationTransitions(t *testing.T) {
 		{domain.ResPending, domain.ResCancelled, true},
 		{domain.ResPending, domain.ResExpired, true},
 		{domain.ResPending, domain.ResCompleted, false},
-		{domain.ResConfirmed, domain.ResArrived, true},
 		{domain.ResConfirmed, domain.ResCompleted, true},
 		{domain.ResConfirmed, domain.ResCancelled, true},
 		{domain.ResConfirmed, domain.ResExpired, true},
+		{domain.ResConfirmed, domain.ResArrived, false},
 		{domain.ResArrived, domain.ResCompleted, true},
 		{domain.ResArrived, domain.ResCancelled, true},
 		{domain.ResCompleted, domain.ResCancelled, false},
@@ -39,13 +37,11 @@ func TestReservationTransitions(t *testing.T) {
 	}
 
 	if !domain.ResPending.Live() || !domain.ResConfirmed.Live() || !domain.ResArrived.Live() {
-		t.Error("live statuses should include pending, confirmed and arrived")
+		t.Error("live statuses should include pending, confirmed and legacy arrived")
 	}
 	if domain.ResCompleted.Live() || domain.ResCancelled.Live() || domain.ResExpired.Live() {
 		t.Error("terminal statuses must not be live")
 	}
-
-	_ = now
 }
 
 func TestClaimBornConfirmedWhenHandoverIsSoon(t *testing.T) {
@@ -128,13 +124,113 @@ func TestReservationActorRules(t *testing.T) {
 	}
 }
 
+func TestBothReady(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 9, 20, 18, 0, 0, 0, time.UTC)
+	res := domain.Reservation{Status: domain.ResConfirmed, ExchangeAt: now}
+	if res.BothReady() {
+		t.Fatal("neither ready")
+	}
+	res.OwnerReadyAt = &now
+	if res.BothReady() {
+		t.Fatal("only owner ready")
+	}
+	res.DriverReadyAt = &now
+	if !res.BothReady() {
+		t.Fatal("both ready")
+	}
+}
+
+func TestNoShowDeadlinesAnchorAtExchangeWhenReadyEarly(t *testing.T) {
+	t.Parallel()
+
+	exchange := time.Date(2026, 9, 20, 18, 0, 0, 0, time.UTC)
+	early := exchange.Add(-20 * time.Minute)
+	late := exchange.Add(3 * time.Minute)
+
+	if got, want := domain.DriverNoShowDeadline(early, exchange), exchange.Add(domain.NoShowGrace); !got.Equal(want) {
+		t.Errorf("driver early ready: got %v want %v", got, want)
+	}
+	if got, want := domain.DriverNoShowDeadline(late, exchange), late.Add(domain.NoShowGrace); !got.Equal(want) {
+		t.Errorf("driver late ready: got %v want %v", got, want)
+	}
+	if got, want := domain.OwnerNoShowDeadline(early, exchange), exchange.Add(domain.NoShowGrace); !got.Equal(want) {
+		t.Errorf("owner early ready: got %v want %v", got, want)
+	}
+	if got, want := domain.OwnerNoShowDeadline(late, exchange), late.Add(domain.NoShowGrace); !got.Equal(want) {
+		t.Errorf("owner late ready: got %v want %v", got, want)
+	}
+}
+
+func TestDriverNoShowElapsed(t *testing.T) {
+	t.Parallel()
+
+	exchange := time.Date(2026, 9, 20, 18, 0, 0, 0, time.UTC)
+	ready := exchange.Add(-5 * time.Minute)
+	res := domain.Reservation{
+		Status:       domain.ResConfirmed,
+		ExchangeAt:   exchange,
+		OwnerReadyAt: &ready,
+	}
+	deadline := domain.DriverNoShowDeadline(ready, exchange)
+	if res.DriverNoShowElapsed(deadline.Add(-time.Second)) {
+		t.Error("before deadline")
+	}
+	if !res.DriverNoShowElapsed(deadline) {
+		t.Error("at deadline")
+	}
+	res.OwnerReadyAt = nil
+	if res.DriverNoShowElapsed(deadline) {
+		t.Error("no owner ready")
+	}
+}
+
+func TestOwnerNoShowElapsed(t *testing.T) {
+	t.Parallel()
+
+	exchange := time.Date(2026, 9, 20, 18, 0, 0, 0, time.UTC)
+	ready := exchange.Add(1 * time.Minute)
+	res := domain.Reservation{
+		Status:        domain.ResConfirmed,
+		ExchangeAt:    exchange,
+		DriverReadyAt: &ready,
+	}
+	deadline := domain.OwnerNoShowDeadline(ready, exchange)
+	if res.OwnerNoShowElapsed(deadline.Add(-time.Second)) {
+		t.Error("before deadline")
+	}
+	if !res.OwnerNoShowElapsed(deadline) {
+		t.Error("at deadline")
+	}
+	ownerReady := exchange
+	res.OwnerReadyAt = &ownerReady
+	if res.OwnerNoShowElapsed(deadline) {
+		t.Error("owner also ready — not an owner no-show")
+	}
+}
+
+func TestSafetyNetElapsed(t *testing.T) {
+	t.Parallel()
+
+	exchange := time.Date(2026, 9, 20, 18, 0, 0, 0, time.UTC)
+	res := domain.Reservation{Status: domain.ResConfirmed, ExchangeAt: exchange}
+	net := domain.SafetyNetDeadline(exchange)
+	if res.SafetyNetElapsed(net.Add(-time.Second)) {
+		t.Error("before safety net")
+	}
+	if !res.SafetyNetElapsed(net) {
+		t.Error("at safety net")
+	}
+}
+
 func TestFairCancelVersusForfeit(t *testing.T) {
 	t.Parallel()
 
 	exchange := time.Date(2026, 9, 14, 19, 0, 0, 0, time.UTC)
 	res := domain.Reservation{
 		ExchangeAt: exchange,
-		Status:     domain.ResPending,
+		Status:     domain.ResConfirmed,
 	}
 
 	if !res.FairCancel(exchange.Add(-time.Hour)) {
@@ -146,73 +242,42 @@ func TestFairCancelVersusForfeit(t *testing.T) {
 	if res.FairCancel(exchange) {
 		t.Error("cancelling at exchange_at should forfeit")
 	}
-	if res.FairCancel(exchange.Add(time.Minute)) {
-		t.Error("cancelling after exchange_at should forfeit")
-	}
 
-	ready := exchange.Add(-5 * time.Minute)
+	ready := exchange.Add(1 * time.Minute)
 	stalled := domain.Reservation{
 		ExchangeAt:    exchange,
-		Status:        domain.ResArrived,
+		Status:        domain.ResConfirmed,
 		DriverReadyAt: &ready,
 	}
-	deadline := domain.OwnerLeaveDeadline(ready, exchange)
+	deadline := domain.OwnerNoShowDeadline(ready, exchange)
 	if stalled.FairCancel(deadline.Add(-time.Second)) {
-		t.Error("before the owner leave deadline a late cancel still forfeits")
+		t.Error("before owner-no-show floor a late cancel still forfeits")
 	}
 	if !stalled.FairCancel(deadline) {
-		t.Error("after the owner stalls the driver cancel must release the deposit")
+		t.Error("after owner stalls the driver cancel must release")
 	}
 }
 
-func TestOwnerCanLeaveRequiresDriverReadyUntilGrace(t *testing.T) {
+func TestOwnerCancelForfeits(t *testing.T) {
 	t.Parallel()
 
-	exchange := time.Date(2026, 9, 19, 18, 0, 0, 0, time.UTC)
+	exchange := time.Date(2026, 9, 20, 18, 0, 0, 0, time.UTC)
+	ready := exchange
 	res := domain.Reservation{
-		Status:     domain.ResConfirmed,
-		ExchangeAt: exchange,
+		Status:       domain.ResConfirmed,
+		ExchangeAt:   exchange,
+		OwnerReadyAt: &ready,
 	}
-
-	if res.CanOwnerLeave(exchange.Add(5 * time.Minute)) {
-		t.Error("owner must not leave before grace without driver signal")
+	deadline := domain.DriverNoShowDeadline(ready, exchange)
+	if res.OwnerCancelForfeits(deadline.Add(-time.Second)) {
+		t.Error("before driver-no-show floor owner cancel should release")
 	}
-	if got := res.OwnerLeaveBlockReason(exchange.Add(5 * time.Minute)); got != domain.OwnerLeaveWaitingDriver {
-		t.Errorf("block = %q, want waiting_driver", got)
+	if !res.OwnerCancelForfeits(deadline) {
+		t.Error("after floor owner cancel forfeits")
 	}
-
-	arrived := exchange.Add(-2 * time.Minute)
-	res.DriverArrivedAt = &arrived
-	if !res.CanOwnerLeave(exchange.Add(1 * time.Minute)) {
-		t.Error("owner may leave once the driver has arrived")
-	}
-
-	res.DriverArrivedAt = nil
-	ready := exchange.Add(-2 * time.Minute)
-	res.DriverReadyAt = &ready
-	if !res.CanOwnerLeave(exchange.Add(1 * time.Minute)) {
-		t.Error("owner may leave once the driver is ready")
-	}
-
-	res.DriverReadyAt = nil
-	if !res.CanOwnerLeave(exchange.Add(domain.NoShowGrace)) {
-		t.Error("owner may leave after exchange_at + grace without driver signal")
-	}
-}
-
-func TestDriverCanResolveStalledOwner(t *testing.T) {
-	t.Parallel()
-
-	exchange := time.Date(2026, 9, 19, 18, 0, 0, 0, time.UTC)
-	ready := exchange.Add(-5 * time.Minute)
-	res := domain.Reservation{
-		Status: domain.ResArrived, ExchangeAt: exchange, DriverReadyAt: &ready,
-	}
-	deadline := domain.OwnerLeaveDeadline(ready, exchange)
-	if res.DriverCanResolveStalledOwner(deadline.Add(-time.Nanosecond)) {
-		t.Error("driver must wait until the owner leave deadline")
-	}
-	if !res.DriverCanResolveStalledOwner(deadline) {
-		t.Error("driver may resolve once the deadline has passed")
+	driverReady := exchange
+	res.DriverReadyAt = &driverReady
+	if res.OwnerCancelForfeits(deadline) {
+		t.Error("both ready — not a cancel-forfeit case")
 	}
 }

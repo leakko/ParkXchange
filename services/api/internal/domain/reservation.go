@@ -2,19 +2,16 @@ package domain
 
 import "time"
 
-// ReconfirmWindow is legacy advance-booking handshake. Kept until the
-// reservation adapters drop reconfirm columns; new product path uses the
-// ready/arrived clocks below.
+// ReconfirmWindow is legacy advance-booking handshake. Kept until adapters
+// drop reconfirm columns; offer-based reservations are born confirmed.
 const ReconfirmWindow = 15 * time.Minute
 
 // NoShowGrace is the post-exchange courtesy window once a party has marked
-// ready (owner may leave without driver ready after exchange_at + grace;
-// owner must leave by max(driver_ready, exchange_at) + grace or the driver
-// may resolve the stall).
+// ready: max(ready_at, exchange_at) + grace.
 const NoShowGrace = 10 * time.Minute
 
 // OwnerSafetyNet cancels an unresolved reservation this long after
-// exchange_at when nobody has completed the handshake.
+// exchange_at when the handshake never completed.
 const OwnerSafetyNet = 60 * time.Minute
 
 // DriverFairCancelWindow: cancelling with at least this much time left before
@@ -32,7 +29,7 @@ type ReservationStatus string
 const (
 	ResPending   ReservationStatus = "pending"
 	ResConfirmed ReservationStatus = "confirmed"
-	ResArrived   ReservationStatus = "arrived"
+	ResArrived   ReservationStatus = "arrived" // legacy; migration folds to confirmed
 	ResCompleted ReservationStatus = "completed"
 	ResCancelled ReservationStatus = "cancelled"
 	ResExpired   ReservationStatus = "expired"
@@ -40,8 +37,8 @@ const (
 
 var reservationTransitions = map[ReservationStatus][]ReservationStatus{
 	ResPending:   {ResConfirmed, ResCancelled, ResExpired},
-	ResConfirmed: {ResArrived, ResCompleted, ResCancelled, ResExpired},
-	ResArrived:   {ResCompleted, ResCancelled},
+	ResConfirmed: {ResCompleted, ResCancelled, ResExpired},
+	ResArrived:   {ResCompleted, ResCancelled}, // legacy rows only
 	ResCompleted: {},
 	ResCancelled: {},
 	ResExpired:   {},
@@ -92,8 +89,9 @@ type Reservation struct {
 	StartsAt time.Time
 	EndsAt   time.Time
 
+	OwnerEnRouteAt  *time.Time
+	DriverEnRouteAt *time.Time
 	OwnerReadyAt    *time.Time
-	DriverArrivedAt *time.Time
 	DriverReadyAt   *time.Time
 	DriverVehicleID string
 
@@ -122,7 +120,7 @@ func (r Reservation) CanReconfirm() bool {
 	return r.Status == ResPending
 }
 
-// CanComplete reports whether the handover can be settled.
+// CanComplete reports whether the handover can be settled (live confirmed path).
 func (r Reservation) CanComplete() bool {
 	return r.Status == ResConfirmed || r.Status == ResArrived
 }
@@ -132,7 +130,11 @@ func (r Reservation) CanCancel() bool {
 	return r.Status.Live()
 }
 
-// exchangeInstant is the agreed handover time, preferring ExchangeAt.
+// BothReady reports whether both parties have marked ready at the point.
+func (r Reservation) BothReady() bool {
+	return r.OwnerReadyAt != nil && r.DriverReadyAt != nil
+}
+
 func (r Reservation) exchangeInstant() time.Time {
 	if !r.ExchangeAt.IsZero() {
 		return r.ExchangeAt
@@ -140,35 +142,14 @@ func (r Reservation) exchangeInstant() time.Time {
 	return r.StartsAt
 }
 
-// FairCancel reports whether a driver cancel at `now` should release the
-// deposit. True when there is still ≥ DriverFairCancelWindow before
-// exchange_at, or when the owner has already stalled past the leave
-// deadline after the driver marked ready (driver must not be punished for
-// walking away from a no-show owner).
-func (r Reservation) FairCancel(now time.Time) bool {
-	if r.DriverCanResolveStalledOwner(now) {
-		return true
-	}
-	return r.exchangeInstant().Sub(now) >= DriverFairCancelWindow
-}
-
-// DriverNoShowDeadline is legacy naming for max(anchor, exchangeAt) + NoShowGrace.
-// Prefer OwnerLeaveDeadline when the anchor is driver_ready_at.
+// DriverNoShowDeadline is max(ownerReady, exchangeAt) + NoShowGrace.
 func DriverNoShowDeadline(ownerReady, exchangeAt time.Time) time.Time {
 	return graceDeadline(ownerReady, exchangeAt)
 }
 
-// OwnerLeaveDeadline is when the owner must have pressed “Salir ya” after the
-// driver marked ready: max(driverReady, exchangeAt) + NoShowGrace.
-func OwnerLeaveDeadline(driverReady, exchangeAt time.Time) time.Time {
+// OwnerNoShowDeadline is max(driverReady, exchangeAt) + NoShowGrace.
+func OwnerNoShowDeadline(driverReady, exchangeAt time.Time) time.Time {
 	return graceDeadline(driverReady, exchangeAt)
-}
-
-// OwnerNoShowDeadline is when the owner must have left after the driver
-// signalled arrival, once exchange_at has passed:
-// max(driverArrived, exchangeAt) + NoShowGrace.
-func OwnerNoShowDeadline(driverArrived, exchangeAt time.Time) time.Time {
-	return graceDeadline(driverArrived, exchangeAt)
 }
 
 func graceDeadline(anchor, exchangeAt time.Time) time.Time {
@@ -179,44 +160,46 @@ func graceDeadline(anchor, exchangeAt time.Time) time.Time {
 	return start.Add(NoShowGrace)
 }
 
-// OwnerLeaveBlockReason explains why “Salir ya” is not allowed yet.
-// Empty means the owner may leave and complete the exchange.
-const (
-	OwnerLeaveOK               = ""
-	OwnerLeaveNotLive          = "not_live"
-	OwnerLeaveWaitingDriver    = "waiting_driver"
-)
-
-// OwnerLeaveBlockReason reports why the owner cannot press “Salir ya” at now.
-//
-// Before exchange_at + NoShowGrace the driver must already be at the spot
-// (arrived or ready). After that courtesy window the owner may leave (and be
-// paid) without a driver signal.
-func (r Reservation) OwnerLeaveBlockReason(now time.Time) string {
-	if !r.CanComplete() {
-		return OwnerLeaveNotLive
-	}
-	if r.DriverReadyAt != nil || r.DriverArrivedAt != nil {
-		return OwnerLeaveOK
-	}
-	if !now.Before(r.exchangeInstant().Add(NoShowGrace)) {
-		return OwnerLeaveOK
-	}
-	return OwnerLeaveWaitingDriver
-}
-
-// CanOwnerLeave reports whether “Salir ya” may complete the reservation now.
-func (r Reservation) CanOwnerLeave(now time.Time) bool {
-	return r.OwnerLeaveBlockReason(now) == OwnerLeaveOK
-}
-
-// DriverCanResolveStalledOwner reports whether the driver may choose
-// “entered / owner forgot” or “owner never left” after the leave deadline.
-func (r Reservation) DriverCanResolveStalledOwner(now time.Time) bool {
-	if !r.Status.Live() || r.DriverReadyAt == nil {
+// DriverNoShowElapsed reports whether the owner is ready and the driver's
+// courtesy window has passed without completion.
+func (r Reservation) DriverNoShowElapsed(now time.Time) bool {
+	if r.OwnerReadyAt == nil || !r.Status.Live() {
 		return false
 	}
-	return !now.Before(OwnerLeaveDeadline(*r.DriverReadyAt, r.exchangeInstant()))
+	return !now.Before(DriverNoShowDeadline(*r.OwnerReadyAt, r.exchangeInstant()))
+}
+
+// OwnerNoShowElapsed reports whether the driver is ready (owner not) and the
+// owner's courtesy window has passed without completion.
+func (r Reservation) OwnerNoShowElapsed(now time.Time) bool {
+	if r.DriverReadyAt == nil || r.OwnerReadyAt != nil || !r.Status.Live() {
+		return false
+	}
+	return !now.Before(OwnerNoShowDeadline(*r.DriverReadyAt, r.exchangeInstant()))
+}
+
+// SafetyNetElapsed reports whether exchange_at + OwnerSafetyNet has passed.
+func (r Reservation) SafetyNetElapsed(now time.Time) bool {
+	return !now.Before(SafetyNetDeadline(r.exchangeInstant()))
+}
+
+// FairCancel reports whether a driver cancel at `now` should release the
+// deposit. True when ≥ DriverFairCancelWindow remains before exchange_at, or
+// when the owner-no-show floor has already passed while the driver was ready.
+func (r Reservation) FairCancel(now time.Time) bool {
+	if r.OwnerNoShowElapsed(now) {
+		return true
+	}
+	return r.exchangeInstant().Sub(now) >= DriverFairCancelWindow
+}
+
+// OwnerCancelForfeits reports whether an owner cancel should forfeit the
+// driver's hold to the owner (driver no-show floor passed while owner ready).
+func (r Reservation) OwnerCancelForfeits(now time.Time) bool {
+	if r.BothReady() || !r.Status.Live() {
+		return false
+	}
+	return r.DriverNoShowElapsed(now)
 }
 
 // SafetyNetDeadline is exchange_at + OwnerSafetyNet.

@@ -480,10 +480,10 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
 
               {isActiveForSpot && active ? (
                 <>
-                  {isOwner && !active.driver_arrived_at && !active.driver_ready_at ? (
+                  {isOwner && !active.driver_ready_at ? (
                     <Text style={styles.help}>{t("spotSheet.exchange.waitingDriver")}</Text>
                   ) : null}
-                  {isOwner && (active.driver_ready_at || active.driver_arrived_at) ? (
+                  {isOwner && active.driver_ready_at ? (
                     <Text style={styles.help}>
                       {active.driver_ready_at
                         ? t("spotSheet.exchange.ownerLeavingSoon", {
@@ -521,7 +521,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                       </Text>
                     </Pressable>
                   ) : null}
-                  {isDriver && !active.driver_arrived_at && !active.driver_ready_at ? (
+                  {isDriver && !active.driver_ready_at ? (
                     <Pressable
                       style={[styles.primary, busy && styles.primaryDisabled]}
                       disabled={busy}
@@ -537,7 +537,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                     </Pressable>
                   ) : null}
                   {isDriver &&
-                  (!!active.driver_arrived_at || !!active.driver_ready_at) &&
+                  !!active.driver_ready_at &&
                   !driverCanResolveStalledOwner(active) ? (
                     <>
                       <Text style={styles.help}>

@@ -444,14 +444,52 @@ async function postReservationAction(id: string, action: string): Promise<void> 
 }
 
 export const cancelReservation = (id: string) => postReservationAction(id, "cancel");
-export const ownerReady = (id: string) => postReservationAction(id, "owner-ready");
-export const driverArrived = (id: string) =>
-  postReservationAction(id, "driver-arrived");
-export const clearDriverArrived = (id: string) =>
-  postReservationAction(id, "clear-driver-arrived");
-export const driverReady = (id: string) =>
-  postReservationAction(id, "driver-ready");
-export const driverConfirmEntered = (id: string) =>
-  postReservationAction(id, "driver-confirm-entered");
-export const driverReportOwnerNoShow = (id: string) =>
-  postReservationAction(id, "driver-report-owner-no-show");
+
+export async function reservationEnRoute(id: string): Promise<void> {
+  await postReservationAction(id, "en-route");
+}
+
+export async function reservationReady(id: string): Promise<{ completed: boolean }> {
+  const res = await apiFetch(`/v1/reservations/${id}/ready`, { method: "POST" });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as { completed: boolean };
+}
+
+export async function reservationUnready(id: string): Promise<void> {
+  const res = await apiFetch(`/v1/reservations/${id}/ready`, { method: "DELETE" });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+}
+
+/** @deprecated Prefer reservationReady — owner “listo en el punto”. */
+export async function ownerReady(id: string): Promise<void> {
+  await reservationReady(id);
+}
+
+/** @deprecated Prefer reservationReady — driver “listo en el punto”. */
+export async function driverArrived(id: string): Promise<void> {
+  await reservationReady(id);
+}
+
+/** @deprecated Prefer reservationUnready. */
+export async function clearDriverArrived(id: string): Promise<void> {
+  await reservationUnready(id);
+}
+
+/** @deprecated Prefer reservationReady. */
+export async function driverReady(id: string): Promise<void> {
+  await reservationReady(id);
+}
+
+/** @deprecated Stall confirm removed; calling ready is a no-op if already set. */
+export async function driverConfirmEntered(id: string): Promise<void> {
+  await reservationReady(id);
+}
+
+/** @deprecated Prefer cancelReservation after owner-no-show floor. */
+export async function driverReportOwnerNoShow(id: string): Promise<void> {
+  await cancelReservation(id);
+}

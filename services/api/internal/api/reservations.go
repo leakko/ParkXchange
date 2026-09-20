@@ -18,8 +18,9 @@ type reservationResponse struct {
 	Status          string     `json:"status"`
 	PriceCents      int        `json:"price_cents"`
 	ExchangeAt      time.Time  `json:"exchange_at"`
+	OwnerEnRouteAt  *time.Time `json:"owner_en_route_at,omitempty"`
+	DriverEnRouteAt *time.Time `json:"driver_en_route_at,omitempty"`
 	OwnerReadyAt    *time.Time `json:"owner_ready_at,omitempty"`
-	DriverArrivedAt *time.Time `json:"driver_arrived_at,omitempty"`
 	DriverReadyAt   *time.Time `json:"driver_ready_at,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
 }
@@ -29,8 +30,9 @@ func toReservationResponse(r domain.Reservation) reservationResponse {
 		ID: r.ID, SpotID: r.SpotID, DriverID: r.DriverID, OwnerID: r.OwnerID,
 		OfferID: r.OfferID, DriverVehicleID: r.DriverVehicleID,
 		Status: string(r.Status), PriceCents: r.PriceCents,
-		ExchangeAt: r.ExchangeAt, OwnerReadyAt: r.OwnerReadyAt,
-		DriverArrivedAt: r.DriverArrivedAt, DriverReadyAt: r.DriverReadyAt,
+		ExchangeAt: r.ExchangeAt,
+		OwnerEnRouteAt: r.OwnerEnRouteAt, DriverEnRouteAt: r.DriverEnRouteAt,
+		OwnerReadyAt: r.OwnerReadyAt, DriverReadyAt: r.DriverReadyAt,
 		CreatedAt: r.CreatedAt,
 	}
 }
@@ -74,55 +76,23 @@ func (a *API) handleCancelReservation(w http.ResponseWriter, r *http.Request) er
 	return web.NoContent(w)
 }
 
-func (a *API) handleOwnerReady(w http.ResponseWriter, r *http.Request) error {
-	if err := a.reserves.MarkOwnerReady(
-		r.Context(), r.PathValue("id"), claimsFrom(r.Context()),
-	); err != nil {
+func (a *API) handleReservationEnRoute(w http.ResponseWriter, r *http.Request) error {
+	if err := a.reserves.EnRoute(r.Context(), r.PathValue("id"), claimsFrom(r.Context())); err != nil {
 		return err
 	}
 	return web.NoContent(w)
 }
 
-func (a *API) handleDriverArrived(w http.ResponseWriter, r *http.Request) error {
-	if err := a.reserves.MarkDriverArrived(
-		r.Context(), r.PathValue("id"), claimsFrom(r.Context()),
-	); err != nil {
+func (a *API) handleReservationReady(w http.ResponseWriter, r *http.Request) error {
+	completed, err := a.reserves.Ready(r.Context(), r.PathValue("id"), claimsFrom(r.Context()))
+	if err != nil {
 		return err
 	}
-	return web.NoContent(w)
+	return web.JSON(w, http.StatusOK, map[string]bool{"completed": completed})
 }
 
-func (a *API) handleClearDriverArrived(w http.ResponseWriter, r *http.Request) error {
-	if err := a.reserves.ClearDriverArrived(
-		r.Context(), r.PathValue("id"), claimsFrom(r.Context()),
-	); err != nil {
-		return err
-	}
-	return web.NoContent(w)
-}
-
-func (a *API) handleDriverReady(w http.ResponseWriter, r *http.Request) error {
-	if err := a.reserves.MarkDriverReady(
-		r.Context(), r.PathValue("id"), claimsFrom(r.Context()),
-	); err != nil {
-		return err
-	}
-	return web.NoContent(w)
-}
-
-func (a *API) handleDriverConfirmEntered(w http.ResponseWriter, r *http.Request) error {
-	if err := a.reserves.DriverConfirmEntered(
-		r.Context(), r.PathValue("id"), claimsFrom(r.Context()),
-	); err != nil {
-		return err
-	}
-	return web.NoContent(w)
-}
-
-func (a *API) handleDriverReportOwnerNoShow(w http.ResponseWriter, r *http.Request) error {
-	if err := a.reserves.DriverReportOwnerNoShow(
-		r.Context(), r.PathValue("id"), claimsFrom(r.Context()),
-	); err != nil {
+func (a *API) handleReservationUnready(w http.ResponseWriter, r *http.Request) error {
+	if err := a.reserves.Unready(r.Context(), r.PathValue("id"), claimsFrom(r.Context())); err != nil {
 		return err
 	}
 	return web.NoContent(w)

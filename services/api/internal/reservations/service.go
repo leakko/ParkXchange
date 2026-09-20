@@ -131,150 +131,57 @@ func (s *Service) Reconfirm(ctx context.Context, id string, viewer domain.Claims
 	return nil
 }
 
-// MarkOwnerReady is “Salir ya”: completes the handover and credits the owner
-// when the leave gate allows it.
-func (s *Service) MarkOwnerReady(ctx context.Context, id string, viewer domain.Claims) error {
+// EnRoute records that the caller is on the way to the exchange.
+func (s *Service) EnRoute(ctx context.Context, id string, viewer domain.Claims) error {
 	res, err := s.reservationFor(ctx, id, viewer)
 	if err != nil {
 		return err
 	}
-	if res.OwnerID != viewer.UserID {
-		return domain.NotFound("reservation_not_found", "that reservation does not exist")
+	if !res.Status.Live() {
+		return domain.Conflict("reservation_not_live", "that reservation is already resolved")
 	}
-	now := s.now()
-	switch res.OwnerLeaveBlockReason(now) {
-	case domain.OwnerLeaveOK:
-		// proceed
-	case domain.OwnerLeaveWaitingDriver:
-		return domain.Conflict("owner_leave_waiting_driver",
-			"wait until the driver arrives or marks ready, or until the courtesy window after exchange_at")
-	default:
-		return domain.Conflict("owner_leave_not_allowed",
-			"the owner cannot leave that reservation now")
-	}
-
-	if err := s.store.MarkOwnerReady(ctx, id, viewer.UserID, now); err != nil {
-		return reservationConflict(err, "owner_leave_not_allowed",
-			"the owner cannot leave that reservation now")
+	if err := s.store.MarkEnRoute(ctx, id, viewer.UserID, s.now()); err != nil {
+		return reservationConflict(err, "en_route_not_allowed",
+			"en-route cannot be recorded for that reservation")
 	}
 	return nil
 }
 
-// MarkDriverArrived records the driver's “I’m here” signal. It is valid before
-// exchange_at and also marks ready so the owner is notified in one step.
-func (s *Service) MarkDriverArrived(ctx context.Context, id string, viewer domain.Claims) error {
+// Ready marks the caller ready at the point. When both are ready the store
+// completes and credits the owner.
+func (s *Service) Ready(ctx context.Context, id string, viewer domain.Claims) (bool, error) {
+	res, err := s.reservationFor(ctx, id, viewer)
+	if err != nil {
+		return false, err
+	}
+	if !res.Status.Live() {
+		return false, domain.Conflict("reservation_not_live", "that reservation is already resolved")
+	}
+	completed, err := s.store.MarkReady(ctx, id, viewer.UserID, s.now())
+	if err != nil {
+		return false, reservationConflict(err, "ready_not_allowed",
+			"ready cannot be recorded for that reservation")
+	}
+	return completed, nil
+}
+
+// Unready retracts the caller's ready signal.
+func (s *Service) Unready(ctx context.Context, id string, viewer domain.Claims) error {
 	res, err := s.reservationFor(ctx, id, viewer)
 	if err != nil {
 		return err
 	}
-	if res.DriverID != viewer.UserID {
-		return domain.NotFound("reservation_not_found", "that reservation does not exist")
+	if !res.Status.Live() {
+		return domain.Conflict("reservation_not_live", "that reservation is already resolved")
 	}
-	if !res.Status.Live() || res.DriverArrivedAt != nil || res.DriverReadyAt != nil {
-		return domain.Conflict("driver_arrived_not_allowed",
-			"driver arrival cannot be recorded for that reservation")
-	}
-
-	if err := s.store.MarkDriverArrived(ctx, id, viewer.UserID, s.now()); err != nil {
-		return reservationConflict(err, "driver_arrived_not_allowed",
-			"driver arrival cannot be recorded for that reservation")
+	if err := s.store.ClearReady(ctx, id, viewer.UserID); err != nil {
+		return reservationConflict(err, "unready_not_allowed",
+			"ready cannot be cleared for that reservation")
 	}
 	return nil
 }
 
-// ClearDriverArrived retracts the “I’m here” signal (arrival and ready) so the
-// driver can leave the immediate area and mark arrival again later.
-func (s *Service) ClearDriverArrived(ctx context.Context, id string, viewer domain.Claims) error {
-	res, err := s.reservationFor(ctx, id, viewer)
-	if err != nil {
-		return err
-	}
-	if res.DriverID != viewer.UserID {
-		return domain.NotFound("reservation_not_found", "that reservation does not exist")
-	}
-	if !res.Status.Live() || res.OwnerReadyAt != nil ||
-		(res.DriverArrivedAt == nil && res.DriverReadyAt == nil) {
-		return domain.Conflict("driver_arrived_not_allowed",
-			"driver arrival cannot be cleared for that reservation")
-	}
-
-	if err := s.store.ClearDriverArrived(ctx, id, viewer.UserID); err != nil {
-		return reservationConflict(err, "driver_arrived_not_allowed",
-			"driver arrival cannot be cleared for that reservation")
-	}
-	return nil
-}
-
-// MarkDriverReady records that the driver is ready to enter. It does not
-// settle — the owner must press “Salir ya” (or the driver resolves a stall).
-// Arrival must already be signalled; otherwise “ready” skips the undoable
-// “I’m here” step.
-func (s *Service) MarkDriverReady(ctx context.Context, id string, viewer domain.Claims) error {
-	res, err := s.reservationFor(ctx, id, viewer)
-	if err != nil {
-		return err
-	}
-	if res.DriverID != viewer.UserID {
-		return domain.NotFound("reservation_not_found", "that reservation does not exist")
-	}
-	if !res.Status.Live() || res.DriverArrivedAt == nil || res.DriverReadyAt != nil {
-		return domain.Conflict("driver_ready_not_allowed",
-			"driver ready cannot be recorded for that reservation")
-	}
-
-	if err := s.store.MarkDriverReady(ctx, id, viewer.UserID, s.now()); err != nil {
-		return reservationConflict(err, "driver_ready_not_allowed",
-			"driver ready cannot be recorded for that reservation")
-	}
-	return nil
-}
-
-// DriverConfirmEntered settles after a stalled owner: the driver got in and
-// the owner forgot to mark leave. Credits the owner.
-func (s *Service) DriverConfirmEntered(ctx context.Context, id string, viewer domain.Claims) error {
-	res, err := s.reservationFor(ctx, id, viewer)
-	if err != nil {
-		return err
-	}
-	if res.DriverID != viewer.UserID {
-		return domain.NotFound("reservation_not_found", "that reservation does not exist")
-	}
-	now := s.now()
-	if !res.DriverCanResolveStalledOwner(now) {
-		return domain.Conflict("owner_stall_not_resolvable",
-			"wait until the owner leave deadline before resolving")
-	}
-	if err := s.store.DriverConfirmEntered(ctx, id, viewer.UserID, now); err != nil {
-		return reservationConflict(err, "owner_stall_not_resolvable",
-			"that stalled exchange cannot be confirmed now")
-	}
-	return nil
-}
-
-// DriverReportOwnerNoShow cancels with a full release after a stalled owner
-// never vacated the spot.
-func (s *Service) DriverReportOwnerNoShow(ctx context.Context, id string, viewer domain.Claims) error {
-	res, err := s.reservationFor(ctx, id, viewer)
-	if err != nil {
-		return err
-	}
-	if res.DriverID != viewer.UserID {
-		return domain.NotFound("reservation_not_found", "that reservation does not exist")
-	}
-	now := s.now()
-	if !res.DriverCanResolveStalledOwner(now) {
-		return domain.Conflict("owner_stall_not_resolvable",
-			"wait until the owner leave deadline before resolving")
-	}
-	if err := s.store.DriverReportOwnerNoShow(ctx, id, viewer.UserID, now); err != nil {
-		return reservationConflict(err, "owner_stall_not_resolvable",
-			"that stalled exchange cannot be reported now")
-	}
-	return nil
-}
-
-// Cancel lets either party end a live reservation. Settlement is atomic in
-// the store because occupancy and ledger writes must not diverge.
+// Cancel lets either party end a live reservation.
 func (s *Service) Cancel(ctx context.Context, id string, viewer domain.Claims) error {
 	res, err := s.reservationFor(ctx, id, viewer)
 	if err != nil {
@@ -341,10 +248,9 @@ func reservationConflict(err error, code, message string) error {
 	return domain.Internal(err)
 }
 
-// Sweep expires what has run out. Safe to call from a ticker, a test, or a
-// command: it has no HTTP in it.
+// Sweep expires what has run out.
 func (s *Service) Sweep(ctx context.Context) (SweepResult, error) {
-	result, err := s.store.Sweep(ctx)
+	result, err := s.store.Sweep(ctx, s.now())
 	if err != nil {
 		return SweepResult{}, domain.Internal(err)
 	}

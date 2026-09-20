@@ -340,8 +340,25 @@ export const en: Record<TranslationKey, string> = {
   "exchange.actionFailed.title": "Action failed",
   "exchange.completed.title": "Exchange complete",
   "exchange.completed.message": "You're free to go; payment has been settled.",
-  "exchange.driverReady.title": "Driver is ready",
-  "exchange.driverReady.message": "Tap Leave now when you vacate the spot.",
+  "exchange.driverReady.title": "Driver is ready at the spot",
+  "exchange.driverReady.message":
+    "Confirm you are in your car ready to leave when they pull in.",
+  "exchange.confirm.title": "Are you sure?",
+  "exchange.confirm.ownerReady":
+    "Are you sure you are in your car, ready to leave as soon as the driver arrives?",
+  "exchange.confirm.driverReady":
+    "Are you sure you are behind the listed car, ready to pull in as soon as they leave?",
+  "exchange.confirm.unready":
+    "You will no longer appear ready. The other person will be notified and any wait clocks for your signal will stop.",
+  "exchange.confirm.enRoute": "Notify the other person that you are on your way?",
+  "exchange.actions.enRoute": "On my way",
+  "exchange.actions.ownerReady": "Ready to leave",
+  "exchange.actions.driverReady": "Ready to park",
+  "exchange.actions.unready": "I'm not ready anymore",
+  "exchange.status.waitingOther": "Waiting for the other party to mark ready.",
+  "exchange.status.ownerReady": "The owner is ready in their car.",
+  "exchange.status.driverReady": "The driver is ready at the spot.",
+  "exchange.status.deadline": "Courtesy window until {{datetime}}",
   "exchange.stall.confirmTitle": "Confirm you got in?",
   "exchange.stall.confirmMessage":
     "This closes the exchange and pays the owner. They'll be told they forgot to tap.",

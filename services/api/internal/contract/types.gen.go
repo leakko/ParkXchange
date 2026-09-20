@@ -343,13 +343,14 @@ type RegisterRequest struct {
 // ReservationResponse defines model for ReservationResponse.
 type ReservationResponse struct {
 	CreatedAt       time.Time           `json:"created_at"`
-	DriverArrivedAt *time.Time          `json:"driver_arrived_at,omitempty"`
+	DriverEnRouteAt *time.Time          `json:"driver_en_route_at,omitempty"`
 	DriverId        openapi_types.UUID  `json:"driver_id"`
 	DriverReadyAt   *time.Time          `json:"driver_ready_at,omitempty"`
 	DriverVehicleId *openapi_types.UUID `json:"driver_vehicle_id,omitempty"`
 	ExchangeAt      time.Time           `json:"exchange_at"`
 	Id              openapi_types.UUID  `json:"id"`
 	OfferId         *openapi_types.UUID `json:"offer_id,omitempty"`
+	OwnerEnRouteAt  *time.Time          `json:"owner_en_route_at,omitempty"`
 	OwnerId         openapi_types.UUID  `json:"owner_id"`
 	OwnerReadyAt    *time.Time          `json:"owner_ready_at,omitempty"`
 	PriceCents      int                 `json:"price_cents"`

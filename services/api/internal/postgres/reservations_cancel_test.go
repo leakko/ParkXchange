@@ -111,13 +111,13 @@ func TestCancelDuringOwnerStallReleasesDeposit(t *testing.T) {
 	readyAt := exchangeAt.Add(time.Minute)
 	if _, err := tx.Exec(ctx, `
 		UPDATE reservations
-		   SET status = 'arrived', driver_ready_at = $2, driver_arrived_at = $2
+		   SET status = 'confirmed', driver_ready_at = $2
 		 WHERE id = $1
 	`, reservation.ID, readyAt); err != nil {
 		t.Fatalf("mark ready: %v", err)
 	}
 
-	at := domain.OwnerLeaveDeadline(readyAt, exchangeAt)
+	at := domain.OwnerNoShowDeadline(readyAt, exchangeAt)
 	if err := db.Cancel(ctx, reservation.ID, driverID, at); err != nil {
 		t.Fatalf("Cancel during stall: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestCancelDuringOwnerStallReleasesDeposit(t *testing.T) {
 	}
 }
 
-func TestClearDriverArrivedRestoresConfirmed(t *testing.T) {
+func TestClearReadyRestoresConfirmed(t *testing.T) {
 	ctx, tx := testdb.Begin(t)
 	db := &DB{tx: tx}
 
@@ -166,11 +166,11 @@ func TestClearDriverArrivedRestoresConfirmed(t *testing.T) {
 	}
 
 	at := exchangeAt.Add(-time.Minute)
-	if err := db.MarkDriverArrived(ctx, reservation.ID, driverID, at); err != nil {
-		t.Fatalf("MarkDriverArrived: %v", err)
+	if _, err := db.MarkReady(ctx, reservation.ID, driverID, at); err != nil {
+		t.Fatalf("MarkReady: %v", err)
 	}
-	if err := db.ClearDriverArrived(ctx, reservation.ID, driverID); err != nil {
-		t.Fatalf("ClearDriverArrived: %v", err)
+	if err := db.ClearReady(ctx, reservation.ID, driverID); err != nil {
+		t.Fatalf("ClearReady: %v", err)
 	}
 
 	got, err := loadReservation(ctx, tx.QueryRow(ctx, `
@@ -182,8 +182,8 @@ func TestClearDriverArrivedRestoresConfirmed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load reservation: %v", err)
 	}
-	if got.DriverArrivedAt != nil {
-		t.Fatal("driver_arrived_at should be cleared")
+	if got.DriverReadyAt != nil {
+		t.Fatal("driver_ready_at should be cleared")
 	}
 	if got.DriverReadyAt != nil {
 		t.Fatal("driver_ready_at should be cleared with arrival")
