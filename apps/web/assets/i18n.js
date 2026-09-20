@@ -22,7 +22,7 @@
         "ParkXchange conecta a quien busca un sitio para aparcar en la ciudad con quien se va a ir de todas formas.",
       "hero.cta": "Cómo funciona",
       "hero.imageAlt":
-        "Calle urbana con coches aparcados y un hueco libre en la acera",
+        "Calle urbana llena de coches aparcados, sin huecos libres",
       "how.title": "Cómo funciona",
       "how.step1.title": "Anuncia",
       "how.step1.body":
@@ -124,7 +124,7 @@
         "ParkXchange connects people looking for a place to park in the city with drivers who are leaving anyway.",
       "hero.cta": "How it works",
       "hero.imageAlt":
-        "City street with parked cars and one open curb parking space",
+        "City street packed with parked cars and no free spaces",
       "how.title": "How it works",
       "how.step1.title": "Announce",
       "how.step1.body":
