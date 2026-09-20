@@ -29,7 +29,7 @@
         "Cuando te vas, publicas cuándo y dónde liberas tu plaza de aparcamiento.",
       "how.step2.title": "Reserva",
       "how.step2.body":
-        "Quien busca parking lo ve en el mapa y reserva el intercambio.",
+        "Quien busca aparcamiento lo ve en el mapa y reserva el intercambio.",
       "how.step3.title": "Intercambio",
       "how.step3.body":
         "En cuanto el otro coche llega, el que ocupaba el hueco sale para dejárselo libre.",

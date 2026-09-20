@@ -103,14 +103,6 @@ func markEmailVerified(t *testing.T, db *postgres.DB, userID string) {
 	}
 }
 
-// registerVerifiedUser registers and marks the account verified for gated actions.
-func registerVerifiedUser(t *testing.T, server *httptest.Server, db *postgres.DB) (session, string, string) {
-	t.Helper()
-	sess, email, password := registerUser(t, server)
-	markEmailVerified(t, db, sess.User.ID)
-	return sess, email, password
-}
-
 func TestRegisterIssuesAUsableSession(t *testing.T) {
 	server, _ := newServer(t)
 
