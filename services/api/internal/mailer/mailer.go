@@ -51,15 +51,23 @@ func (m ResendMailer) SendPasswordReset(ctx context.Context, to domain.Email, re
 	}
 
 	safeURL := html.EscapeString(resetURL)
+	// Put the raw https URL in the body: Gmail strips <a href> for non-http
+	// schemes and may leave only the anchor text. A bare https URL is always
+	// tappable, and an inline-styled link helps when HTML is allowed.
+	htmlBody := `<div style="font-family:system-ui,sans-serif;font-size:16px;line-height:1.5;color:#111">` +
+		`<p>Use this link to choose a new password. It expires in one hour.</p>` +
+		`<p><a href="` + safeURL + `" style="color:#1B9AAA;font-weight:600;text-decoration:underline">Reset your password</a></p>` +
+		`<p style="word-break:break-all"><a href="` + safeURL + `" style="color:#1B9AAA">` + safeURL + `</a></p>` +
+		`<p style="color:#666;font-size:14px">If you did not ask for this, you can ignore this email.</p>` +
+		`</div>`
+
 	body, err := json.Marshal(map[string]any{
 		"from":    m.From,
 		"to":      []string{to.String()},
 		"subject": "Reset your ParkXchange password",
 		"text": "Use this link to choose a new password. It expires in one hour.\n\n" +
 			resetURL + "\n\nIf you did not ask for this, you can ignore this email.\n",
-		"html": "<p>Use this link to choose a new password. It expires in one hour.</p>" +
-			`<p><a href="` + safeURL + `">Reset your password</a></p>` +
-			"<p>If you did not ask for this, you can ignore this email.</p>",
+		"html": htmlBody,
 	})
 	if err != nil {
 		return fmt.Errorf("mailer: encode resend body: %w", err)
