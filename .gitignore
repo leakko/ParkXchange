@@ -60,3 +60,6 @@ Pulumi.*.yaml
 .DS_Store
 Thumbs.db
 .tmp/
+
+# Git worktrees (local isolation)
+.worktrees/
