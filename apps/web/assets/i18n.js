@@ -30,9 +30,9 @@
       "how.step2.title": "Reserva",
       "how.step2.body":
         "Quien busca parking lo ve en el mapa y reserva el intercambio.",
-      "how.step3.title": "Encuentro breve",
+      "how.step3.title": "Intercambio",
       "how.step3.body":
-        "Os encontráis un momento en la calle: cortesía de espera a cambio de puntos.",
+        "En cuanto el otro coche llega, el que ocupaba el hueco sale para dejárselo libre.",
       "footer.contact": "Contacto",
       "footer.tagline":
         "Información y cortesía sobre aparcamiento — no vendemos suelo público.",
@@ -132,9 +132,9 @@
       "how.step2.title": "Reserve",
       "how.step2.body":
         "Drivers looking for parking see it on the map and reserve the exchange.",
-      "how.step3.title": "Brief meetup",
+      "how.step3.title": "Handover",
       "how.step3.body":
-        "You meet briefly on the street: courtesy waiting in exchange for points.",
+        "As soon as the other car arrives, the one occupying the space leaves and frees it up.",
       "footer.contact": "Contact",
       "footer.tagline":
         "Information and courtesy about parking — we don’t sell public land.",
