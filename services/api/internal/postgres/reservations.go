@@ -304,20 +304,23 @@ func (db *DB) MarkEnRoute(ctx context.Context, id, actorID string, at time.Time)
 		return domain.ErrConflict
 	}
 
-	if actorID == ownerID {
+	switch actorID {
+	case ownerID:
 		if _, err := tx.Exec(ctx, `
 			UPDATE reservations SET owner_en_route_at = COALESCE(owner_en_route_at, $2)
 			 WHERE id = $1
 		`, id, at); err != nil {
 			return translate(err, "set owner en-route")
 		}
-	} else {
+	case driverID:
 		if _, err := tx.Exec(ctx, `
 			UPDATE reservations SET driver_en_route_at = COALESCE(driver_en_route_at, $2)
 			 WHERE id = $1
 		`, id, at); err != nil {
 			return translate(err, "set driver en-route")
 		}
+	default:
+		return domain.ErrConflict
 	}
 
 	if err := notifySpot(ctx, tx, domain.SpotEvent{
@@ -360,7 +363,8 @@ func (db *DB) MarkReady(ctx context.Context, id, actorID string, at time.Time) (
 		return false, domain.ErrConflict
 	}
 
-	if actorID == ownerID {
+	switch actorID {
+	case ownerID:
 		if ownerReady == nil {
 			if _, err := tx.Exec(ctx, `
 				UPDATE reservations SET owner_ready_at = $2 WHERE id = $1
@@ -369,7 +373,7 @@ func (db *DB) MarkReady(ctx context.Context, id, actorID string, at time.Time) (
 			}
 			ownerReady = &at
 		}
-	} else if actorID == driverID {
+	case driverID:
 		if driverReady == nil {
 			if _, err := tx.Exec(ctx, `
 				UPDATE reservations SET driver_ready_at = $2 WHERE id = $1
@@ -378,7 +382,7 @@ func (db *DB) MarkReady(ctx context.Context, id, actorID string, at time.Time) (
 			}
 			driverReady = &at
 		}
-	} else {
+	default:
 		return false, domain.ErrConflict
 	}
 
@@ -457,7 +461,8 @@ func (db *DB) ClearReady(ctx context.Context, id, actorID string) error {
 	}
 
 	var tag interface{ RowsAffected() int64 }
-	if actorID == ownerID {
+	switch actorID {
+	case ownerID:
 		if ownerReady == nil {
 			return domain.ErrConflict
 		}
@@ -468,7 +473,7 @@ func (db *DB) ClearReady(ctx context.Context, id, actorID string) error {
 			return translate(err, "clear owner ready")
 		}
 		tag = t
-	} else if actorID == driverID {
+	case driverID:
 		if driverReady == nil {
 			return domain.ErrConflict
 		}
@@ -479,7 +484,7 @@ func (db *DB) ClearReady(ctx context.Context, id, actorID string) error {
 			return translate(err, "clear driver ready")
 		}
 		tag = t
-	} else {
+	default:
 		return domain.ErrConflict
 	}
 	if tag.RowsAffected() == 0 {
