@@ -86,7 +86,8 @@ ParkXchange/
 ├── libs/
 │   └── go/geo/               # Go module: bbox, GeoJSON, coordinate fuzzing
 ├── apps/
-│   └── mobile/               # Expo application
+│   ├── mobile/               # Expo application
+│   └── web/                  # Static marketing site (GitHub Pages)
 ├── packages/
 │   ├── api-contract/         # OpenAPI spec + generated TypeScript types
 │   └── tsconfig/             # shared TypeScript configurations
