@@ -24,11 +24,11 @@ If that test fails, fix the code, not the test.
 - **Phase in progress:** spot-exchange matrix UX (approved-v2) on
   `feature/spot-exchange-handshake` — SpotSheet bilateral + window A–D copy;
   emulator smoke still needs Docker
-- **Also open:** marketing site for Google OAuth on
-  `feature/marketing-site-google-oauth` (`apps/web` landing + privacy + terms;
-  Pages workflow ready). **Operator still needs:** GitHub Pages source =
-  Actions, apex DNS A records → GitHub, Search Console verify, OAuth consent
-  URLs. Spec/plan: `2026-09-20-marketing-site-google-oauth*`
+- **Also open:** marketing site merged to `main` — GitHub Pages deploy green;
+  site live at `https://leakko.github.io/ParkXchange/`. **Operator still needs
+  DNS:** apex `parkxchange.com` A records → GitHub Pages IPs (see
+  `apps/web/README.md`), then wait for HTTPS on the custom domain; Search
+  Console + OAuth consent URLs after that.
 - **Also open:** auth UI + Google Sign-In on `feat/auth-ui-google` (may already
   be merged on your machine — check branches)
 - **Last updated:** 2026-09-20
@@ -40,9 +40,11 @@ If that test fails, fix the code, not the test.
 
 ## Next immediate step
 
-On `feature/marketing-site-google-oauth`: merge/push → enable Pages (Actions) →
-DNS apex to GitHub → paste OAuth consent URLs (`/` , `/privacy.html`,
-`/terms.html`). Details: `apps/web/README.md`.
+**DNS for marketing site:** at your registrar, point `parkxchange.com` apex
+with four `A` records to `185.199.108.153`, `185.199.109.153`,
+`185.199.110.153`, `185.199.111.153`. Optional `www` CNAME →
+`leakko.github.io`. Keep API on `api.parkxchange.com` (Hetzner), not apex.
+Then Search Console verify + OAuth consent URLs. Details: `apps/web/README.md`.
 
 On `feature/spot-exchange-handshake`: start Docker → `task db:up` →
 `task api:run` → mobile emulator. Smoke: accept offer → Yendo/Listo both sides →
