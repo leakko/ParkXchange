@@ -4,11 +4,97 @@ export const NO_SHOW_GRACE_MS = 10 * 60 * 1000;
 /** Matches domain.DriverFairCancelWindow (30 minutes). */
 export const DRIVER_FAIR_CANCEL_MS = 30 * 60 * 1000;
 
-type HandshakeFields = {
+/** Matches domain.OwnerSafetyNet (60 minutes). */
+export const OWNER_SAFETY_NET_MS = 60 * 60 * 1000;
+
+export type HandshakeFields = {
   exchange_at: string;
   driver_ready_at?: string | null;
   owner_ready_at?: string | null;
+  driver_en_route_at?: string | null;
+  owner_en_route_at?: string | null;
 };
+
+/** Matrix temporal window (spec 2029-09-20). */
+export type ExchangeWindow = "A" | "B" | "C" | "D";
+
+/** Other party's handshake progress. */
+export type PeerPhase = "idle" | "en_route" | "ready";
+
+/**
+ * Classify now into windows A–D.
+ * A/B before exchange_at; C courtesy after hour while clocks/safety allow; D late.
+ */
+export function exchangeWindow(
+  res: HandshakeFields,
+  nowMs: number = Date.now(),
+): ExchangeWindow {
+  const exchangeMs = new Date(res.exchange_at).getTime();
+  if (nowMs < exchangeMs - DRIVER_FAIR_CANCEL_MS) {
+    return "A";
+  }
+  if (nowMs < exchangeMs) {
+    return "B";
+  }
+  if (nowMs >= exchangeMs + OWNER_SAFETY_NET_MS) {
+    return "D";
+  }
+  if (driverNoShowElapsed(res, nowMs) || ownerNoShowElapsed(res, nowMs)) {
+    return "D";
+  }
+  return "C";
+}
+
+export function peerPhase(
+  res: HandshakeFields,
+  iAmOwner: boolean,
+): PeerPhase {
+  const ready = iAmOwner ? res.driver_ready_at : res.owner_ready_at;
+  const enRoute = iAmOwner ? res.driver_en_route_at : res.owner_en_route_at;
+  if (ready) {
+    return "ready";
+  }
+  if (enRoute) {
+    return "en_route";
+  }
+  return "idle";
+}
+
+/** Current user's own handshake phase. */
+export function myHandshakePhase(
+  res: HandshakeFields,
+  iAmOwner: boolean,
+): PeerPhase {
+  const ready = iAmOwner ? res.owner_ready_at : res.driver_ready_at;
+  const enRoute = iAmOwner ? res.owner_en_route_at : res.driver_en_route_at;
+  if (ready) {
+    return "ready";
+  }
+  if (enRoute) {
+    return "en_route";
+  }
+  return "idle";
+}
+
+/** Mirrors domain.OwnerCancelForfeits. */
+export function ownerCancelForfeits(
+  res: HandshakeFields,
+  nowMs: number = Date.now(),
+): boolean {
+  if (res.owner_ready_at && res.driver_ready_at) {
+    return false;
+  }
+  return driverNoShowElapsed(res, nowMs);
+}
+
+/** Show the 10m courtesy deadline only once exchange_at has passed (windows C/D). */
+export function shouldShowNoShowDeadline(
+  res: HandshakeFields,
+  nowMs: number = Date.now(),
+): boolean {
+  const w = exchangeWindow(res, nowMs);
+  return w === "C" || w === "D";
+}
 
 function graceDeadline(anchorMs: number, exchangeMs: number): number {
   return Math.max(anchorMs, exchangeMs) + NO_SHOW_GRACE_MS;

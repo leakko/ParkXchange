@@ -4,22 +4,24 @@ import { Alert } from "react-native";
 
 import {
   cancelReservation,
-  clearDriverArrived,
   createSpot,
-  driverArrived,
-  driverConfirmEntered,
-  driverReady,
-  driverReportOwnerNoShow,
   fetchActiveReservations,
   getMe,
+  getReservation,
   getSpot,
-  ownerReady,
+  reservationEnRoute,
   reservationReady,
+  reservationUnready,
   type ReservationResponse,
   type SpotFeature,
 } from "@/api/client";
 import { useTranslation } from "@/i18n";
 import { distanceMeters } from "@/map/exchange";
+import { detectExchangeNotif } from "@/map/exchangeNotifs";
+
+function isLiveStatus(status: string | undefined): boolean {
+  return status === "pending" || status === "confirmed" || status === "arrived";
+}
 
 export function useActiveReservation(enabled: boolean) {
   const { t } = useTranslation();
@@ -27,9 +29,34 @@ export function useActiveReservation(enabled: boolean) {
   const [spot, setSpot] = useState<SpotFeature | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const alertedArrivalForRef = useRef<string | null>(null);
   const activeRef = useRef<ReservationResponse | null>(null);
+  const prevRef = useRef<ReservationResponse | null>(null);
+  const lastNotifKeyRef = useRef<string | null>(null);
   activeRef.current = active;
+
+  const maybeNotify = useCallback(
+    (prev: ReservationResponse | null, next: ReservationResponse | null, meId: string) => {
+      if (!next) {
+        return;
+      }
+      const iAmOwner = next.owner_id === meId;
+      const event = detectExchangeNotif({ prev, next, iAmOwner });
+      if (!event) {
+        return;
+      }
+      const dedupe = `${next.id}:${event.kind}:${event.key}:${next.status}:${next.owner_ready_at}:${next.driver_ready_at}:${next.owner_en_route_at}:${next.driver_en_route_at}`;
+      if (lastNotifKeyRef.current === dedupe) {
+        return;
+      }
+      lastNotifKeyRef.current = dedupe;
+      const title =
+        event.kind === "completed"
+          ? t("exchange.completed.title")
+          : t("exchange.notif.title");
+      Alert.alert(title, t(event.key));
+    },
+    [t],
+  );
 
   const refresh = useCallback(async () => {
     if (!enabled) {
@@ -37,71 +64,42 @@ export function useActiveReservation(enabled: boolean) {
     }
     try {
       const [list, me] = await Promise.all([fetchActiveReservations(), getMe()]);
-      const next = list[0] ?? null;
+      let next = list[0] ?? null;
+      const prev = prevRef.current;
+
+      // Active list drops terminal rows — resolve final status for notifs.
+      if (!next && prev && isLiveStatus(prev.status)) {
+        try {
+          const ended = await getReservation(prev.id);
+          maybeNotify(prev, ended, me.id);
+          prevRef.current = null;
+          setActive(null);
+          setUserId(me.id);
+          setSpot(null);
+          return;
+        } catch {
+          /* fall through */
+        }
+      }
+
+      maybeNotify(prev, next, me.id);
+      prevRef.current = next;
       setActive(next);
       setUserId(me.id);
       setSpot(next ? await getSpot(next.spot_id) : null);
-
-      // Owner: prompt once when the driver newly marks ready to enter.
-      if (
-        next &&
-        next.owner_id === me.id &&
-        next.driver_ready_at &&
-        !next.owner_ready_at
-      ) {
-        const alertKey = `${next.id}:ready:${next.driver_ready_at}`;
-        if (alertedArrivalForRef.current !== alertKey) {
-          alertedArrivalForRef.current = alertKey;
-          Alert.alert(
-            t("exchange.driverReady.title"),
-            t("exchange.driverReady.message"),
-            [
-              { text: t("common.cancel"), style: "cancel" },
-              {
-                text: t("exchange.actions.ownerReady"),
-                onPress: () => {
-                  void (async () => {
-                    try {
-                      const result = await reservationReady(next.id);
-                      if (result.completed) {
-                        Alert.alert(
-                          t("exchange.completed.title"),
-                          t("exchange.completed.message"),
-                        );
-                      }
-                      const again = await fetchActiveReservations();
-                      const refreshed = again[0] ?? null;
-                      setActive(refreshed);
-                      setSpot(refreshed ? await getSpot(refreshed.spot_id) : null);
-                    } catch (err) {
-                      Alert.alert(
-                        t("exchange.actionFailed.title"),
-                        err instanceof Error ? err.message : t("common.error"),
-                      );
-                    }
-                  })();
-                },
-              },
-            ],
-          );
-        }
-      }
-      if (!next?.driver_ready_at) {
-        alertedArrivalForRef.current = null;
-      }
     } catch {
       /* keep previous */
     }
-  }, [enabled, t]);
+  }, [enabled, maybeNotify]);
 
   useEffect(() => {
     if (!enabled) {
       setActive(null);
       setSpot(null);
+      prevRef.current = null;
       return;
     }
     void refresh();
-    // Poll faster while an exchange is live so arrival/ready land quickly.
     const id = setInterval(() => void refresh(), 5_000);
     return () => clearInterval(id);
   }, [enabled, refresh]);
@@ -157,8 +155,6 @@ export function useActiveReservation(enabled: boolean) {
       return confirmLeaveLocation("unknown");
     }
 
-    // Prefer a recent cached fix: getCurrentPositionAsync can hang for many
-    // seconds on flaky emulator/device GPS and made “Ya estoy aquí” feel stuck.
     let coords: { longitude: number; latitude: number } | null = null;
     try {
       const last = await Location.getLastKnownPositionAsync();
@@ -216,71 +212,30 @@ export function useActiveReservation(enabled: boolean) {
     isDriver,
     busy,
     refresh,
-    markOwnerReady: () =>
-      run(async () => {
-        const current = activeRef.current;
-        if (!current || !(await warnIfFar())) {
-          return;
-        }
-        await ownerReady(current.id);
-        Alert.alert(t("exchange.completed.title"), t("exchange.completed.message"));
-      }),
-    markDriverArrived: () =>
-      run(async () => {
-        const current = activeRef.current;
-        if (!current || !(await warnIfFar())) {
-          return;
-        }
-        const at = new Date().toISOString();
-        // Flip the sheet immediately; refresh reconciles with the server after.
-        setActive({
-          ...current,
-          driver_ready_at: at,
-          driver_ready_at: at,
-          status: "arrived",
-        });
-        await driverArrived(current.id);
-      }),
-    clearDriverArrived: () =>
+    markEnRoute: () =>
       run(async () => {
         const current = activeRef.current;
         if (!current) {
           return;
         }
-        // Snap UI back to pre-arrival immediately so a slow refresh cannot
-        // leave the sheet looking like “ready” after an undo tap.
-        setActive({
-          ...current,
-          driver_ready_at: null,
-          driver_ready_at: null,
-          status: "confirmed",
-        });
-        await clearDriverArrived(current.id);
+        await reservationEnRoute(current.id);
       }),
-    markDriverReady: () =>
+    markReady: () =>
       run(async () => {
         const current = activeRef.current;
         if (!current || !(await warnIfFar())) {
           return;
         }
-        await driverReady(current.id);
+        await reservationReady(current.id);
+        // Completed toast comes from refresh → detectExchangeNotif.
       }),
-    confirmEntered: () =>
+    clearReady: () =>
       run(async () => {
         const current = activeRef.current;
         if (!current) {
           return;
         }
-        await driverConfirmEntered(current.id);
-        Alert.alert(t("exchange.completed.title"), t("exchange.completed.message"));
-      }),
-    reportOwnerNoShow: () =>
-      run(async () => {
-        const current = activeRef.current;
-        if (!current) {
-          return;
-        }
-        await driverReportOwnerNoShow(current.id);
+        await reservationUnready(current.id);
       }),
     cancel: () =>
       run(async () => {

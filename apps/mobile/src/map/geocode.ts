@@ -8,7 +8,40 @@ type NominatimHit = {
   display_name?: string;
   lon?: string;
   lat?: string;
+  address?: {
+    road?: string;
+    pedestrian?: string;
+    footway?: string;
+    path?: string;
+    house_number?: string;
+    neighbourhood?: string;
+    suburb?: string;
+    city?: string;
+    town?: string;
+    village?: string;
+  };
 };
+
+const NOMINATIM_HEADERS = {
+  Accept: "application/json",
+  "User-Agent": "ParkXchange/0.1 (local-dev)",
+};
+
+function formatStreetLabel(hit: NominatimHit): string | null {
+  const a = hit.address;
+  if (!a) {
+    return hit.display_name ?? null;
+  }
+  const street = a.road ?? a.pedestrian ?? a.footway ?? a.path;
+  const place = a.neighbourhood ?? a.suburb ?? a.city ?? a.town ?? a.village;
+  if (street && a.house_number) {
+    return place ? `${street} ${a.house_number}, ${place}` : `${street} ${a.house_number}`;
+  }
+  if (street) {
+    return place ? `${street}, ${place}` : street;
+  }
+  return hit.display_name ?? place ?? null;
+}
 
 /**
  * Forward-geocode via Nominatim (same OSM stack as the map tiles).
@@ -28,10 +61,7 @@ export async function searchAddresses(query: string): Promise<AddressSuggestion[
       addressdetails: "0",
     }).toString();
   const res = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "ParkXchange/0.1 (local-dev)",
-    },
+    headers: NOMINATIM_HEADERS,
   });
   if (!res.ok) {
     throw new Error(`geocode failed (${res.status})`);
@@ -47,4 +77,26 @@ export async function searchAddresses(query: string): Promise<AddressSuggestion[
       return { label: hit.display_name, lon, lat };
     })
     .filter((s): s is AddressSuggestion => s != null);
+}
+
+/** Reverse-geocode lon/lat to a short street label when possible. */
+export async function reverseGeocode(
+  lon: number,
+  lat: number,
+): Promise<string | null> {
+  const url =
+    "https://nominatim.openstreetmap.org/reverse?" +
+    new URLSearchParams({
+      lon: String(lon),
+      lat: String(lat),
+      format: "json",
+      addressdetails: "1",
+      zoom: "18",
+    }).toString();
+  const res = await fetch(url, { headers: NOMINATIM_HEADERS });
+  if (!res.ok) {
+    throw new Error(`reverse geocode failed (${res.status})`);
+  }
+  const hit = (await res.json()) as NominatimHit;
+  return formatStreetLabel(hit);
 }

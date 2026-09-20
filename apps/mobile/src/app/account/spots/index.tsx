@@ -9,6 +9,7 @@ import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
 import { formatPoints } from "@/i18n/formatPoints";
 import { useQueries, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Ionicons } from "@expo/vector-icons";
 import { type Href, useRouter } from "expo-router";
 import {
   ActivityIndicator,
@@ -149,28 +150,63 @@ export default function MySpotsScreen() {
                 { marginBottom: 8, flexDirection: "column", alignItems: "stretch" },
               ]}
             >
-              {reserved && reservation ? (
-                <>
-                  <Text style={accountStyles.title}>
-                    {t("account.spots.exchangeAt", {
-                      datetime: formatDateTime(reservation.exchange_at),
-                    })}
-                  </Text>
-                  <Text style={accountStyles.rowMeta}>
-                    {t("account.spots.spotTitle", {
-                      points: formatPoints(reservation.price_cents),
-                      status: item.properties.status,
-                    })}
-                  </Text>
-                </>
-              ) : (
-                <Text style={accountStyles.rowTitle}>
-                  {t("account.spots.spotTitle", {
-                    points: formatPoints(item.properties.price_cents),
-                    status: item.properties.status,
-                  })}
-                </Text>
-              )}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: 8,
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  {reserved && reservation ? (
+                    <>
+                      <Text style={accountStyles.title}>
+                        {t("account.spots.exchangeAt", {
+                          datetime: formatDateTime(reservation.exchange_at),
+                        })}
+                      </Text>
+                      <Text style={accountStyles.rowMeta}>
+                        {t("account.spots.spotTitle", {
+                          points: formatPoints(reservation.price_cents),
+                          status: item.properties.status,
+                        })}
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={accountStyles.rowTitle}>
+                      {t("account.spots.spotTitle", {
+                        points: formatPoints(item.properties.price_cents),
+                        status: item.properties.status,
+                      })}
+                    </Text>
+                  )}
+                </View>
+                {item.geometry.coordinates[0] != null &&
+                item.geometry.coordinates[1] != null ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t("account.spots.showOnMap")}
+                    onPress={() => {
+                      const lon = item.geometry.coordinates[0]!;
+                      const lat = item.geometry.coordinates[1]!;
+                      router.replace(
+                        `/?focusLon=${lon}&focusLat=${lat}&focusSpot=${encodeURIComponent(id)}` as Href,
+                      );
+                    }}
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      backgroundColor: "#16324F",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons name="locate" size={22} color="#F4F7FA" />
+                  </Pressable>
+                ) : null}
+              </View>
               <Text style={accountStyles.rowMeta}>
                 {item.properties.vehicle
                   ? `${item.properties.vehicle.plate} · ${item.properties.vehicle.make_model}`

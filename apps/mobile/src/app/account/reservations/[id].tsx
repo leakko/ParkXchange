@@ -16,9 +16,15 @@ import { useSession } from "@/hooks/useSession";
 import { useTranslation, type TranslationKey } from "@/i18n";
 import { formatPoints } from "@/i18n/formatPoints";
 import {
-  driverCancelOutcome,
+  completedMessageKey,
+  driverCancelMessageKey,
+  ownerCancelMessageKey,
+} from "@/map/exchangeCopy";
+import { ExchangeStatusPanel } from "@/map/ExchangeStatusPanel";
+import {
   driverNoShowDeadline,
   ownerNoShowDeadline,
+  shouldShowNoShowDeadline,
 } from "@/map/exchangeLeave";
 
 function reservationStatusKey(status: string): TranslationKey {
@@ -78,8 +84,12 @@ export default function ReservationDetailScreen() {
     },
     onSuccess: async (data) => {
       await invalidate();
-      if (data?.completed) {
-        Alert.alert(t("exchange.completed.title"), t("exchange.completed.message"));
+      if (data?.completed && reservation.data && me.data) {
+        const owner = reservation.data.owner_id === me.data.id;
+        Alert.alert(
+          t("exchange.completed.title"),
+          t(completedMessageKey(owner)),
+        );
       }
     },
     onError: (err) => {
@@ -117,7 +127,7 @@ export default function ReservationDetailScreen() {
   const live =
     res.status === "pending" || res.status === "confirmed" || res.status === "arrived";
   const myReady = isOwner ? res.owner_ready_at : res.driver_ready_at;
-  const theirReady = isOwner ? res.driver_ready_at : res.owner_ready_at;
+  const myEnRoute = isOwner ? res.owner_en_route_at : res.driver_en_route_at;
   const deadline = isOwner ? driverNoShowDeadline(res) : ownerNoShowDeadline(res);
 
   const confirmReady = () => {
@@ -179,30 +189,27 @@ export default function ReservationDetailScreen() {
 
       {live && (isOwner || isDriver) ? (
         <View style={{ gap: 10, marginTop: 16 }}>
-          {theirReady ? (
-            <Text style={accountStyles.meta}>
-              {isOwner
-                ? t("exchange.status.driverReady")
-                : t("exchange.status.ownerReady")}
-            </Text>
-          ) : (
-            <Text style={accountStyles.meta}>{t("exchange.status.waitingOther")}</Text>
-          )}
-          {myReady && deadline ? (
-            <Text style={accountStyles.meta}>
-              {t("exchange.status.deadline", {
-                datetime: formatDateTime(deadline.toISOString()),
-              })}
-            </Text>
-          ) : null}
+          <ExchangeStatusPanel
+            res={res}
+            iAmOwner={isOwner}
+            deadlineLabel={
+              myReady && deadline && shouldShowNoShowDeadline(res)
+                ? t("exchange.status.deadline", {
+                    datetime: formatDateTime(deadline.toISOString()),
+                  })
+                : null
+            }
+          />
 
-          <Pressable
-            style={[accountStyles.secondary, action.isPending && { opacity: 0.6 }]}
-            disabled={action.isPending}
-            onPress={confirmEnRoute}
-          >
-            <Text style={accountStyles.secondaryText}>{t("exchange.actions.enRoute")}</Text>
-          </Pressable>
+          {!myEnRoute ? (
+            <Pressable
+              style={[accountStyles.secondary, action.isPending && { opacity: 0.6 }]}
+              disabled={action.isPending}
+              onPress={confirmEnRoute}
+            >
+              <Text style={accountStyles.secondaryText}>{t("exchange.actions.enRoute")}</Text>
+            </Pressable>
+          ) : null}
 
           {!myReady ? (
             <Pressable
@@ -235,12 +242,8 @@ export default function ReservationDetailScreen() {
             disabled={action.isPending}
             onPress={() => {
               const message = isOwner
-                ? t("spotSheet.exchange.cancelConfirm.message")
-                : {
-                    fair: t("spotSheet.exchange.cancelConfirm.driverFair"),
-                    late: t("spotSheet.exchange.cancelConfirm.driverLate"),
-                    stall: t("spotSheet.exchange.cancelConfirm.driverStall"),
-                  }[driverCancelOutcome(res)];
+                ? t(ownerCancelMessageKey(res))
+                : t(driverCancelMessageKey(res));
               Alert.alert(t("spotSheet.exchange.cancelConfirm.title"), message, [
                 { text: t("common.cancel"), style: "cancel" },
                 {

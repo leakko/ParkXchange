@@ -68,14 +68,27 @@ tasks:
       - "$ANDROID_HOME/platform-tools/adb devices -l"
 
   emulator:
-    desc: 'Boot an Android emulator, e.g. task mobile:emulator -- Pixel_7_API_35'
+    desc: 'Boot an Android emulator, e.g. task mobile:emulator -- Pixel_9a'
     cmds:
       - |
-        if [ -n "{{.CLI_ARGS}}" ]; then
-          "$ANDROID_HOME/emulator/emulator" -avd "{{.CLI_ARGS}}" &
-        else
+        if [ -z "{{.CLI_ARGS}}" ]; then
           echo "Available AVDs:"
           "$ANDROID_HOME/emulator/emulator" -list-avds
+          exit 0
+        fi
+        AVD="{{.CLI_ARGS}}"
+        # Detach on Windows/Git Bash: bare `&` dies when task exits.
+        if command -v cmd.exe >/dev/null 2>&1; then
+          EMU="$ANDROID_HOME/emulator/emulator.exe"
+          # Convert Git Bash path to Windows if needed.
+          case "$EMU" in
+            /*) EMU="$(cygpath -w "$EMU" 2>/dev/null || echo "$EMU")" ;;
+          esac
+          cmd.exe //c start "" "$EMU" -avd "$AVD"
+          echo "Starting AVD $AVD (detached). Wait ~20s then: task mobile:devices"
+        else
+          nohup "$ANDROID_HOME/emulator/emulator" -avd "$AVD" >/tmp/parkxchange-emulator.log 2>&1 &
+          echo "Starting AVD $AVD (pid $!). Log: /tmp/parkxchange-emulator.log"
         fi
 
   typecheck:

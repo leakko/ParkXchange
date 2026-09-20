@@ -26,12 +26,15 @@ import { formatPoints, parsePointsInput } from "@/i18n/formatPoints";
 import { openNavigation } from "@/lib/navigation";
 import { DateTimeField } from "@/ui/DateTimeField";
 import {
-  driverCanResolveStalledOwner,
-  driverCancelOutcome,
-  ownerCanLeave,
-  ownerLeaveDeadline,
-  ownerLeaveWithoutReadyAt,
+  driverNoShowDeadline,
+  ownerNoShowDeadline,
+  shouldShowNoShowDeadline,
 } from "@/map/exchangeLeave";
+import {
+  driverCancelMessageKey,
+  ownerCancelMessageKey,
+} from "@/map/exchangeCopy";
+import { ExchangeStatusPanel } from "@/map/ExchangeStatusPanel";
 
 type Props = {
   spot: SpotFeature | null;
@@ -49,12 +52,9 @@ type Props = {
   ) => Promise<void>;
   onWithdrawOffer: (offer: OfferResponse) => Promise<void>;
   onAddVehicle: () => void;
-  onOwnerReady: () => void;
-  onDriverArrived: () => void;
-  onClearDriverArrived: () => void;
-  onDriverReady: () => void;
-  onDriverConfirmEntered: () => void;
-  onDriverReportOwnerNoShow: () => void;
+  onEnRoute: () => void;
+  onReady: () => void;
+  onUnready: () => void;
   onCancel: () => void;
   onEdit: (spot: SpotFeature) => void;
   onViewOffers: (spot: SpotFeature) => void;
@@ -74,12 +74,9 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
     onMakeOffer,
     onWithdrawOffer,
     onAddVehicle,
-    onOwnerReady,
-    onDriverArrived,
-    onClearDriverArrived,
-    onDriverReady,
-    onDriverConfirmEntered,
-    onDriverReportOwnerNoShow,
+    onEnRoute,
+    onReady,
+    onUnready,
     onCancel,
     onEdit,
     onViewOffers,
@@ -480,120 +477,123 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
 
               {isActiveForSpot && active ? (
                 <>
-                  {isOwner && !active.driver_ready_at ? (
-                    <Text style={styles.help}>{t("spotSheet.exchange.waitingDriver")}</Text>
-                  ) : null}
-                  {isOwner && active.driver_ready_at ? (
-                    <Text style={styles.help}>
-                      {active.driver_ready_at
-                        ? t("spotSheet.exchange.ownerLeavingSoon", {
-                            datetime: formatDateTime(
-                              (ownerLeaveDeadline(active) ?? new Date()).toISOString(),
-                            ),
-                          })
-                        : t("spotSheet.exchange.driverIsHere")}
-                    </Text>
-                  ) : null}
-                  {isOwner ? (
-                    <Pressable
-                      style={[
-                        styles.primary,
-                        !ownerCanLeave(active) && styles.primaryDisabled,
-                      ]}
-                      disabled={busy}
-                      onPress={() => {
-                        if (ownerCanLeave(active)) {
-                          onOwnerReady();
-                          return;
-                        }
-                        Alert.alert(
-                          t("spotSheet.exchange.ownerLeaveBlocked.title"),
-                          t("spotSheet.exchange.ownerLeaveBlocked.waitingDriver", {
-                            datetime: formatDateTime(
-                              ownerLeaveWithoutReadyAt(active).toISOString(),
-                            ),
-                          }),
-                        );
-                      }}
-                    >
-                      <Text style={styles.primaryText}>
-                        {t("spotSheet.exchange.ownerReady")}
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                  {isDriver && !active.driver_ready_at ? (
-                    <Pressable
-                      style={[styles.primary, busy && styles.primaryDisabled]}
-                      disabled={busy}
-                      onPress={onDriverArrived}
-                    >
-                      {busy ? (
-                        <ActivityIndicator color="#fff" />
-                      ) : (
-                        <Text style={styles.primaryText}>
-                          {t("spotSheet.exchange.driverArrived")}
-                        </Text>
-                      )}
-                    </Pressable>
-                  ) : null}
-                  {isDriver &&
-                  !!active.driver_ready_at &&
-                  !driverCanResolveStalledOwner(active) ? (
-                    <>
-                      <Text style={styles.help}>
-                        {t("spotSheet.exchange.driverArrivedOn")}
-                      </Text>
-                      <Pressable
-                        style={[styles.secondary, busy && styles.primaryDisabled]}
-                        disabled={busy}
-                        onPress={onClearDriverArrived}
-                      >
-                        {busy ? (
-                          <ActivityIndicator color="#F4F7FA" />
+                  <ExchangeStatusPanel
+                    res={active}
+                    iAmOwner={isOwner}
+                    deadlineLabel={(() => {
+                      const myReady = isOwner
+                        ? active.owner_ready_at
+                        : active.driver_ready_at;
+                      const deadline = isOwner
+                        ? driverNoShowDeadline(active)
+                        : ownerNoShowDeadline(active);
+                      if (
+                        !myReady ||
+                        !deadline ||
+                        !shouldShowNoShowDeadline(active)
+                      ) {
+                        return null;
+                      }
+                      return t("exchange.status.deadline", {
+                        datetime: formatDateTime(deadline.toISOString()),
+                      });
+                    })()}
+                  />
+                  {(() => {
+                    const myReady = isOwner
+                      ? active.owner_ready_at
+                      : active.driver_ready_at;
+                    const myEnRoute = isOwner
+                      ? active.owner_en_route_at
+                      : active.driver_en_route_at;
+                    return (
+                      <>
+                        {!myEnRoute ? (
+                          <Pressable
+                            style={[styles.secondary, busy && styles.primaryDisabled]}
+                            disabled={busy}
+                            onPress={() => {
+                              Alert.alert(
+                                t("exchange.confirm.title"),
+                                t("exchange.confirm.enRoute"),
+                                [
+                                  { text: t("common.cancel"), style: "cancel" },
+                                  {
+                                    text: t("common.confirm"),
+                                    onPress: onEnRoute,
+                                  },
+                                ],
+                              );
+                            }}
+                          >
+                            <Text style={styles.secondaryText}>
+                              {t("exchange.actions.enRoute")}
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                        {!myReady ? (
+                          <Pressable
+                            style={[styles.primary, busy && styles.primaryDisabled]}
+                            disabled={busy}
+                            onPress={() => {
+                              Alert.alert(
+                                t("exchange.confirm.title"),
+                                isOwner
+                                  ? t("exchange.confirm.ownerReady")
+                                  : t("exchange.confirm.driverReady"),
+                                [
+                                  { text: t("common.cancel"), style: "cancel" },
+                                  {
+                                    text: t("common.confirm"),
+                                    onPress: onReady,
+                                  },
+                                ],
+                              );
+                            }}
+                          >
+                            {busy ? (
+                              <ActivityIndicator color="#fff" />
+                            ) : (
+                              <Text style={styles.primaryText}>
+                                {isOwner
+                                  ? t("exchange.actions.ownerReady")
+                                  : t("exchange.actions.driverReady")}
+                              </Text>
+                            )}
+                          </Pressable>
                         ) : (
-                          <Text style={styles.secondaryText}>
-                            {t("spotSheet.exchange.driverArrivedClear")}
-                          </Text>
+                          <Pressable
+                            style={[styles.secondary, busy && styles.primaryDisabled]}
+                            disabled={busy}
+                            onPress={() => {
+                              Alert.alert(
+                                t("exchange.confirm.title"),
+                                t("exchange.confirm.unready"),
+                                [
+                                  { text: t("common.cancel"), style: "cancel" },
+                                  {
+                                    text: t("common.confirm"),
+                                    onPress: onUnready,
+                                  },
+                                ],
+                              );
+                            }}
+                          >
+                            <Text style={styles.secondaryText}>
+                              {t("exchange.actions.unready")}
+                            </Text>
+                          </Pressable>
                         )}
-                      </Pressable>
-                    </>
-                  ) : null}
-                  {isDriver && driverCanResolveStalledOwner(active) ? (
-                    <>
-                      <Text style={styles.help}>{t("spotSheet.exchange.stallHelp")}</Text>
-                      <Pressable
-                        style={styles.primary}
-                        disabled={busy}
-                        onPress={onDriverConfirmEntered}
-                      >
-                        <Text style={styles.primaryText}>
-                          {t("spotSheet.exchange.stallConfirmEntered")}
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        style={styles.danger}
-                        disabled={busy}
-                        onPress={onDriverReportOwnerNoShow}
-                      >
-                        <Text style={styles.dangerText}>
-                          {t("spotSheet.exchange.stallReportNoShow")}
-                        </Text>
-                      </Pressable>
-                    </>
-                  ) : null}
+                      </>
+                    );
+                  })()}
                   <Pressable
                     style={styles.danger}
                     disabled={busy}
                     onPress={() => {
                       const message = isOwner
-                        ? t("spotSheet.exchange.cancelConfirm.message")
-                        : active
-                          ? {
-                              fair: t("spotSheet.exchange.cancelConfirm.driverFair"),
-                              late: t("spotSheet.exchange.cancelConfirm.driverLate"),
-                              stall: t("spotSheet.exchange.cancelConfirm.driverStall"),
-                            }[driverCancelOutcome(active)]
-                          : t("spotSheet.exchange.cancelConfirm.driverFair");
+                        ? t(ownerCancelMessageKey(active))
+                        : t(driverCancelMessageKey(active));
                       Alert.alert(
                         t("spotSheet.exchange.cancelConfirm.title"),
                         message,

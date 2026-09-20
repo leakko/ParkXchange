@@ -45,7 +45,8 @@ export default function RegisterScreen() {
     [t],
   );
   const finish = useCallback(() => {
-    router.replace(returnPath(params.returnTo));
+    const path = returnPath(params.returnTo);
+    router.dismissTo(path);
   }, [params.returnTo, router]);
   const google = useGoogleSignIn({ onError: onGoogleError, onSuccess: finish });
 

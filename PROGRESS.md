@@ -21,12 +21,13 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** bilateral spot-exchange handshake on
-  `feature/spot-exchange-handshake` (ready for emulator smoke once Docker is up)
+- **Phase in progress:** spot-exchange matrix UX (approved-v2) on
+  `feature/spot-exchange-handshake` — SpotSheet bilateral + window A–D copy;
+  emulator smoke still needs Docker
 - **Also open:** auth UI + Google Sign-In on `feat/auth-ui-google` (may already
   be merged on your machine — check branches)
 - **Last updated:** 2026-09-20
-- **Phases complete:** 12 of 12 (MVP) + post-MVP handshake rewrite in progress
+- **Phases complete:** 12 of 12 (MVP) + post-MVP handshake + matrix UX in progress
 - **Blockers for handshake demo:** Docker Desktop must be running for
   `task db:up` / `task api:test` / `task api:run`
 
@@ -35,10 +36,12 @@ If that test fails, fix the code, not the test.
 ## Next immediate step
 
 On `feature/spot-exchange-handshake`: start Docker → `task db:up` →
-`task api:run` → mobile emulator. Smoke: accept offer → both mark ready →
-complete; retract ready; cancel &lt;30m forfeit. Spec:
-`docs/superpowers/specs/2029-09-20-spot-exchange-refinment.md`. Plan:
-`docs/superpowers/plans/2026-09-20-spot-exchange-handshake.md`.
+`task api:run` → mobile emulator. Smoke: accept offer → Yendo/Listo both sides →
+complete (“Sal ya”); retract; cancel dueño en B = release (S10); cancel
+conductor &lt;30m = forfeit. Spec:
+`docs/superpowers/specs/2029-09-20-spot-exchange-refinment.md` (approved-v2).
+Plans: `2026-09-20-spot-exchange-handshake.md`,
+`2026-09-20-spot-exchange-matrix-ux.md`.
 
 Wire secrets into `.env` for auth smoke if still needed. Remaining infra:
 `infra/pulumi/README.md`.

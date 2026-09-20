@@ -9,7 +9,7 @@ import {
   type PressEvent,
   type ViewStateChangeEvent,
 } from "@maplibre/maplibre-react-native";
-import { type Href, useRouter } from "expo-router";
+import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -65,14 +65,21 @@ import {
   AnnounceModal,
   type AnnounceValues,
 } from "@/map/AnnounceModal";
+import { bannerPeerStatusKey } from "@/map/exchangeCopy";
 import { SpotLayers } from "@/map/SpotLayers";
 import { SpotSheet } from "@/map/SpotSheet";
 
 const DEBOUNCE_MS = 350;
+const FOCUS_SPOT_ZOOM = 17;
 
 export default function MapScreen() {
   const { t, formatDateTime } = useTranslation();
   const router = useRouter();
+  const focusParams = useLocalSearchParams<{
+    focusLon?: string;
+    focusLat?: string;
+    focusSpot?: string;
+  }>();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapRef>(null);
   const cameraRef = useRef<CameraRef>(null);
@@ -131,12 +138,9 @@ export default function MapScreen() {
     isOwner,
     isDriver,
     busy,
-    markOwnerReady,
-    markDriverArrived,
-    clearDriverArrived,
-    markDriverReady,
-    confirmEntered,
-    reportOwnerNoShow,
+    markEnRoute,
+    markReady,
+    clearReady,
     cancel,
     refresh: refreshActiveReservation,
   } = useActiveReservation(signedIn);
@@ -583,6 +587,48 @@ export default function MapScreen() {
     })();
   }, [location]);
 
+  // Deep-link from "show my spot on map" in account → fly camera + open sheet.
+  useEffect(() => {
+    const lon = Number.parseFloat(String(focusParams.focusLon ?? ""));
+    const lat = Number.parseFloat(String(focusParams.focusLat ?? ""));
+    if (!mapReady || !Number.isFinite(lon) || !Number.isFinite(lat)) {
+      return;
+    }
+    dispatchFollow({ type: "user_gesture" });
+    cameraRef.current?.easeTo({
+      center: [lon, lat],
+      zoom: FOCUS_SPOT_ZOOM,
+      duration: 500,
+    });
+    const spotId = focusParams.focusSpot
+      ? String(focusParams.focusSpot)
+      : null;
+    if (spotId) {
+      void (async () => {
+        try {
+          const spot = await getSpot(spotId);
+          setSelected(spot);
+          setMineArmed(true);
+          setSpotsArmed(true);
+          sheetRef.current?.snapToIndex(0);
+        } catch {
+          /* camera move is enough */
+        }
+      })();
+    }
+    router.setParams({
+      focusLon: undefined,
+      focusLat: undefined,
+      focusSpot: undefined,
+    });
+  }, [
+    mapReady,
+    focusParams.focusLon,
+    focusParams.focusLat,
+    focusParams.focusSpot,
+    router,
+  ]);
+
   const afterAnnounce = useCallback(
     async (spot: SpotFeature, message: string) => {
       setSelected(spot);
@@ -819,11 +865,21 @@ export default function MapScreen() {
       ) : null}
       {active ? (
         <View style={[styles.banner, styles.activeBanner]}>
-          <Text style={styles.bannerText}>
-            {t("map.banner.exchangeActive", {
-              datetime: formatDateTime(active.exchange_at),
-            })}
-          </Text>
+          <View style={styles.activeBannerBody}>
+            <Text style={styles.bannerText}>
+              {t("map.banner.exchangeActive", {
+                datetime: formatDateTime(active.exchange_at),
+              })}
+            </Text>
+            <Text style={styles.bannerPeer}>
+              {t(
+                bannerPeerStatusKey({
+                  res: active,
+                  iAmOwner: isOwner,
+                }),
+              )}
+            </Text>
+          </View>
           <Pressable
             onPress={() => {
               if (activeSpot) {
@@ -968,37 +1024,9 @@ export default function MapScreen() {
           sheetRef.current?.close();
           router.push("/account/vehicles/new?from=offer" as Href);
         }}
-        onOwnerReady={() => void markOwnerReady()}
-        onDriverArrived={() => void markDriverArrived()}
-        onClearDriverArrived={() => void clearDriverArrived()}
-        onDriverReady={() => void markDriverReady()}
-        onDriverConfirmEntered={() => {
-          Alert.alert(
-            t("exchange.stall.confirmTitle"),
-            t("exchange.stall.confirmMessage"),
-            [
-              { text: t("common.cancel"), style: "cancel" },
-              {
-                text: t("common.confirm"),
-                onPress: () => void confirmEntered(),
-              },
-            ],
-          );
-        }}
-        onDriverReportOwnerNoShow={() => {
-          Alert.alert(
-            t("exchange.stall.reportTitle"),
-            t("exchange.stall.reportMessage"),
-            [
-              { text: t("common.cancel"), style: "cancel" },
-              {
-                text: t("spotSheet.exchange.stallReportNoShow"),
-                style: "destructive",
-                onPress: () => void reportOwnerNoShow(),
-              },
-            ],
-          );
-        }}
+        onEnRoute={() => void markEnRoute()}
+        onReady={() => void markReady()}
+        onUnready={() => void clearReady()}
         onCancel={() => {
           void cancel().then(() => {
             void refreshActiveReservation();
@@ -1070,7 +1098,12 @@ const styles = StyleSheet.create({
   activeBanner: {
     top: 88,
     backgroundColor: "rgba(232,93,4,0.92)",
+    maxWidth: "92%",
+    borderRadius: 16,
+    alignItems: "flex-start",
   },
+  activeBannerBody: { flex: 1, gap: 2, paddingRight: 4 },
+  bannerPeer: { color: "#FFE8D6", fontSize: 12, lineHeight: 16 },
   pickBanner: {
     top: 88,
     backgroundColor: "rgba(27,154,170,0.95)",

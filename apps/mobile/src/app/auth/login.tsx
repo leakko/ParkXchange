@@ -43,7 +43,10 @@ export default function LoginScreen() {
     [t],
   );
   const finish = useCallback(() => {
-    router.replace(returnPath(params.returnTo));
+    const path = returnPath(params.returnTo);
+    // Avoid stacking a second /account (or returnTo) under the auth screen —
+    // otherwise the first back lands on the same hub again.
+    router.dismissTo(path);
   }, [params.returnTo, router]);
   const google = useGoogleSignIn({ onError: onGoogleError, onSuccess: finish });
 

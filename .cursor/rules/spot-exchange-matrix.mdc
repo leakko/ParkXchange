@@ -1,0 +1,37 @@
+---
+description: Spot-exchange matrix MD is the source of truth — update it before any code changes
+globs: "{apps/mobile/src/map/**,apps/mobile/src/hooks/useSpotActions.ts,apps/mobile/src/app/account/reservations/**,apps/mobile/src/i18n/locales/**,services/api/internal/domain/reservation*.go,services/api/internal/reservations/**,services/api/internal/postgres/reservations*.go,docs/superpowers/specs/*spot-exchange*,docs/superpowers/specs/*exchange*}"
+alwaysApply: false
+---
+
+# Spot-exchange matrix is law
+
+Canonical product spec (UI, money, windows A–D, notifs, roles):
+
+`docs/superpowers/specs/2029-09-20-spot-exchange-refinment.md`
+
+(Status must stay **approved-v2** or newer approved. Plans under
+`docs/superpowers/plans/` are implementation notes, not overrides.)
+
+## Before changing exchange behaviour
+
+1. **Read the matrix** for the cells you will touch (owner/driver × window × action).
+2. **Update the MD first** — rewrite the affected cells / money table / locked
+   decisions so they match the intended product. Do not leave the spec stale.
+3. **Then** change domain, API, mobile UI, or i18n to match the updated MD.
+4. If the user changes a product rule in chat, lock it in the MD in the same
+   turn before coding.
+
+## Never
+
+- Invent handshake / cancel / forfeit / ready rules that contradict the matrix.
+- “Quick fix” only in SpotSheet / reservation detail / Go cancel without
+  updating the matching cell.
+- Weaken S1–S10 or window A–D definitions without an explicit MD edit and
+  status note.
+
+## Scope examples that trigger this rule
+
+Bilateral ready, en-route, retract, FairCancel 30m, owner cancel release (S10),
+no-show clocks, SpotSheet exchange CTAs, in-app exchange notifs, reservation
+status panel copy.

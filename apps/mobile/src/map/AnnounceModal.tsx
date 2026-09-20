@@ -16,7 +16,7 @@ import { AuthScroll } from "@/auth/AuthScroll";
 import { AuthTextInput } from "@/auth/AuthTextInput";
 import { useTranslation } from "@/i18n";
 import { parsePointsInput } from "@/i18n/formatPoints";
-import { searchAddresses, type AddressSuggestion } from "@/map/geocode";
+import { reverseGeocode, searchAddresses, type AddressSuggestion } from "@/map/geocode";
 import { DateTimeField } from "@/ui/DateTimeField";
 
 export type AnnounceValues = {
@@ -49,6 +49,10 @@ function vehicleLabel(v: VehicleResponse): string {
   return `${v.plate} · ${v.make_model}`;
 }
 
+function coordsQuery(lon: number, lat: number): string {
+  return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+}
+
 export function AnnounceModal({
   visible,
   busy,
@@ -72,6 +76,32 @@ export function AnnounceModal({
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [locationEditing, setLocationEditing] = useState(true);
+  const [resolvingLabel, setResolvingLabel] = useState(false);
+
+  const applySelection = async (
+    lon: number,
+    lat: number,
+    labelHint: string | null,
+  ) => {
+    setCoords([lon, lat]);
+    setSuggestions([]);
+    setLocationEditing(false);
+    if (labelHint && !/^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(labelHint.trim())) {
+      setAddressLabel(labelHint);
+      return;
+    }
+    setAddressLabel(null);
+    setResolvingLabel(true);
+    try {
+      const resolved = await reverseGeocode(lon, lat);
+      setAddressLabel(resolved);
+    } catch {
+      setAddressLabel(null);
+    } finally {
+      setResolvingLabel(false);
+    }
+  };
 
   useEffect(() => {
     if (!visible) {
@@ -82,14 +112,47 @@ export function AnnounceModal({
     setVehicleOpen(false);
     setSuggestions([]);
     setAddressQuery("");
-    setCoords(initialCoordinates);
-    setAddressLabel(initialAddressLabel);
     setVehicleId(vehicles[0]?.id ?? null);
+    if (initialCoordinates) {
+      setLocationEditing(false);
+      void applySelection(
+        initialCoordinates[0],
+        initialCoordinates[1],
+        initialAddressLabel,
+      );
+    } else {
+      setCoords(null);
+      setAddressLabel(null);
+      setLocationEditing(true);
+    }
+    // Seed only when the modal opens or the map pick changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
   }, [visible, vehicles, initialCoordinates, initialAddressLabel]);
 
   const selectedVehicle = vehicles.find((v) => v.id === vehicleId) ?? null;
 
+  const beginEditLocation = () => {
+    if (coords) {
+      // Prefill exact coords so Search re-applies the same point (street labels
+      // often resolve to a distant Nominatim hit).
+      setAddressQuery(coordsQuery(coords[0], coords[1]));
+    }
+    setSuggestions([]);
+    setLocationEditing(true);
+  };
+
   const runSearch = async () => {
+    const coordMatch = addressQuery
+      .trim()
+      .match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+    if (coordMatch) {
+      const lat = Number.parseFloat(coordMatch[1]!);
+      const lon = Number.parseFloat(coordMatch[2]!);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+        await applySelection(lon, lat, null);
+        return;
+      }
+    }
     setSearching(true);
     try {
       const hits = await searchAddresses(addressQuery);
@@ -121,11 +184,11 @@ export function AnnounceModal({
       const position = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      const lon = position.coords.longitude;
-      const lat = position.coords.latitude;
-      setCoords([lon, lat]);
-      setAddressLabel(t("announce.location.currentGps"));
-      setSuggestions([]);
+      await applySelection(
+        position.coords.longitude,
+        position.coords.latitude,
+        null,
+      );
     } catch {
       Alert.alert(t("map.alert.announceFailed.title"), t("common.error"));
     } finally {
@@ -174,6 +237,14 @@ export function AnnounceModal({
       lat: coords[1],
     });
   };
+
+  const showLocationForm = locationEditing || !coords;
+  const coordsText = coords
+    ? t("announce.location.coords", {
+        lat: coords[1].toFixed(5),
+        lon: coords[0].toFixed(5),
+      })
+    : null;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
@@ -235,85 +306,107 @@ export function AnnounceModal({
             <Text style={[styles.label, { marginTop: 4 }]}>
               {t("announce.location.label")}
             </Text>
-            <AuthTextInput
-              style={styles.input}
-              value={addressQuery}
-              onChangeText={setAddressQuery}
-              placeholder={t("announce.location.placeholder")}
-              placeholderTextColor="#7A93A0"
-              autoCapitalize="none"
-              returnKeyType="search"
-              onSubmitEditing={() => {
-                void runSearch();
-              }}
-            />
-            <View style={styles.rowBtns}>
-              <Pressable
-                style={[styles.secondaryBtn, { flex: 1 }]}
-                disabled={searching || busy}
-                onPress={() => {
-                  void runSearch();
-                }}
-              >
-                {searching ? (
-                  <ActivityIndicator color="#F4F7FA" />
-                ) : (
-                  <Text style={styles.secondaryBtnText}>
-                    {t("announce.location.search")}
-                  </Text>
-                )}
-              </Pressable>
-              <Pressable
-                style={[styles.secondaryBtn, { flex: 1 }]}
-                disabled={locating || busy}
-                onPress={() => {
-                  void useMyLocation();
-                }}
-              >
-                {locating ? (
-                  <ActivityIndicator color="#F4F7FA" />
-                ) : (
-                  <Text style={styles.secondaryBtnText}>
-                    {t("announce.location.useGps")}
-                  </Text>
-                )}
-              </Pressable>
-            </View>
-            <Pressable
-              style={styles.secondaryBtn}
-              disabled={busy}
-              onPress={onPickOnMap}
-            >
-              <Text style={styles.secondaryBtnText}>
-                {t("announce.location.pickOnMap")}
-              </Text>
-            </Pressable>
 
-            {suggestions.map((s) => (
-              <Pressable
-                key={`${s.lon},${s.lat},${s.label}`}
-                style={styles.option}
-                onPress={() => {
-                  setCoords([s.lon, s.lat]);
-                  setAddressLabel(s.label);
-                  setSuggestions([]);
-                  setAddressQuery(s.label);
-                }}
-              >
-                <Text style={styles.optionTitle}>{s.label}</Text>
-              </Pressable>
-            ))}
-
-            {coords ? (
-              <Text style={styles.selectedLoc}>
-                {addressLabel ??
-                  t("announce.location.coords", {
-                    lat: coords[1].toFixed(5),
-                    lon: coords[0].toFixed(5),
-                  })}
-              </Text>
+            {!showLocationForm && coords ? (
+              <View style={styles.selectedCard}>
+                <View style={styles.selectedBody}>
+                  {resolvingLabel && !addressLabel ? (
+                    <ActivityIndicator color="#1B9AAA" />
+                  ) : (
+                    <Text style={styles.selectedTitle}>
+                      {addressLabel ?? coordsText}
+                    </Text>
+                  )}
+                  {addressLabel && coordsText ? (
+                    <Text style={styles.selectedCoords}>{coordsText}</Text>
+                  ) : null}
+                </View>
+                <Pressable
+                  style={styles.editBtn}
+                  accessibilityLabel={t("announce.location.edit")}
+                  onPress={beginEditLocation}
+                >
+                  <Text style={styles.editBtnText}>✎</Text>
+                </Pressable>
+              </View>
             ) : (
-              <Text style={styles.help}>{t("announce.location.noneYet")}</Text>
+              <>
+                <AuthTextInput
+                  style={styles.input}
+                  value={addressQuery}
+                  onChangeText={setAddressQuery}
+                  placeholder={t("announce.location.placeholder")}
+                  placeholderTextColor="#7A93A0"
+                  autoCapitalize="none"
+                  returnKeyType="search"
+                  onSubmitEditing={() => {
+                    void runSearch();
+                  }}
+                />
+                <View style={styles.rowBtns}>
+                  <Pressable
+                    style={[styles.secondaryBtn, { flex: 1 }]}
+                    disabled={searching || busy}
+                    onPress={() => {
+                      void runSearch();
+                    }}
+                  >
+                    {searching ? (
+                      <ActivityIndicator color="#F4F7FA" />
+                    ) : (
+                      <Text style={styles.secondaryBtnText}>
+                        {t("announce.location.search")}
+                      </Text>
+                    )}
+                  </Pressable>
+                  <Pressable
+                    style={[styles.secondaryBtn, { flex: 1 }]}
+                    disabled={locating || busy}
+                    onPress={() => {
+                      void useMyLocation();
+                    }}
+                  >
+                    {locating ? (
+                      <ActivityIndicator color="#F4F7FA" />
+                    ) : (
+                      <Text style={styles.secondaryBtnText}>
+                        {t("announce.location.useGps")}
+                      </Text>
+                    )}
+                  </Pressable>
+                </View>
+                <Pressable
+                  style={styles.secondaryBtn}
+                  disabled={busy}
+                  onPress={onPickOnMap}
+                >
+                  <Text style={styles.secondaryBtnText}>
+                    {t("announce.location.pickOnMap")}
+                  </Text>
+                </Pressable>
+
+                {suggestions.map((s) => (
+                  <Pressable
+                    key={`${s.lon},${s.lat},${s.label}`}
+                    style={styles.option}
+                    onPress={() => {
+                      void applySelection(s.lon, s.lat, s.label);
+                    }}
+                  >
+                    <Text style={styles.optionTitle}>{s.label}</Text>
+                  </Pressable>
+                ))}
+
+                {!coords ? (
+                  <Text style={styles.help}>{t("announce.location.noneYet")}</Text>
+                ) : (
+                  <Pressable onPress={() => setLocationEditing(false)}>
+                    <Text style={styles.keepSelection}>
+                      {t("announce.location.keepSelection")}
+                    </Text>
+                  </Pressable>
+                )}
+              </>
             )}
 
             <Text style={styles.label}>{t("announce.guidePrice")}</Text>
@@ -381,7 +474,41 @@ const styles = StyleSheet.create({
   info: { color: "#9DB4C0", fontSize: 13, lineHeight: 18, marginBottom: 6 },
   label: { color: "#D6E2E9", fontSize: 13 },
   help: { color: "#7A93A0", fontSize: 12, marginTop: 2 },
-  selectedLoc: { color: "#1B9AAA", fontSize: 13, fontWeight: "600" },
+  selectedCard: {
+    backgroundColor: "#0F2740",
+    borderWidth: 1,
+    borderColor: "#1B9AAA",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  selectedBody: { flex: 1, gap: 4 },
+  selectedTitle: {
+    color: "#F4F7FA",
+    fontSize: 16,
+    fontWeight: "700",
+    lineHeight: 22,
+  },
+  selectedCoords: { color: "#1B9AAA", fontSize: 12, fontWeight: "600" },
+  editBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: "#16324F",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editBtnText: { color: "#F4F7FA", fontSize: 18 },
+  keepSelection: {
+    color: "#1B9AAA",
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
+    paddingVertical: 6,
+  },
   input: {
     backgroundColor: "#0F2740",
     borderWidth: 1,
