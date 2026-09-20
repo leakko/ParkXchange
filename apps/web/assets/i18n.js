@@ -17,10 +17,9 @@
       "nav.lang.es": "ES",
       "nav.lang.en": "EN",
       brand: "ParkXchange",
-      "hero.headline":
-        "Encuentra aparcamiento donde casi no hay — o gana por dejar tu plaza al irte",
+      "hero.headline": "Encuentra aparcamiento en cualquier lugar.",
       "hero.support":
-        "ParkXchange conecta a quien busca plaza en la ciudad con quien se va a ir de todas formas. Quien busca reserva un hueco de parking real; quien se marcha gana puntos por avisar y esperar un momento.",
+        "ParkXchange conecta a quien busca un sitio para aparcar en la ciudad con quien se va a ir de todas formas.",
       "hero.cta": "Cómo funciona",
       "hero.imageAlt":
         "Calle urbana con coches aparcados y un hueco libre en la acera",
@@ -120,10 +119,9 @@
       "nav.lang.es": "ES",
       "nav.lang.en": "EN",
       brand: "ParkXchange",
-      "hero.headline":
-        "Find street parking where it’s scarce — or earn when you leave your spot",
+      "hero.headline": "Find parking anywhere.",
       "hero.support":
-        "ParkXchange connects people hunting for a city parking space with drivers who are leaving anyway. Seekers reserve a real curb handover; leavers earn points for announcing and waiting a moment.",
+        "ParkXchange connects people looking for a place to park in the city with drivers who are leaving anyway.",
       "hero.cta": "How it works",
       "hero.imageAlt":
         "City street with parked cars and one open curb parking space",

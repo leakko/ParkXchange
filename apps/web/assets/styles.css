@@ -123,13 +123,14 @@ main {
 }
 
 .hero {
-  padding: clamp(2rem, 8vh, 4rem) 0 0;
+  padding: clamp(2rem, 8vh, 4rem) 0 2.5rem;
+  max-width: var(--max);
   display: grid;
-  gap: 2rem;
+  gap: 1.75rem;
 }
 
 .hero-copy {
-  max-width: var(--max);
+  max-width: none;
 }
 
 .brand {
@@ -155,7 +156,6 @@ main {
   margin: 0 0 1.75rem;
   color: var(--muted);
   font-size: 1.12rem;
-  max-width: 36rem;
 }
 
 .cta {
@@ -175,15 +175,16 @@ main {
 
 .hero-visual {
   margin: 0;
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
+  width: 100%;
   overflow: hidden;
+  border-radius: 0.35rem;
 }
 
 .hero-visual img {
   display: block;
   width: 100%;
-  height: clamp(14rem, 42vw, 28rem);
+  height: auto;
+  aspect-ratio: 16 / 9;
   object-fit: cover;
   object-position: center 55%;
 }
