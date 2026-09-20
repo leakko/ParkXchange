@@ -24,11 +24,10 @@ If that test fails, fix the code, not the test.
 - **Phase in progress:** spot-exchange matrix UX (approved-v2) on
   `feature/spot-exchange-handshake` — SpotSheet bilateral + window A–D copy;
   emulator smoke still needs Docker
-- **Also open:** marketing site merged to `main` — GitHub Pages deploy green;
-  site live at `https://leakko.github.io/ParkXchange/`. **Operator still needs
-  DNS:** apex `parkxchange.com` A records → GitHub Pages IPs (see
-  `apps/web/README.md`), then wait for HTTPS on the custom domain; Search
-  Console + OAuth consent URLs after that.
+- **Also open:** marketing site merged to `main` — GitHub Pages deploy green.
+  Canonical domain is **`park-xchange.com`** (hyphen). **Operator still needs
+  DNS:** apex A records → GitHub Pages IPs (see `apps/web/README.md`), then
+  HTTPS on the custom domain; Search Console + OAuth consent URLs after that.
 - **Also open:** auth UI + Google Sign-In on `feat/auth-ui-google` (may already
   be merged on your machine — check branches)
 - **Last updated:** 2026-09-20
@@ -40,10 +39,10 @@ If that test fails, fix the code, not the test.
 
 ## Next immediate step
 
-**DNS for marketing site:** at your registrar, point `parkxchange.com` apex
+**DNS for marketing site:** at your registrar, point `park-xchange.com` apex
 with four `A` records to `185.199.108.153`, `185.199.109.153`,
 `185.199.110.153`, `185.199.111.153`. Optional `www` CNAME →
-`leakko.github.io`. Keep API on `api.parkxchange.com` (Hetzner), not apex.
+`leakko.github.io`. Keep API on `api.park-xchange.com` (Hetzner), not apex.
 Then Search Console verify + OAuth consent URLs. Details: `apps/web/README.md`.
 
 On `feature/spot-exchange-handshake`: start Docker → `task db:up` →

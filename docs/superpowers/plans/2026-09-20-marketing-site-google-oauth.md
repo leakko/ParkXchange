@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship a bilingual static site at `apps/web` (landing, privacy, terms) and deploy it with GitHub Pages to `https://parkxchange.com` so Google OAuth brand verification can leave the test-user gate.
+**Goal:** Ship a bilingual static site at `apps/web` (landing, privacy, terms) and deploy it with GitHub Pages to `https://park-xchange.com` so Google OAuth brand verification can leave the test-user gate.
 
-**Architecture:** Plain HTML/CSS/JS under `apps/web/`. Shared `assets/i18n.js` holds ES/EN strings and the language selector. A dedicated Pages workflow publishes that folder; the existing Hetzner API deploy stays on a **subdomain** (e.g. `api.parkxchange.com`) and must not own the apex.
+**Architecture:** Plain HTML/CSS/JS under `apps/web/`. Shared `assets/i18n.js` holds ES/EN strings and the language selector. A dedicated Pages workflow publishes that folder; the existing Hetzner API deploy stays on a **subdomain** (e.g. `api.park-xchange.com`) and must not own the apex.
 
 **Tech Stack:** HTML5, CSS (custom properties), vanilla JS, Node `node:test` for i18n parity, GitHub Actions (`actions/upload-pages-artifact` + `deploy-pages`).
 
@@ -12,9 +12,9 @@
 
 ## Global Constraints
 
-- Domain canonical: `https://parkxchange.com` (apex)
+- Domain canonical: `https://park-xchange.com` (apex)
 - Hosting: GitHub Pages only — not Hetzner Caddy, not the Go API
-- API DNS remains a subdomain (`DEPLOY_DOMAIN` e.g. `api.parkxchange.com`) — never point apex A records at the VPS
+- API DNS remains a subdomain (`DEPLOY_DOMAIN` e.g. `api.park-xchange.com`) — never point apex A records at the VPS
 - Stack: HTML + CSS + small JS — no Astro/Vite/React
 - Languages: ES + EN; selector on every page; `localStorage` key `parkxchange.lang`
 - Default locale: `navigator.language` starting with `en` → `en`, else `es`
@@ -31,7 +31,7 @@
 | --- | --- |
 | `apps/web/package.json` | Private workspace member `@parkxchange/web`; `test` script |
 | `apps/web/.nojekyll` | Disable Jekyll processing on Pages |
-| `apps/web/CNAME` | Custom domain `parkxchange.com` for Pages |
+| `apps/web/CNAME` | Custom domain `park-xchange.com` for Pages |
 | `apps/web/assets/styles.css` | Shared visual system |
 | `apps/web/assets/i18n.js` | Dictionaries, `resolveLocale`, `applyTranslations`, selector wiring |
 | `apps/web/assets/i18n.test.js` | Locale resolve + ES/EN key parity |
@@ -268,7 +268,7 @@ git commit -m "$(cat <<'EOF'
 feat(web): add marketing landing page
 
 Benefit-led hero and three-step flow for Google OAuth homepage
-requirements on parkxchange.com.
+requirements on park-xchange.com.
 EOF
 )"
 ```
@@ -284,7 +284,7 @@ EOF
 
 **Interfaces:**
 - Consumes: same header/footer/i18n pattern as landing
-- Produces: `https://parkxchange.com/privacy.html` content meeting Google + RGPD disclosure needs
+- Produces: `https://park-xchange.com/privacy.html` content meeting Google + RGPD disclosure needs
 
 - [ ] **Step 1: Add `privacy.*` keys** covering every section in the spec:
 
@@ -391,18 +391,18 @@ EOF
 ### Task 5: GitHub Pages workflow + CNAME + operator README
 
 **Files:**
-- Create: `apps/web/CNAME` (contents: single line `parkxchange.com`)
+- Create: `apps/web/CNAME` (contents: single line `park-xchange.com`)
 - Create: `.github/workflows/pages.yml`
 - Create: `apps/web/README.md`
 - Modify: `ARCHITECTURE.md` (layout tree: add `apps/web`)
 - Modify: `PROGRESS.md` (note marketing site workstream)
 
-**Critical DNS split:** Apex `parkxchange.com` → GitHub Pages. API → `api.parkxchange.com` (or whatever `DEPLOY_DOMAIN` is) → Hetzner. Never both on the same hostname.
+**Critical DNS split:** Apex `park-xchange.com` → GitHub Pages. API → `api.park-xchange.com` (or whatever `DEPLOY_DOMAIN` is) → Hetzner. Never both on the same hostname.
 
 - [ ] **Step 1: Add `apps/web/CNAME`**
 
 ```
-parkxchange.com
+park-xchange.com
 ```
 
 - [ ] **Step 2: Create `.github/workflows/pages.yml`**
@@ -462,12 +462,12 @@ Optional `www` `CNAME` → `leakko.github.io` (GitHub will redirect www↔apex w
 
 **After HTTPS is green on Pages:**
 
-1. Search Console: verify `parkxchange.com` (same Google account as OAuth project)
+1. Search Console: verify `park-xchange.com` (same Google account as OAuth project)
 2. Cloud Console OAuth consent → App domain:
-   - Home: `https://parkxchange.com/`
-   - Privacy: `https://parkxchange.com/privacy.html`
-   - Terms: `https://parkxchange.com/terms.html`
-   - Authorized domain: `parkxchange.com`
+   - Home: `https://park-xchange.com/`
+   - Privacy: `https://park-xchange.com/privacy.html`
+   - Terms: `https://park-xchange.com/terms.html`
+   - Authorized domain: `park-xchange.com`
 3. Submit brand verification when ready
 
 - [ ] **Step 4: Update `ARCHITECTURE.md`** layout snippet to include `apps/web/` (static marketing site / GitHub Pages).
@@ -482,7 +482,7 @@ git commit -m "$(cat <<'EOF'
 ci(web): deploy marketing site to GitHub Pages
 
 Publish apps/web on main and document apex DNS vs API subdomain so
-parkxchange.com can back Google OAuth verification.
+park-xchange.com can back Google OAuth verification.
 EOF
 )"
 ```
@@ -495,9 +495,9 @@ EOF
 4. Curl checks:
 
 ```bash
-curl -sSI https://parkxchange.com/ | head
-curl -sS https://parkxchange.com/privacy.html | head
-curl -sS https://parkxchange.com/terms.html | head
+curl -sSI https://park-xchange.com/ | head
+curl -sS https://park-xchange.com/privacy.html | head
+curl -sS https://park-xchange.com/terms.html | head
 ```
 
 Expected: `200`, `content-type: text/html`.
@@ -527,7 +527,7 @@ Expected: matches in both privacy and terms string bodies.
 
 - [ ] **Step 3: Spec acceptance checklist** (from design) — mark done in `PROGRESS.md` when live:
 
-- [ ] `https://parkxchange.com/` HTTPS + product description
+- [ ] `https://park-xchange.com/` HTTPS + product description
 - [ ] Privacy + Terms linked from homepage; URLs match OAuth console
 - [ ] ES ↔ EN on all three pages; preference persists
 - [ ] Privacy discloses Google Sign-In explicitly
@@ -554,7 +554,7 @@ EOF
 | Spec requirement | Task |
 | --- | --- |
 | GH Pages + `apps/web` static | 1–5 |
-| `parkxchange.com` apex + CNAME | 5 |
+| `park-xchange.com` apex + CNAME | 5 |
 | Landing B (hero + 3 steps) | 2 |
 | Privacy sections + Google data | 3 |
 | Terms + points + future money + Spain | 4 |

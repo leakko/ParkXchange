@@ -1,7 +1,7 @@
 # ParkXchange marketing site
 
 Static landing, privacy policy, and terms of service for
-`https://parkxchange.com` (Google OAuth brand verification).
+`https://park-xchange.com` (Google OAuth brand verification).
 
 ## Local preview
 
@@ -25,7 +25,7 @@ One-time: repository **Settings → Pages → Source: GitHub Actions**.
 
 ## DNS (apex → GitHub Pages)
 
-Point `@` / `parkxchange.com` with four `A` records:
+Point `@` / `park-xchange.com` with four `A` records:
 
 - `185.199.108.153`
 - `185.199.109.153`
@@ -35,19 +35,19 @@ Point `@` / `parkxchange.com` with four `A` records:
 Optional: `www` `CNAME` → `leakko.github.io` (GitHub can redirect www↔apex).
 
 **Do not** point the apex at the Hetzner VPS. Keep the API on
-`DEPLOY_DOMAIN` (e.g. `api.parkxchange.com`).
+`DEPLOY_DOMAIN` (e.g. `api.park-xchange.com`).
 
 After HTTPS is ready, enable **Enforce HTTPS** in Pages settings.
 
 ## Google OAuth checklist
 
-1. Verify `parkxchange.com` in Google Search Console (same account as the
+1. Verify `park-xchange.com` in Google Search Console (same account as the
    Cloud OAuth project).
 2. OAuth consent screen → App domain:
-   - Home: `https://parkxchange.com/`
-   - Privacy: `https://parkxchange.com/privacy.html`
-   - Terms: `https://parkxchange.com/terms.html`
-   - Authorized domain: `parkxchange.com`
+   - Home: `https://park-xchange.com/`
+   - Privacy: `https://park-xchange.com/privacy.html`
+   - Terms: `https://park-xchange.com/terms.html`
+   - Authorized domain: `park-xchange.com`
 3. Submit brand verification when ready.
 
 ## Legal note

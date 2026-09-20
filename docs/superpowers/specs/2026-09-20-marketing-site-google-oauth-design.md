@@ -2,7 +2,7 @@
 
 Date: 2026-09-20  
 Status: approved  
-Scope: static public site at `https://parkxchange.com` — landing, privacy
+Scope: static public site at `https://park-xchange.com` — landing, privacy
 policy, terms of service; ES/EN; GitHub Pages + DNS; copy and legal framing
 needed for Google OAuth brand verification (“production” / open to all users)  
 Out of scope: App Store / Play Store listings; in-app privacy deep-link UI
@@ -25,7 +25,7 @@ users to general availability.
 | Topic | Choice |
 | --- | --- |
 | Hosting | **GitHub Pages** (static). Not Hetzner / not served by the Go API |
-| Domain | **`https://parkxchange.com`** (apex canonical) |
+| Domain | **`https://park-xchange.com`** (apex canonical) |
 | Optional `www` | CNAME to Pages + redirect to apex (if DNS provider allows) |
 | Stack | Plain **HTML + CSS + small JS** (approach 1). No Astro/Vite/React |
 | Repo path | `apps/web/` |
@@ -55,10 +55,10 @@ Google brand / OAuth verification expects roughly:
 
 URLs to configure later in Google Cloud OAuth consent:
 
-- Homepage: `https://parkxchange.com/`
-- Privacy: `https://parkxchange.com/privacy.html`
-- Terms: `https://parkxchange.com/terms.html`
-- Authorized domain: `parkxchange.com`
+- Homepage: `https://park-xchange.com/`
+- Privacy: `https://park-xchange.com/privacy.html`
+- Terms: `https://park-xchange.com/terms.html`
+- Authorized domain: `park-xchange.com`
 
 ## Architecture
 
@@ -74,7 +74,7 @@ apps/web/
   .nojekyll           # if needed for GH Pages
 
 GitHub Actions / Pages
-  publish apps/web → https://parkxchange.com
+  publish apps/web → https://park-xchange.com
 
 DNS (registrar)
   apex → GitHub Pages (ALIAS/ANAME or GitHub A records)
@@ -194,17 +194,17 @@ disclosures and LOPDGDD contact/rights wording; keep language plain.
 ## Deploy & DNS checklist (manual steps for the operator)
 
 1. Add `apps/web` content; enable GitHub Pages (deploy from Action or branch).
-2. In GitHub Pages settings, set custom domain `parkxchange.com`.
+2. In GitHub Pages settings, set custom domain `park-xchange.com`.
 3. At the DNS host: create records GitHub documents for apex (+ optional www).
 4. Wait for HTTPS certificate on Pages.
-5. Verify `parkxchange.com` in Google Search Console (same Google account as
+5. Verify `park-xchange.com` in Google Search Console (same Google account as
    Cloud Console OAuth project).
 6. Paste homepage / privacy / terms URLs into OAuth consent screen.
 7. Submit brand verification when ready.
 
 ## Testing / acceptance
 
-- [ ] `https://parkxchange.com/` loads over HTTPS and describes the product
+- [ ] `https://park-xchange.com/` loads over HTTPS and describes the product
 - [ ] Privacy and Terms linked from the homepage; same URLs as OAuth console
 - [ ] ES ↔ EN selector works on all three pages; choice persists
 - [ ] Privacy discloses Google Sign-In data use explicitly
