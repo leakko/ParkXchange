@@ -123,7 +123,12 @@ main {
 }
 
 .hero {
-  padding: clamp(3rem, 12vh, 6rem) 0 3rem;
+  padding: clamp(2rem, 8vh, 4rem) 0 0;
+  display: grid;
+  gap: 2rem;
+}
+
+.hero-copy {
   max-width: var(--max);
 }
 
@@ -166,6 +171,21 @@ main {
 .cta:hover {
   background: #0c574b;
   color: #fff !important;
+}
+
+.hero-visual {
+  margin: 0;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  overflow: hidden;
+}
+
+.hero-visual img {
+  display: block;
+  width: 100%;
+  height: clamp(14rem, 42vw, 28rem);
+  object-fit: cover;
+  object-position: center 55%;
 }
 
 .how {

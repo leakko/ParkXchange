@@ -18,23 +18,25 @@
       "nav.lang.en": "EN",
       brand: "ParkXchange",
       "hero.headline":
-        "Encuentra sitio donde casi no hay — o gana por dejar el tuyo al irte",
+        "Encuentra aparcamiento donde casi no hay — o gana por dejar tu plaza al irte",
       "hero.support":
-        "Quien busca reserva un hueco real. Quien se va monetiza una salida que ya iba a hacer.",
+        "ParkXchange conecta a quien busca plaza en la ciudad con quien se va a ir de todas formas. Quien busca reserva un hueco de parking real; quien se marcha gana puntos por avisar y esperar un momento.",
       "hero.cta": "Cómo funciona",
+      "hero.imageAlt":
+        "Calle urbana con coches aparcados y un hueco libre en la acera",
       "how.title": "Cómo funciona",
       "how.step1.title": "Anuncia",
       "how.step1.body":
-        "Cuando te vas, publicas cuándo y dónde liberas el hueco.",
+        "Cuando te vas, publicas cuándo y dónde liberas tu plaza de aparcamiento.",
       "how.step2.title": "Reserva",
       "how.step2.body":
-        "Quien busca lo ve en el mapa y reserva el intercambio.",
+        "Quien busca parking lo ve en el mapa y reserva el intercambio.",
       "how.step3.title": "Encuentro breve",
       "how.step3.body":
-        "Os encontráis un momento: cortesía de espera a cambio de puntos.",
+        "Os encontráis un momento en la calle: cortesía de espera a cambio de puntos.",
       "footer.contact": "Contacto",
       "footer.tagline":
-        "Información y cortesía — no vendemos suelo público.",
+        "Información y cortesía sobre aparcamiento — no vendemos suelo público.",
 
       "privacy.title": "Política de privacidad",
       "privacy.updated": "Última actualización: 20 de septiembre de 2026",
@@ -119,23 +121,25 @@
       "nav.lang.en": "EN",
       brand: "ParkXchange",
       "hero.headline":
-        "Find parking where it’s scarce — or earn when you leave yours",
+        "Find street parking where it’s scarce — or earn when you leave your spot",
       "hero.support":
-        "Seekers reserve a real handover. Leavers earn from a departure they were making anyway.",
+        "ParkXchange connects people hunting for a city parking space with drivers who are leaving anyway. Seekers reserve a real curb handover; leavers earn points for announcing and waiting a moment.",
       "hero.cta": "How it works",
+      "hero.imageAlt":
+        "City street with parked cars and one open curb parking space",
       "how.title": "How it works",
       "how.step1.title": "Announce",
       "how.step1.body":
-        "When you leave, you publish when and where the space frees up.",
+        "When you leave, you publish when and where your parking space frees up.",
       "how.step2.title": "Reserve",
       "how.step2.body":
-        "Seekers see it on the map and reserve the exchange.",
+        "Drivers looking for parking see it on the map and reserve the exchange.",
       "how.step3.title": "Brief meetup",
       "how.step3.body":
-        "You meet briefly: courtesy waiting in exchange for points.",
+        "You meet briefly on the street: courtesy waiting in exchange for points.",
       "footer.contact": "Contact",
       "footer.tagline":
-        "Information and courtesy — we don’t sell public land.",
+        "Information and courtesy about parking — we don’t sell public land.",
 
       "privacy.title": "Privacy policy",
       "privacy.updated": "Last updated: 20 September 2026",
@@ -238,6 +242,14 @@
       var hrefKey = hrefEl.getAttribute("data-i18n-href");
       if (hrefKey && Object.prototype.hasOwnProperty.call(dict, hrefKey)) {
         hrefEl.setAttribute("href", dict[hrefKey]);
+      }
+    }
+    var altNodes = document.querySelectorAll("[data-i18n-alt]");
+    for (var a = 0; a < altNodes.length; a++) {
+      var altEl = altNodes[a];
+      var altKey = altEl.getAttribute("data-i18n-alt");
+      if (altKey && Object.prototype.hasOwnProperty.call(dict, altKey)) {
+        altEl.setAttribute("alt", dict[altKey]);
       }
     }
     try {
