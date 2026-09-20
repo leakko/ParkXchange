@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ParkXchange — Terms</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Source+Sans+3:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <link rel="icon" href="assets/logo.png" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="logo-link" href="index.html">
+        <img src="assets/logo.png" width="32" height="32" alt="" />
+        <span data-i18n="brand">ParkXchange</span>
+      </a>
+      <nav class="header-nav" aria-label="Primary">
+        <a href="privacy.html" data-i18n="nav.privacy">Privacidad</a>
+        <a href="terms.html" data-i18n="nav.terms">Condiciones</a>
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button type="button" data-lang="es" data-i18n="nav.lang.es">ES</button>
+          <button type="button" data-lang="en" data-i18n="nav.lang.en">EN</button>
+        </div>
+      </nav>
+    </header>
+
+    <main class="legal">
+      <h1 data-i18n="terms.title">Condiciones de servicio</h1>
+      <p class="legal-meta">
+        <time datetime="2026-09-20" data-i18n="terms.updated"
+          >Última actualización: 20 de septiembre de 2026</time
+        >
+      </p>
+      <p class="disclaimer" data-i18n="terms.disclaimer"></p>
+
+      <h2 data-i18n="terms.operator.h"></h2>
+      <p data-i18n="terms.operator.p"></p>
+
+      <h2 data-i18n="terms.object.h"></h2>
+      <p data-i18n="terms.object.p"></p>
+
+      <h2 data-i18n="terms.obligations.h"></h2>
+      <p data-i18n="terms.obligations.p"></p>
+
+      <h2 data-i18n="terms.points.h"></h2>
+      <p data-i18n="terms.points.p"></p>
+
+      <h2 data-i18n="terms.future.h"></h2>
+      <p data-i18n="terms.future.p"></p>
+
+      <h2 data-i18n="terms.noguarantee.h"></h2>
+      <p data-i18n="terms.noguarantee.p"></p>
+
+      <h2 data-i18n="terms.liability.h"></h2>
+      <p data-i18n="terms.liability.p"></p>
+
+      <h2 data-i18n="terms.suspend.h"></h2>
+      <p data-i18n="terms.suspend.p"></p>
+
+      <h2 data-i18n="terms.law.h"></h2>
+      <p data-i18n="terms.law.p"></p>
+
+      <h2 data-i18n="terms.contact.h"></h2>
+      <p data-i18n="terms.contact.p"></p>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-row">
+        <a href="privacy.html" data-i18n="nav.privacy">Privacidad</a>
+        <a href="terms.html" data-i18n="nav.terms">Condiciones</a>
+        <a href="mailto:marcossalvo95@gmail.com" data-i18n="footer.contact"
+          >Contacto</a
+        >
+      </div>
+      <p class="footer-tagline" data-i18n="footer.tagline"></p>
+    </footer>
+
+    <script src="assets/i18n.js"></script>
+    <script>
+      ParkXchangeI18n.initI18n();
+    </script>
+  </body>
+</html>
