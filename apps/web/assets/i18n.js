@@ -26,13 +26,16 @@
       "how.title": "Cómo funciona",
       "how.step1.title": "Anuncia",
       "how.step1.body":
-        "Cuando te vas, publicas cuándo y dónde liberas tu plaza de aparcamiento.",
+        "Cuando te vayas a ir de un sitio, publica dónde estás aparcado y cuándo saldrás.",
       "how.step2.title": "Reserva",
       "how.step2.body":
-        "Quien busca aparcamiento lo ve en el mapa y reserva el intercambio.",
-      "how.step3.title": "Intercambio",
+        "Quien busca aparcar en tu zona lo verá en el mapa y reservará el intercambio.",
+      "how.step3.title": "Revela",
       "how.step3.body":
-        "En cuanto el otro coche llega, el que ocupaba el hueco sale para dejárselo libre.",
+        "Cuando se acepte la reserva, la ubicación exacta del aparcamiento y los datos del coche se revelarán sólo al que ha reservado la plaza.",
+      "how.step4.title": "Intercambio",
+      "how.step4.body":
+        "En cuanto el otro coche llegue, el coche que está aparcado saldrá para dejárselo libre.",
       "footer.contact": "Contacto",
       "footer.tagline":
         "Información y cortesía sobre aparcamiento — no vendemos suelo público.",
@@ -128,13 +131,16 @@
       "how.title": "How it works",
       "how.step1.title": "Announce",
       "how.step1.body":
-        "When you leave, you publish when and where your parking space frees up.",
+        "When you’re about to leave a place, publish where you’re parked and when you’ll leave.",
       "how.step2.title": "Reserve",
       "how.step2.body":
-        "Drivers looking for parking see it on the map and reserve the exchange.",
-      "how.step3.title": "Handover",
+        "Drivers looking to park in your area will see it on the map and reserve the exchange.",
+      "how.step3.title": "Reveal",
       "how.step3.body":
-        "As soon as the other car arrives, the one occupying the space leaves and frees it up.",
+        "When the reservation is accepted, the exact parking location and car details are revealed only to whoever reserved the spot.",
+      "how.step4.title": "Handover",
+      "how.step4.body":
+        "As soon as the other car arrives, the parked car leaves to free up the space.",
       "footer.contact": "Contact",
       "footer.tagline":
         "Information and courtesy about parking — we don’t sell public land.",
