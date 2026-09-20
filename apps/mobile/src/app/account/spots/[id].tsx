@@ -5,10 +5,8 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
-  ScrollView,
   Switch,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
@@ -18,11 +16,12 @@ import {
   listOffers,
   listVehicles,
   rejectOffer,
-  type SpotFeature,
   updateSpot,
   withdrawSpot,
 } from "@/api/client";
 import { accountStyles } from "@/account/theme";
+import { AuthScroll } from "@/auth/AuthScroll";
+import { AuthTextInput } from "@/auth/AuthTextInput";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
 import { formatPoints, parsePointsInput } from "@/i18n/formatPoints";
@@ -218,11 +217,7 @@ export default function EditSpotScreen() {
   }
 
   return (
-    <ScrollView
-      style={accountStyles.screen}
-      contentContainerStyle={accountStyles.scroll}
-      keyboardShouldPersistTaps="handled"
-    >
+    <AuthScroll>
       <Text style={accountStyles.meta}>
         {t("account.spots.edit.listedUntilHint", {
           datetime: formatDateTime(spot.properties.listed_until),
@@ -231,8 +226,7 @@ export default function EditSpotScreen() {
 
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("account.spots.edit.guidePrice")}</Text>
-        <TextInput
-          style={accountStyles.input}
+        <AuthTextInput
           value={price}
           onChangeText={setPrice}
           keyboardType="number-pad"
@@ -241,8 +235,8 @@ export default function EditSpotScreen() {
       </View>
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("account.spots.edit.notes")}</Text>
-        <TextInput
-          style={[accountStyles.input, { minHeight: 72, textAlignVertical: "top" }]}
+        <AuthTextInput
+          style={{ minHeight: 72, textAlignVertical: "top" }}
           value={notes}
           onChangeText={setNotes}
           multiline
@@ -384,6 +378,6 @@ export default function EditSpotScreen() {
           <Text style={accountStyles.dangerText}>{t("account.spots.withdraw.action")}</Text>
         )}
       </Pressable>
-    </ScrollView>
+    </AuthScroll>
   );
 }

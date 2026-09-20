@@ -3,7 +3,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ActivityIndicator,
   Alert,
-  ScrollView,
   Text,
   View,
 } from "react-native";
@@ -18,6 +17,7 @@ import {
 import { VehicleForm, type VehicleFormValues } from "@/account/VehicleForm";
 import type { PickedVehiclePhoto } from "@/account/pickVehiclePhoto";
 import { accountStyles } from "@/account/theme";
+import { AuthScroll } from "@/auth/AuthScroll";
 import { useAuthImage } from "@/hooks/useAuthImage";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
@@ -108,11 +108,7 @@ export default function EditVehicleScreen() {
   }
 
   return (
-    <ScrollView
-      style={accountStyles.screen}
-      contentContainerStyle={accountStyles.scroll}
-      keyboardShouldPersistTaps="handled"
-    >
+    <AuthScroll>
       <VehicleForm
         initial={{
           plate: vehicle.plate,
@@ -141,6 +137,6 @@ export default function EditVehicleScreen() {
           );
         }}
       />
-    </ScrollView>
+    </AuthScroll>
   );
 }

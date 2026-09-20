@@ -4,10 +4,9 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Pressable,
+  RefreshControl,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
@@ -22,6 +21,8 @@ import {
   type ReservationResponse,
 } from "@/api/client";
 import { accountStyles } from "@/account/theme";
+import { AuthScroll } from "@/auth/AuthScroll";
+import { AuthTextInput } from "@/auth/AuthTextInput";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation, type TranslationKey } from "@/i18n";
 import { formatPoints, parsePointsInput } from "@/i18n/formatPoints";
@@ -182,149 +183,154 @@ export default function MyReservationsScreen() {
   }
 
   return (
-    <View style={accountStyles.screen}>
-      <FlatList
-        contentContainerStyle={accountStyles.scroll}
-        data={rows}
-        keyExtractor={(row) => {
-          if (row.kind === "reservation") return `r-${row.item.id}`;
-          if (row.kind === "offer") return `o-${row.item.id}`;
-          return row.id;
-        }}
-        renderItem={({ item: row }) => {
-          if (row.kind === "section") {
-            return (
-              <Text style={[accountStyles.sectionTitle, { marginTop: 8 }]}>
-                {row.title}
-              </Text>
-            );
+    <AuthScroll
+      refreshControl={
+        <RefreshControl
+          refreshing={
+            reservations.isFetching || offers.isFetching || active.isFetching
           }
-          if (row.kind === "empty") {
-            return <Text style={accountStyles.empty}>{row.message}</Text>;
-          }
-          if (row.kind === "offer") {
-            const offer = row.item;
-            const editing = editingOfferId === offer.id;
-            return (
-              <View
-                style={[
-                  accountStyles.row,
-                  { marginBottom: 8, flexDirection: "column", alignItems: "stretch" },
-                ]}
-              >
-                <Text style={accountStyles.rowTitle}>
-                  {t("account.reservations.offerTitle", {
-                    points: formatPoints(offer.amount_cents),
-                    status: t(offerStatusKey(offer.status)),
-                  })}
-                </Text>
-                <Text style={accountStyles.rowMeta}>
-                  {t("account.reservations.exchangeAt", {
-                    datetime: formatDateTime(offer.exchange_at),
-                  })}
-                </Text>
-                {editing ? (
-                  <View style={{ gap: 8, marginTop: 10 }}>
-                    <Text style={accountStyles.label}>{t("announce.guidePrice")}</Text>
-                    <TextInput
-                      style={accountStyles.input}
-                      value={editAmount}
-                      onChangeText={setEditAmount}
-                      keyboardType="number-pad"
-                      placeholderTextColor="#7A93A0"
-                    />
-                    <DateTimeField value={editExchangeAt} onChange={setEditExchangeAt} />
-                    <Pressable
-                      style={accountStyles.primary}
-                      disabled={editBusy}
-                      onPress={() => void saveEditedOffer(offer)}
-                    >
-                      <Text style={accountStyles.primaryText}>
-                        {t("account.reservations.editOffer.save")}
-                      </Text>
-                    </Pressable>
-                    <Pressable onPress={() => setEditingOfferId(null)}>
-                      <Text style={accountStyles.link}>{t("common.cancel")}</Text>
-                    </Pressable>
-                  </View>
-                ) : (
-                  <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-                    <Pressable
-                      style={[accountStyles.secondary, { flex: 1 }]}
-                      onPress={() => beginEditOffer(offer)}
-                    >
-                      <Text style={accountStyles.secondaryText}>
-                        {t("account.reservations.editOffer")}
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      style={[accountStyles.danger, { flex: 1 }]}
-                      disabled={withdraw.isPending}
-                      onPress={() => withdraw.mutate(offer.id)}
-                    >
-                      <Text style={accountStyles.dangerText}>
-                        {t("account.reservations.withdrawOffer")}
-                      </Text>
-                    </Pressable>
-                  </View>
-                )}
-              </View>
-            );
-          }
-
-          const res = row.item;
-          const isOwner = res.owner_id === userId;
-          const live =
-            res.status === "pending" ||
-            res.status === "confirmed" ||
-            res.status === "arrived";
+          onRefresh={() => {
+            void reservations.refetch();
+            void offers.refetch();
+            void active.refetch();
+          }}
+          tintColor="#F4F7FA"
+        />
+      }
+    >
+      {rows.map((row) => {
+        if (row.kind === "section") {
           return (
-            <Pressable
+            <Text
+              key={row.id}
+              style={[accountStyles.sectionTitle, { marginTop: 8 }]}
+            >
+              {row.title}
+            </Text>
+          );
+        }
+        if (row.kind === "empty") {
+          return (
+            <Text key={row.id} style={accountStyles.empty}>
+              {row.message}
+            </Text>
+          );
+        }
+        if (row.kind === "offer") {
+          const offer = row.item;
+          const editing = editingOfferId === offer.id;
+          return (
+            <View
+              key={`o-${offer.id}`}
               style={[
                 accountStyles.row,
                 { marginBottom: 8, flexDirection: "column", alignItems: "stretch" },
               ]}
-              onPress={() =>
-                router.push(`/account/reservations/${res.id}` as Href)
-              }
             >
               <Text style={accountStyles.rowTitle}>
-                {t("account.reservations.rowTitle", {
-                  points: formatPoints(res.price_cents),
-                  status: t(reservationStatusKey(res.status)),
+                {t("account.reservations.offerTitle", {
+                  points: formatPoints(offer.amount_cents),
+                  status: t(offerStatusKey(offer.status)),
                 })}
-              </Text>
-              <Text style={accountStyles.rowMeta}>
-                {isOwner
-                  ? t("account.reservations.role.owner")
-                  : t("account.reservations.role.driver")}
-                {live ? " · " : ""}
-                {live ? t("account.reservations.openMap") : ""}
               </Text>
               <Text style={accountStyles.rowMeta}>
                 {t("account.reservations.exchangeAt", {
-                  datetime: formatDateTime(res.exchange_at),
+                  datetime: formatDateTime(offer.exchange_at),
                 })}
               </Text>
-            </Pressable>
+              {editing ? (
+                <View style={{ gap: 8, marginTop: 10 }}>
+                  <Text style={accountStyles.label}>{t("announce.guidePrice")}</Text>
+                  <AuthTextInput
+                    value={editAmount}
+                    onChangeText={setEditAmount}
+                    keyboardType="number-pad"
+                    placeholderTextColor="#7A93A0"
+                  />
+                  <DateTimeField value={editExchangeAt} onChange={setEditExchangeAt} />
+                  <Pressable
+                    style={accountStyles.primary}
+                    disabled={editBusy}
+                    onPress={() => void saveEditedOffer(offer)}
+                  >
+                    <Text style={accountStyles.primaryText}>
+                      {t("account.reservations.editOffer.save")}
+                    </Text>
+                  </Pressable>
+                  <Pressable onPress={() => setEditingOfferId(null)}>
+                    <Text style={accountStyles.link}>{t("common.cancel")}</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+                  <Pressable
+                    style={[accountStyles.secondary, { flex: 1 }]}
+                    onPress={() => beginEditOffer(offer)}
+                  >
+                    <Text style={accountStyles.secondaryText}>
+                      {t("account.reservations.editOffer")}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[accountStyles.danger, { flex: 1 }]}
+                    disabled={withdraw.isPending}
+                    onPress={() => withdraw.mutate(offer.id)}
+                  >
+                    <Text style={accountStyles.dangerText}>
+                      {t("account.reservations.withdrawOffer")}
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
           );
-        }}
-        refreshing={
-          reservations.isFetching || offers.isFetching || active.isFetching
         }
-        onRefresh={() => {
-          void reservations.refetch();
-          void offers.refetch();
-          void active.refetch();
-        }}
-      />
+
+        const res = row.item;
+        const isOwner = res.owner_id === userId;
+        const live =
+          res.status === "pending" ||
+          res.status === "confirmed" ||
+          res.status === "arrived";
+        return (
+          <Pressable
+            key={`r-${res.id}`}
+            style={[
+              accountStyles.row,
+              { marginBottom: 8, flexDirection: "column", alignItems: "stretch" },
+            ]}
+            onPress={() =>
+              router.push(`/account/reservations/${res.id}` as Href)
+            }
+          >
+            <Text style={accountStyles.rowTitle}>
+              {t("account.reservations.rowTitle", {
+                points: formatPoints(res.price_cents),
+                status: t(reservationStatusKey(res.status)),
+              })}
+            </Text>
+            <Text style={accountStyles.rowMeta}>
+              {isOwner
+                ? t("account.reservations.role.owner")
+                : t("account.reservations.role.driver")}
+              {live ? " · " : ""}
+              {live ? t("account.reservations.openMap") : ""}
+            </Text>
+            <Text style={accountStyles.rowMeta}>
+              {t("account.reservations.exchangeAt", {
+                datetime: formatDateTime(res.exchange_at),
+              })}
+            </Text>
+          </Pressable>
+        );
+      })}
       {reservations.error && active.error ? (
-        <Text style={[accountStyles.error, { padding: 20 }]}>
+        <Text style={accountStyles.error}>
           {reservations.error instanceof Error
             ? reservations.error.message
             : t("account.reservations.loadFailed")}
         </Text>
       ) : null}
-    </View>
+    </AuthScroll>
   );
 }

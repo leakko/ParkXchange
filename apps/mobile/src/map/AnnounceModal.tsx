@@ -5,15 +5,15 @@ import {
   Alert,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
 import type { VehicleResponse } from "@/api/client";
+import { AuthScroll } from "@/auth/AuthScroll";
+import { AuthTextInput } from "@/auth/AuthTextInput";
 import { useTranslation } from "@/i18n";
 import { parsePointsInput } from "@/i18n/formatPoints";
 import { searchAddresses, type AddressSuggestion } from "@/map/geocode";
@@ -178,9 +178,10 @@ export function AnnounceModal({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={styles.backdrop}>
-        <ScrollView
+        <AuthScroll
+          style={styles.scrollRoot}
           contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
+          keyboardVerticalOffset={0}
         >
           <View style={styles.card}>
             <Text style={styles.title}>{t("announce.title")}</Text>
@@ -234,7 +235,7 @@ export function AnnounceModal({
             <Text style={[styles.label, { marginTop: 4 }]}>
               {t("announce.location.label")}
             </Text>
-            <TextInput
+            <AuthTextInput
               style={styles.input}
               value={addressQuery}
               onChangeText={setAddressQuery}
@@ -316,7 +317,7 @@ export function AnnounceModal({
             )}
 
             <Text style={styles.label}>{t("announce.guidePrice")}</Text>
-            <TextInput
+            <AuthTextInput
               style={styles.input}
               value={price}
               onChangeText={setPrice}
@@ -348,7 +349,7 @@ export function AnnounceModal({
               <Text style={styles.cancel}>{t("common.cancel")}</Text>
             </Pressable>
           </View>
-        </ScrollView>
+        </AuthScroll>
       </View>
     </Modal>
   );
@@ -360,9 +361,15 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.6)",
     justifyContent: "center",
   },
+  scrollRoot: {
+    flex: 1,
+    backgroundColor: "transparent",
+  },
   scroll: {
     padding: 24,
     paddingVertical: 48,
+    flexGrow: 1,
+    justifyContent: "center",
   },
   card: {
     backgroundColor: "#0B1F33",

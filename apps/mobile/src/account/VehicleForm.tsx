@@ -4,7 +4,6 @@ import {
   Image,
   Pressable,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
@@ -14,6 +13,7 @@ import {
   pickVehiclePhoto,
   type PickedVehiclePhoto,
 } from "@/account/pickVehiclePhoto";
+import { AuthTextInput } from "@/auth/AuthTextInput";
 import { useTranslation, type TranslationKey } from "@/i18n";
 
 const SIZE_CLASSES = ["small", "medium", "large"] as const;
@@ -61,8 +61,7 @@ export function VehicleForm({
     <View style={{ gap: 4 }}>
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("account.vehicles.form.plate")}</Text>
-        <TextInput
-          style={accountStyles.input}
+        <AuthTextInput
           value={plate}
           onChangeText={setPlate}
           autoCapitalize="characters"
@@ -71,8 +70,7 @@ export function VehicleForm({
       </View>
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("account.vehicles.form.makeModel")}</Text>
-        <TextInput
-          style={accountStyles.input}
+        <AuthTextInput
           value={makeModel}
           onChangeText={setMakeModel}
           placeholderTextColor="#7A93A0"
@@ -104,8 +102,7 @@ export function VehicleForm({
       </View>
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("account.vehicles.form.color")}</Text>
-        <TextInput
-          style={accountStyles.input}
+        <AuthTextInput
           value={color}
           onChangeText={setColor}
           placeholderTextColor="#7A93A0"
@@ -113,8 +110,7 @@ export function VehicleForm({
       </View>
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("account.vehicles.form.year")}</Text>
-        <TextInput
-          style={accountStyles.input}
+        <AuthTextInput
           value={year}
           onChangeText={setYear}
           keyboardType="number-pad"

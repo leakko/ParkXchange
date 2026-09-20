@@ -1,5 +1,6 @@
 import {
   createContext,
+  type ReactElement,
   type ReactNode,
   useCallback,
   useContext,
@@ -19,6 +20,7 @@ import {
   type NativeScrollEvent,
   type StyleProp,
   type ViewStyle,
+  type RefreshControlProps,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -41,7 +43,12 @@ export function useAuthScroll(): AuthScrollContextValue | null {
 
 type AuthScrollProps = {
   children: ReactNode;
+  /** Outer / ScrollView style. Defaults to account screen chrome. */
+  style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  /** Extra offset for KeyboardAvoidingView on iOS (nav header, modal chrome). */
+  keyboardVerticalOffset?: number;
+  refreshControl?: ReactElement<RefreshControlProps>;
 };
 
 /**
@@ -49,14 +56,20 @@ type AuthScrollProps = {
  * Relies on measureInWindow + explicit scroll (adjustResize alone often fails
  * with React Navigation + edge-to-edge Android).
  */
-export function AuthScroll({ children, contentContainerStyle }: AuthScrollProps) {
+export function AuthScroll({
+  children,
+  style,
+  contentContainerStyle,
+  keyboardVerticalOffset,
+  refreshControl,
+}: AuthScrollProps) {
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const scrollYRef = useRef(0);
   const pendingMeasure = useRef<MeasureInWindow | null>(null);
   const keyboardBottomRef = useRef(0);
   const [keyboardBottom, setKeyboardBottom] = useState(0);
-  const headerOffset = 56;
+  const headerOffset = keyboardVerticalOffset ?? 56;
 
   const scrollFieldAboveKeyboard = useCallback((measureInWindow: MeasureInWindow) => {
     measureInWindow((x, y, width, height) => {
@@ -124,10 +137,12 @@ export function AuthScroll({ children, contentContainerStyle }: AuthScrollProps)
 
   const bottomPad = 48 + insets.bottom + (keyboardBottom > 0 ? keyboardBottom : 0);
 
+  const rootStyle = [accountStyles.screen, style];
+
   const scroll = (
     <ScrollView
       ref={scrollRef}
-      style={accountStyles.screen}
+      style={rootStyle}
       contentContainerStyle={[
         accountStyles.scroll,
         { paddingBottom: bottomPad },
@@ -137,18 +152,19 @@ export function AuthScroll({ children, contentContainerStyle }: AuthScrollProps)
       keyboardDismissMode="on-drag"
       onScroll={onScroll}
       scrollEventThrottle={16}
+      refreshControl={refreshControl}
     >
       <AuthScrollContext.Provider value={ctx}>{children}</AuthScrollContext.Provider>
     </ScrollView>
   );
 
   if (Platform.OS === "android") {
-    return <View style={accountStyles.screen}>{scroll}</View>;
+    return <View style={rootStyle}>{scroll}</View>;
   }
 
   return (
     <KeyboardAvoidingView
-      style={accountStyles.screen}
+      style={rootStyle}
       behavior="padding"
       keyboardVerticalOffset={headerOffset + insets.top}
     >

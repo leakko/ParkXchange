@@ -1,11 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Alert, ScrollView, Text } from "react-native";
+import { Alert, Text } from "react-native";
 
 import { createVehicle, putVehiclePhoto } from "@/api/client";
 import { VehicleForm, type VehicleFormValues } from "@/account/VehicleForm";
 import type { PickedVehiclePhoto } from "@/account/pickVehiclePhoto";
 import { accountStyles } from "@/account/theme";
+import { AuthScroll } from "@/auth/AuthScroll";
 import { useTranslation } from "@/i18n";
 
 const empty: VehicleFormValues = {
@@ -50,11 +51,7 @@ export default function NewVehicleScreen() {
   });
 
   return (
-    <ScrollView
-      style={accountStyles.screen}
-      contentContainerStyle={accountStyles.scroll}
-      keyboardShouldPersistTaps="handled"
-    >
+    <AuthScroll>
       {fromAnnounce ? (
         <Text style={[accountStyles.meta, { marginBottom: 8 }]}>
           {t("account.vehicles.create.announceHint")}
@@ -66,6 +63,6 @@ export default function NewVehicleScreen() {
         busy={create.isPending}
         onSubmit={(values, photo) => create.mutate({ values, photo })}
       />
-    </ScrollView>
+    </AuthScroll>
   );
 }

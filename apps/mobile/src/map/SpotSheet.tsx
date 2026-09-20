@@ -1,4 +1,7 @@
-import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import BottomSheet, {
+  BottomSheetScrollView,
+  BottomSheetTextInput,
+} from "@gorhom/bottom-sheet";
 import { forwardRef, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -7,7 +10,6 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
@@ -220,6 +222,9 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
       index={-1}
       snapPoints={snapPoints}
       enablePanDownToClose
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
       backgroundStyle={styles.sheet}
       handleIndicatorStyle={styles.handle}
     >
@@ -415,7 +420,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                     </Text>
                     <DateTimeField value={exchangeAt} onChange={setExchangeAt} />
                     <Text style={styles.formLabel}>{t("spotSheet.offer.amount")}</Text>
-                    <TextInput
+                    <BottomSheetTextInput
                       style={styles.input}
                       value={amount}
                       onChangeText={setAmount}
