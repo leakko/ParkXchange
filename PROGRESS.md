@@ -21,22 +21,27 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** auth UI + Google Sign-In on `feat/auth-ui-google`
-  (email/password login+register, soft-gate, password reset, Google ID-token,
-  optional phone; announce requires phone)
-- **Last updated:** 2026-09-19
-- **Phases complete:** 12 of 12 (MVP) + post-MVP auth UI in progress
-- **Blockers:** operator must set `GOOGLE_WEB_CLIENT_ID` / Resend env and
-  `EXPO_PUBLIC_GOOGLE_*` client IDs; rebuild native app after Expo auth packages
+- **Phase in progress:** bilateral spot-exchange handshake on
+  `feature/spot-exchange-handshake` (ready for emulator smoke once Docker is up)
+- **Also open:** auth UI + Google Sign-In on `feat/auth-ui-google` (may already
+  be merged on your machine — check branches)
+- **Last updated:** 2026-09-20
+- **Phases complete:** 12 of 12 (MVP) + post-MVP handshake rewrite in progress
+- **Blockers for handshake demo:** Docker Desktop must be running for
+  `task db:up` / `task api:test` / `task api:run`
 
 ---
 
 ## Next immediate step
 
-Wire secrets into `.env`, smoke: register → login → forgot (API log link) →
-reset; Google Sign-In; guest map + soft-gate on announce/account/offer.
-Merge `feat/auth-ui-google` when demo passes. Then BlaBlaCar-style rating
-spec. Remaining infra: `infra/pulumi/README.md`.
+On `feature/spot-exchange-handshake`: start Docker → `task db:up` →
+`task api:run` → mobile emulator. Smoke: accept offer → both mark ready →
+complete; retract ready; cancel &lt;30m forfeit. Spec:
+`docs/superpowers/specs/2029-09-20-spot-exchange-refinment.md`. Plan:
+`docs/superpowers/plans/2026-09-20-spot-exchange-handshake.md`.
+
+Wire secrets into `.env` for auth smoke if still needed. Remaining infra:
+`infra/pulumi/README.md`.
 
 ---
 
