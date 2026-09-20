@@ -87,6 +87,10 @@ type Config struct {
 	// make it tappable; the landing page opens parkxchange://auth/reset.
 	PasswordResetDeepLinkBase string
 
+	// EmailVerifyLinkBase is the public URL prefix put in verification emails,
+	// e.g. https://api.example.com/v1/auth/verify-email.
+	EmailVerifyLinkBase string
+
 	// SweepInterval is how often the expiry worker runs. Short enough that a
 	// missed reconfirm returns the spot to the map before anyone has waited
 	// long, long enough that it is not a busy-loop against the database.
@@ -172,6 +176,8 @@ func Load() (Config, error) {
 	cfg.EmailFrom = strings.TrimSpace(os.Getenv("EMAIL_FROM"))
 	cfg.PasswordResetDeepLinkBase = orDefault(
 		"PASSWORD_RESET_DEEP_LINK_BASE", "parkxchange://auth/reset")
+	cfg.EmailVerifyLinkBase = orDefault(
+		"EMAIL_VERIFY_LINK_BASE", "parkxchange://auth/verify-email")
 
 	// Resend is optional: empty key → LogMailer. If a key is set, From is required.
 	if cfg.ResendAPIKey != "" && cfg.EmailFrom == "" {

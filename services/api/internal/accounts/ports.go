@@ -73,6 +73,21 @@ type Store interface {
 	// CompletePasswordReset validates tokenHash, sets the password, marks the
 	// token used, and revokes all refresh tokens in one transaction.
 	CompletePasswordReset(ctx context.Context, tokenHash []byte, passwordHash string) error
+
+	// MarkEmailVerified sets email_verified_at when still null and returns the user.
+	MarkEmailVerified(ctx context.Context, userID string) (domain.User, error)
+
+	// InvalidateOpenEmailVerificationTokens marks unused tokens for the user as used.
+	InvalidateOpenEmailVerificationTokens(ctx context.Context, userID string) error
+
+	// InsertEmailVerificationToken stores a one-time verification credential hash.
+	InsertEmailVerificationToken(ctx context.Context, userID string, tokenHash []byte, expiresAt time.Time) error
+
+	// LatestEmailVerificationCreatedAt returns the newest token created_at for rate limits.
+	LatestEmailVerificationCreatedAt(ctx context.Context, userID string) (*time.Time, error)
+
+	// CompleteEmailVerification consumes tokenHash and sets email_verified_at.
+	CompleteEmailVerification(ctx context.Context, tokenHash []byte) (domain.User, error)
 }
 
 // GoogleIdentity is what a verified ID token asserts about the Google account.
@@ -90,6 +105,7 @@ type GoogleVerifier interface {
 // Mailer delivers transactional email for account flows.
 type Mailer interface {
 	SendPasswordReset(ctx context.Context, to domain.Email, resetURL string) error
+	SendEmailVerification(ctx context.Context, to domain.Email, verifyURL string) error
 }
 
 // Hasher turns a password into something safe to store.

@@ -123,6 +123,15 @@ func (s *Service) Offer(ctx context.Context, in domain.NewSpotInput) (domain.Spo
 			"add a phone number to your profile before announcing a spot")
 	}
 
+	verified, err := s.store.EmailVerified(ctx, draft.OwnerID)
+	if err != nil {
+		return domain.Spot{}, domain.Internal(err)
+	}
+	if !verified {
+		return domain.Spot{}, domain.Forbidden("email_unverified",
+			"confirm your email before announcing a spot")
+	}
+
 	owned, err := s.store.VehicleOwnedBy(ctx, draft.VehicleID, draft.OwnerID)
 	if err != nil {
 		return domain.Spot{}, domain.Internal(err)

@@ -12,19 +12,20 @@ import (
 // userColumns is shared by every user query so the scan order cannot drift
 // between them.
 const userColumns = `id, email, password_hash, display_name, phone, google_sub,
-                     rating_sum, rating_count, balance_cents, created_at`
+                     email_verified_at, rating_sum, rating_count, balance_cents, created_at`
 
 func scanUser(row pgx.Row) (domain.User, error) {
 	var (
-		user         domain.User
-		email        string
-		passwordHash *string
-		phone        *string
-		googleSub    *string
+		user            domain.User
+		email           string
+		passwordHash    *string
+		phone           *string
+		googleSub       *string
+		emailVerifiedAt *time.Time
 	)
 
 	err := row.Scan(&user.ID, &email, &passwordHash, &user.DisplayName, &phone, &googleSub,
-		&user.RatingSum, &user.RatingCount, &user.BalanceCents, &user.CreatedAt)
+		&emailVerifiedAt, &user.RatingSum, &user.RatingCount, &user.BalanceCents, &user.CreatedAt)
 	if err != nil {
 		return domain.User{}, translate(err, "scan user")
 	}
@@ -42,6 +43,7 @@ func scanUser(row pgx.Row) (domain.User, error) {
 	if googleSub != nil {
 		user.GoogleSub = *googleSub
 	}
+	user.EmailVerifiedAt = emailVerifiedAt
 	return user, nil
 }
 
@@ -433,6 +435,149 @@ func (db *DB) CompletePasswordReset(ctx context.Context, tokenHash []byte, passw
 		return err
 	}
 	return translate(tx.Commit(ctx), "commit password reset")
+}
+
+// MarkEmailVerified sets email_verified_at when still null.
+func (db *DB) MarkEmailVerified(ctx context.Context, userID string) (domain.User, error) {
+	_, err := db.Pool.Exec(ctx, `
+		UPDATE users
+		   SET email_verified_at = COALESCE(email_verified_at, now())
+		 WHERE id = $1
+	`, userID)
+	if err != nil {
+		return domain.User{}, translate(err, "mark email verified")
+	}
+	return db.UserByID(ctx, userID)
+}
+
+// InvalidateOpenEmailVerificationTokens marks unused tokens as used.
+func (db *DB) InvalidateOpenEmailVerificationTokens(ctx context.Context, userID string) error {
+	_, err := db.Pool.Exec(ctx, `
+		UPDATE email_verification_tokens
+		   SET used_at = now()
+		 WHERE user_id = $1 AND used_at IS NULL
+	`, userID)
+	return translate(err, "invalidate email verification tokens")
+}
+
+// InsertEmailVerificationToken stores a one-time verification credential hash.
+func (db *DB) InsertEmailVerificationToken(
+	ctx context.Context,
+	userID string,
+	tokenHash []byte,
+	expiresAt time.Time,
+) error {
+	_, err := db.Pool.Exec(ctx, `
+		INSERT INTO email_verification_tokens (user_id, token_hash, expires_at)
+		VALUES ($1, $2, $3)
+	`, userID, tokenHash, expiresAt)
+	return translate(err, "insert email verification token")
+}
+
+// LatestEmailVerificationCreatedAt returns the newest token created_at.
+func (db *DB) LatestEmailVerificationCreatedAt(ctx context.Context, userID string) (*time.Time, error) {
+	var createdAt time.Time
+	err := db.Pool.QueryRow(ctx, `
+		SELECT created_at
+		  FROM email_verification_tokens
+		 WHERE user_id = $1
+		 ORDER BY created_at DESC
+		 LIMIT 1
+	`, userID).Scan(&createdAt)
+	if err != nil {
+		return nil, translate(err, "latest email verification token")
+	}
+	return &createdAt, nil
+}
+
+// CompleteEmailVerification consumes the token and sets email_verified_at.
+func (db *DB) CompleteEmailVerification(ctx context.Context, tokenHash []byte) (domain.User, error) {
+	run := func(tx pgx.Tx) (domain.User, error) {
+		var (
+			userID    string
+			expiresAt time.Time
+			usedAt    *time.Time
+		)
+		err := tx.QueryRow(ctx, `
+			SELECT user_id, expires_at, used_at
+			  FROM email_verification_tokens
+			 WHERE token_hash = $1
+			 FOR UPDATE
+		`, tokenHash).Scan(&userID, &expiresAt, &usedAt)
+		if err != nil {
+			return domain.User{}, translate(err, "load email verification token")
+		}
+		if usedAt != nil {
+			return domain.User{}, domain.ErrNoRows
+		}
+		if !expiresAt.After(time.Now()) {
+			return domain.User{}, domain.ErrTokenExpired
+		}
+
+		tag, err := tx.Exec(ctx, `
+			UPDATE email_verification_tokens
+			   SET used_at = now()
+			 WHERE token_hash = $1 AND used_at IS NULL
+		`, tokenHash)
+		if err != nil {
+			return domain.User{}, translate(err, "mark email verification used")
+		}
+		if tag.RowsAffected() == 0 {
+			return domain.User{}, domain.ErrNoRows
+		}
+
+		if _, err := tx.Exec(ctx, `
+			UPDATE users
+			   SET email_verified_at = COALESCE(email_verified_at, now())
+			 WHERE id = $1
+		`, userID); err != nil {
+			return domain.User{}, translate(err, "set email verified from token")
+		}
+
+		return scanUser(tx.QueryRow(ctx, `SELECT `+userColumns+` FROM users WHERE id = $1`, userID))
+	}
+
+	if db.tx != nil {
+		sp, err := db.tx.Begin(ctx)
+		if err != nil {
+			return domain.User{}, translate(err, "begin email verification")
+		}
+		defer func() { _ = sp.Rollback(ctx) }()
+		user, err := run(sp)
+		if err != nil {
+			return domain.User{}, err
+		}
+		if err := sp.Commit(ctx); err != nil {
+			return domain.User{}, translate(err, "commit email verification")
+		}
+		return user, nil
+	}
+
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return domain.User{}, translate(err, "begin email verification")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	user, err := run(tx)
+	if err != nil {
+		return domain.User{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.User{}, translate(err, "commit email verification")
+	}
+	return user, nil
+}
+
+// EmailVerified reports whether the user has confirmed their email.
+func (db *DB) EmailVerified(ctx context.Context, userID string) (bool, error) {
+	var verified bool
+	err := db.Pool.QueryRow(ctx, `
+		SELECT email_verified_at IS NOT NULL FROM users WHERE id = $1
+	`, userID).Scan(&verified)
+	if err != nil {
+		return false, translate(err, "email verified")
+	}
+	return verified, nil
 }
 
 // truncate bounds a value before it reaches a text column, so a client cannot

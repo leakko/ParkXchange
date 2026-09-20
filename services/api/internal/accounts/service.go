@@ -29,7 +29,10 @@ type Service struct {
 	google         GoogleVerifier
 	mailer         Mailer
 	resetLinkBase  string
+	verifyLinkBase string
 	resetTokenTTL  time.Duration
+	verifyTokenTTL time.Duration
+	resendCooldown    time.Duration
 
 	// dummyHash is verified against when a login names an address that does
 	// not exist, so that the response takes the same time either way.
@@ -42,7 +45,11 @@ type Service struct {
 	dummyHash string
 }
 
-const defaultResetTokenTTL = time.Hour
+const (
+	defaultResetTokenTTL  = time.Hour
+	defaultVerifyTokenTTL = 24 * time.Hour
+	defaultResendCooldown    = time.Minute
+)
 
 // New builds the service. google and mailer may be nil when those flows are
 // unused in a given process (unit tests); production wires real adapters.
@@ -54,6 +61,7 @@ func New(
 	google GoogleVerifier,
 	mailer Mailer,
 	resetLinkBase string,
+	verifyLinkBase string,
 ) (*Service, error) {
 	if refreshTTL <= 0 {
 		return nil, errors.New("accounts: refresh token TTL must be positive")
@@ -65,15 +73,18 @@ func New(
 	}
 
 	return &Service{
-		store:         store,
-		hasher:        hasher,
-		tokens:        tokens,
-		refreshTTL:    refreshTTL,
-		google:        google,
-		mailer:        mailer,
-		resetLinkBase: strings.TrimRight(resetLinkBase, "?&"),
-		resetTokenTTL: defaultResetTokenTTL,
-		dummyHash:     dummyHash,
+		store:          store,
+		hasher:         hasher,
+		tokens:         tokens,
+		refreshTTL:     refreshTTL,
+		google:         google,
+		mailer:         mailer,
+		resetLinkBase:  strings.TrimRight(resetLinkBase, "?&"),
+		verifyLinkBase: strings.TrimRight(verifyLinkBase, "?&"),
+		resetTokenTTL:  defaultResetTokenTTL,
+		verifyTokenTTL: defaultVerifyTokenTTL,
+		resendCooldown:    defaultResendCooldown,
+		dummyHash:      dummyHash,
 	}, nil
 }
 
@@ -112,7 +123,16 @@ func (s *Service) Register(ctx context.Context, in domain.NewUserInput, userAgen
 		return Session{}, domain.Internal(err)
 	}
 
-	return s.issue(ctx, user, userAgent)
+	session, err := s.issue(ctx, user, userAgent)
+	if err != nil {
+		return Session{}, err
+	}
+	// Best-effort: registration succeeds even if mail fails; the user can resend.
+	if sendErr := s.sendEmailVerification(ctx, user); sendErr != nil {
+		// issue already succeeded; surface nothing to the client.
+		_ = sendErr
+	}
+	return session, nil
 }
 
 // Login exchanges an email and password for a session.
@@ -237,6 +257,10 @@ func (s *Service) LoginWithGoogle(ctx context.Context, idToken, userAgent string
 	}
 
 	if user, err := s.store.UserByGoogleSub(ctx, identity.Subject); err == nil {
+		user, err = s.ensureGoogleVerified(ctx, user)
+		if err != nil {
+			return Session{}, err
+		}
 		return s.issue(ctx, user, userAgent)
 	} else if !errors.Is(err, domain.ErrNoRows) {
 		return Session{}, domain.Internal(err)
@@ -258,6 +282,10 @@ func (s *Service) LoginWithGoogle(ctx context.Context, idToken, userAgent string
 			return Session{}, domain.Conflict("google_mismatch",
 				"that email is already linked to a different Google account")
 		}
+		user, err = s.ensureGoogleVerified(ctx, user)
+		if err != nil {
+			return Session{}, err
+		}
 		return s.issue(ctx, user, userAgent)
 
 	case errors.Is(err, domain.ErrNoRows):
@@ -272,6 +300,10 @@ func (s *Service) LoginWithGoogle(ctx context.Context, idToken, userAgent string
 		user, err = s.store.LinkGoogleSub(ctx, user.ID, identity.Subject)
 		if err != nil {
 			return Session{}, domain.Internal(err)
+		}
+		user, err = s.ensureGoogleVerified(ctx, user)
+		if err != nil {
+			return Session{}, err
 		}
 		return s.issue(ctx, user, userAgent)
 
@@ -369,6 +401,88 @@ func (s *Service) UpdatePhone(ctx context.Context, viewer domain.Claims, rawPhon
 		return domain.User{}, domain.Internal(err)
 	}
 	return user, nil
+}
+
+func (s *Service) ensureGoogleVerified(ctx context.Context, user domain.User) (domain.User, error) {
+	if user.EmailVerified() {
+		return user, nil
+	}
+	verified, err := s.store.MarkEmailVerified(ctx, user.ID)
+	if err != nil {
+		return domain.User{}, domain.Internal(err)
+	}
+	return verified, nil
+}
+
+// RequestEmailVerification mints a token and emails a confirm link (register + resend).
+func (s *Service) RequestEmailVerification(ctx context.Context, viewer domain.Claims) error {
+	if !viewer.Authenticated() {
+		return domain.Unauthenticated("unauthorized", "an access token is required")
+	}
+	user, err := s.store.UserByID(ctx, viewer.UserID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			return domain.Unauthenticated("unauthorized", "this account no longer exists")
+		}
+		return domain.Internal(err)
+	}
+	if user.EmailVerified() {
+		return nil
+	}
+	if latest, err := s.store.LatestEmailVerificationCreatedAt(ctx, user.ID); err == nil && latest != nil {
+		if time.Since(*latest) < s.resendCooldown {
+			return domain.Conflict("resend_too_soon", "wait a moment before requesting another email")
+		}
+	} else if err != nil && !errors.Is(err, domain.ErrNoRows) {
+		return domain.Internal(err)
+	}
+	return s.sendEmailVerification(ctx, user)
+}
+
+// ConfirmEmailVerification consumes a token and marks the account verified.
+func (s *Service) ConfirmEmailVerification(ctx context.Context, rawToken string) (domain.User, error) {
+	if strings.TrimSpace(rawToken) == "" {
+		return domain.User{}, domain.Invalid("token_required", "a verification token is required")
+	}
+	tokenHash := s.tokens.HashRefreshToken(rawToken)
+	user, err := s.store.CompleteEmailVerification(ctx, tokenHash)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoRows) || errors.Is(err, domain.ErrTokenExpired) {
+			return domain.User{}, domain.Invalid("token_invalid", "that verification link is invalid or has expired")
+		}
+		return domain.User{}, domain.Internal(err)
+	}
+	return user, nil
+}
+
+func (s *Service) sendEmailVerification(ctx context.Context, user domain.User) error {
+	if user.EmailVerified() {
+		return nil
+	}
+	if s.mailer == nil || s.verifyLinkBase == "" {
+		return nil
+	}
+	if err := s.store.InvalidateOpenEmailVerificationTokens(ctx, user.ID); err != nil {
+		return domain.Internal(err)
+	}
+	plaintext, err := randomResetToken()
+	if err != nil {
+		return domain.Internal(err)
+	}
+	hash := s.tokens.HashRefreshToken(plaintext)
+	expires := time.Now().Add(s.verifyTokenTTL)
+	if err := s.store.InsertEmailVerificationToken(ctx, user.ID, hash, expires); err != nil {
+		return domain.Internal(err)
+	}
+	sep := "?"
+	if strings.Contains(s.verifyLinkBase, "?") {
+		sep = "&"
+	}
+	verifyURL := s.verifyLinkBase + sep + "token=" + url.QueryEscape(plaintext)
+	if err := s.mailer.SendEmailVerification(ctx, user.Email, verifyURL); err != nil {
+		return domain.Internal(err)
+	}
+	return nil
 }
 
 func randomResetToken() (string, error) {

@@ -50,6 +50,19 @@ export const es = {
   "auth.error.resetTokenInvalid": "Ese enlace no es válido o ha caducado",
   "auth.error.google": "No se pudo iniciar sesión con Google",
 
+  "auth.verify.title": "Confirma tu email",
+  "auth.verify.body":
+    "Te enviamos un enlace para confirmar tu email. Debes confirmarlo antes de anunciar o reservar.",
+  "auth.verify.resend": "Reenviar email",
+  "auth.verify.sent": "Si hace falta, te hemos enviado otro enlace.",
+  "auth.verify.required": "Confirma tu email antes de continuar",
+  "auth.verify.resendTooSoon": "Espera un momento antes de pedir otro email",
+  "auth.verify.success": "Email confirmado",
+  "auth.verify.successBody": "Ya puedes anunciar plazas y hacer ofertas.",
+  "auth.verify.note":
+    "Te enviaremos un email para confirmar la cuenta antes de anunciar o reservar.",
+  "auth.verify.openTitle": "Confirmar email",
+
   "account.signIn": "Iniciar sesión",
   "account.signedOut.title": "Sesión cerrada",
   "account.signedOut.message":

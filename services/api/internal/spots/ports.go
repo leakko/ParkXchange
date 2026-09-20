@@ -71,6 +71,9 @@ type Store interface {
 	// OwnerPhone returns the owner's stored phone, or empty when unset.
 	OwnerPhone(ctx context.Context, ownerID string) (domain.Phone, error)
 
+	// EmailVerified reports whether the user has confirmed their email.
+	EmailVerified(ctx context.Context, userID string) (bool, error)
+
 	// SpotVehiclePhoto returns the image bytes for the vehicle linked to the
 	// spot, or ErrNoRows when the spot is missing or the vehicle has no photo.
 	SpotVehiclePhoto(ctx context.Context, spotID string) ([]byte, string, error)

@@ -61,6 +61,8 @@ services:
       # https URL for emails (Gmail only auto-links http/https). The GET landing
       # page redirects into the parkxchange:// deep link.
       PASSWORD_RESET_DEEP_LINK_BASE: ${PASSWORD_RESET_DEEP_LINK_BASE:-parkxchange://auth/reset}
+      # Same pattern as password reset: https landing → parkxchange:// deep link.
+      EMAIL_VERIFY_LINK_BASE: ${EMAIL_VERIFY_LINK_BASE:-parkxchange://auth/verify-email}
       # Optional: empty disables Google Sign-In on the API.
       GOOGLE_WEB_CLIENT_ID: ${GOOGLE_WEB_CLIENT_ID:-}
     expose:

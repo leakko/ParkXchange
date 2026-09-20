@@ -44,6 +44,7 @@ const authCredentialPaths = new Set([
   "/v1/auth/refresh",
   "/v1/auth/password/forgot",
   "/v1/auth/password/reset",
+  "/v1/auth/verify-email",
   "/v1/me/password",
 ]);
 
@@ -169,6 +170,26 @@ export async function resetPassword(token: string, password: string): Promise<vo
   const res = await apiFetch("/v1/auth/password/reset", {
     method: "POST",
     body: JSON.stringify({ token, password }),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+}
+
+export async function confirmEmail(token: string): Promise<UserResponse> {
+  const res = await apiFetch("/v1/auth/verify-email", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as UserResponse;
+}
+
+export async function resendEmailVerification(): Promise<void> {
+  const res = await apiFetch("/v1/auth/verify-email/resend", {
+    method: "POST",
   });
   if (!res.ok) {
     throw await parseError(res);

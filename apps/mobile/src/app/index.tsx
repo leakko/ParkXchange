@@ -36,6 +36,7 @@ import {
 } from "@/api/client";
 import { apiErrorMessage } from "@/api/errors";
 import { getAccessToken } from "@/api/session";
+import { ensureEmailVerified } from "@/auth/requireEmailVerified";
 import {
   defaultMapCenter,
   fallbackZoom,
@@ -127,6 +128,14 @@ export default function MapScreen() {
     },
     [router],
   );
+
+  /** Soft-gate: session exists, but announce/reserve need a confirmed email. */
+  const requireEmailVerified = useCallback(async (): Promise<boolean> => {
+    return ensureEmailVerified({
+      t,
+      onUnauthorized: () => requireSignIn("/"),
+    });
+  }, [requireSignIn, t]);
 
   const { collection, featureById, isLoading, error, refetch } = useDiscovery(
     viewport,
@@ -647,6 +656,9 @@ export default function MapScreen() {
         requireSignIn("/");
         return;
       }
+      if (!(await requireEmailVerified())) {
+        return;
+      }
       setAnnouncing(true);
       try {
         const list = await listVehicles();
@@ -683,7 +695,7 @@ export default function MapScreen() {
         setAnnouncing(false);
       }
     },
-    [requireSignIn, router, signedIn, t],
+    [requireEmailVerified, requireSignIn, router, signedIn, t],
   );
 
   const submitAnnouncement = useCallback(
@@ -982,6 +994,9 @@ export default function MapScreen() {
         onMakeOffer={async (spot, vehicleId, exchangeAt, amountCents) => {
           if (!signedIn) {
             requireSignIn("/");
+            return;
+          }
+          if (!(await requireEmailVerified())) {
             return;
           }
           const spotId = String(spot.id ?? "");

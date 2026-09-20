@@ -21,40 +21,34 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** spot-exchange matrix UX (approved-v2) on
-  `feature/spot-exchange-handshake` — SpotSheet bilateral + window A–D copy;
-  emulator smoke still needs Docker
-- **Also open:** marketing site merged to `main` — GitHub Pages deploy green.
-  Canonical domain is **`park-xchange.com`** (hyphen). **Operator still needs
-  DNS:** apex A records → GitHub Pages IPs (see `apps/web/README.md`), then
-  HTTPS on the custom domain; Search Console + OAuth consent URLs after that.
-- **Also open:** auth UI + Google Sign-In on `feat/auth-ui-google` (may already
-  be merged on your machine — check branches)
+- **Phase in progress:** email verification soft-gate on
+  `feature/email-verification-soft-gate` — backend + mobile wired; unit/API
+  tests green after `task db:migrate` (00012). Emulator deep-link smoke still
+  pending before merge.
+- **Also open:** spot-exchange matrix UX on `feature/spot-exchange-handshake`
+  (may need rebase onto this or main).
+- **Also open:** marketing site on **`park-xchange.com`** — GitHub Pages green;
+  confirm apex DNS + HTTPS + OAuth consent URLs if not done yet.
 - **Last updated:** 2026-09-20
-- **Phases complete:** 12 of 12 (MVP) + post-MVP handshake + matrix UX in progress
-- **Blockers for handshake demo:** Docker Desktop must be running for
-  `task db:up` / `task api:test` / `task api:run`
+- **Phases complete:** 12 of 12 (MVP) + post-MVP handshake + email verify soft-gate
+  (code complete, deploy + mobile smoke pending)
+- **Blockers:** Play Console identity verification still pending for public
+  listing; payments deferred until after email gate.
 
 ---
 
 ## Next immediate step
 
-**DNS for marketing site:** at your registrar, point `park-xchange.com` apex
-with four `A` records to `185.199.108.153`, `185.199.109.153`,
-`185.199.110.153`, `185.199.111.153`. Optional `www` CNAME →
-`leakko.github.io`. Keep API on `api.park-xchange.com` (Hetzner), not apex.
-Then Search Console verify + OAuth consent URLs. Details: `apps/web/README.md`.
+On `feature/email-verification-soft-gate`: deploy API (migration 00012 +
+`EMAIL_VERIFY_LINK_BASE=https://api.park-xchange.com/v1/auth/verify-email`),
+then mobile smoke — register → mail link → `parkxchange://auth/verify-email`
+→ announce/offer unlocked; unverified user sees resend modal.
 
-On `feature/spot-exchange-handshake`: start Docker → `task db:up` →
-`task api:run` → mobile emulator. Smoke: accept offer → Yendo/Listo both sides →
-complete (“Sal ya”); retract; cancel dueño en B = release (S10); cancel
-conductor &lt;30m = forfeit. Spec:
-`docs/superpowers/specs/2029-09-20-spot-exchange-refinment.md` (approved-v2).
-Plans: `2026-09-20-spot-exchange-handshake.md`,
-`2026-09-20-spot-exchange-matrix-ux.md`.
+Then commit/PR this branch. Payments and Play Store public listing wait on
+identity verification.
 
-Wire secrets into `.env` for auth smoke if still needed. Remaining infra:
-`infra/pulumi/README.md`.
+Optional: DNS/OAuth for `park-xchange.com` if still incomplete
+(`apps/web/README.md`).
 
 ---
 
@@ -900,4 +894,18 @@ so `replace ../../libs/go/geo` resolves. `libs/go/geo` has no `go.sum`; do not
   accept/reject, owner/driver handshake actions, cancellation, and a soft
   geofence warning. Automated mobile verification is green; emulator polish is
   optional before merge.
+
+### 2026-09-20 — Email verification soft-gate
+
+- Migration `00012_email_verification.sql`: `users.email_verified_at` +
+  `email_verification_tokens`; existing rows backfilled as verified.
+- Password register stays signed in but gates announce / create offer / accept
+  until confirm; Google Sign-In marks verified. Resend rate-limited.
+- HTTPS landing `GET /v1/auth/verify-email?token=` →
+  `parkxchange://auth/verify-email`; `POST` confirm + authenticated resend;
+  `/v1/me` exposes `email_verified`.
+- Mobile: soft-gate Alert with resend, register note, deep-link screen, i18n ES/EN.
+- `task api:test` green after migrate. Deploy needs
+  `EMAIL_VERIFY_LINK_BASE=https://api…/v1/auth/verify-email`. Emulator smoke
+  pending before calling the demo done.
 

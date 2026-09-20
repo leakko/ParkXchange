@@ -74,16 +74,22 @@ func (e Email) String() string { return string(e) }
 // a user for the wire happens in the HTTP adapter, which builds its own
 // response shape and simply never reads this field.
 type User struct {
-	ID           string
-	Email        Email
-	PasswordHash string
-	DisplayName  string
-	Phone        Phone
-	GoogleSub    string
-	RatingSum    int
-	RatingCount  int
-	BalanceCents int64
-	CreatedAt    time.Time
+	ID               string
+	Email            Email
+	PasswordHash     string
+	DisplayName      string
+	Phone            Phone
+	GoogleSub        string
+	EmailVerifiedAt  *time.Time
+	RatingSum        int
+	RatingCount      int
+	BalanceCents     int64
+	CreatedAt        time.Time
+}
+
+// EmailVerified reports whether the account may perform gated marketplace actions.
+func (u User) EmailVerified() bool {
+	return u.EmailVerifiedAt != nil
 }
 
 // Phone is a normalised E.164 number (+ and 8–15 digits, first digit 1–9).

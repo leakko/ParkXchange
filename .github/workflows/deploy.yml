@@ -118,11 +118,13 @@ jobs:
               "RESEND_API_KEY=${RESEND_API_KEY}" \
               "EMAIL_FROM=${EMAIL_FROM}" \
               "PASSWORD_RESET_DEEP_LINK_BASE=https://${DOMAIN}/v1/auth/reset" \
+              "EMAIL_VERIFY_LINK_BASE=https://${DOMAIN}/v1/auth/verify-email" \
               "GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID:-}" \
               > deploy/hetzner/.env
 
             # Shell env wins over --env-file for compose ${VAR} substitution.
             unset PASSWORD_RESET_DEEP_LINK_BASE || true
+            unset EMAIL_VERIFY_LINK_BASE || true
 
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
             docker compose -f deploy/hetzner/docker-compose.yml --env-file deploy/hetzner/.env pull api
