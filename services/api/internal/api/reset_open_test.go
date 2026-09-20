@@ -35,3 +35,32 @@ func TestHandlePasswordResetOpenRequiresToken(t *testing.T) {
 		t.Fatal("expected error for missing token")
 	}
 }
+
+func TestHandleEmailVerifyOpen(t *testing.T) {
+	a := &API{}
+	req := httptest.NewRequest(http.MethodGet, "/v1/auth/verify-email?token=abc-123", nil)
+	rec := httptest.NewRecorder()
+	if err := a.handleEmailVerifyOpen(rec, req); err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `href="parkxchange://auth/verify-email?token=abc-123"`) {
+		t.Fatalf("missing deep link in body: %s", body)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Fatalf("content-type %q", ct)
+	}
+}
+
+func TestHandleEmailVerifyOpenRequiresToken(t *testing.T) {
+	a := &API{}
+	req := httptest.NewRequest(http.MethodGet, "/v1/auth/verify-email", nil)
+	rec := httptest.NewRecorder()
+	err := a.handleEmailVerifyOpen(rec, req)
+	if err == nil {
+		t.Fatal("expected error for missing token")
+	}
+}

@@ -14,6 +14,8 @@ const codeToKey: Record<string, TranslationKey> = {
   email_invalid: "auth.error.google",
   phone_required: "announce.error.phoneRequired",
   phone_invalid: "announce.error.phoneInvalid",
+  email_unverified: "auth.verify.required",
+  resend_too_soon: "auth.verify.resendTooSoon",
 };
 
 export function apiErrorMessage(

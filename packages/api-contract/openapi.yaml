@@ -180,6 +180,57 @@ paths:
         "422":
           $ref: "#/components/responses/Error"
 
+  /v1/auth/verify-email:
+    get:
+      tags: [auth]
+      operationId: openEmailVerification
+      summary: Browser landing that opens the app deep link for email verification
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: HTML landing page
+        "422":
+          $ref: "#/components/responses/Error"
+    post:
+      tags: [auth]
+      operationId: confirmEmail
+      summary: Confirm email using a verification token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmEmailRequest"
+      responses:
+        "200":
+          description: Email confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/auth/verify-email/resend:
+    post:
+      tags: [auth]
+      operationId: resendEmailVerification
+      summary: Resend the email verification link
+      responses:
+        "204":
+          description: Sent when allowed (or already verified)
+        "401":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
   /v1/auth/refresh:
     post:
       tags: [auth]
@@ -1022,7 +1073,7 @@ components:
 
     UserResponse:
       type: object
-      required: [id, email, display_name, phone, rating_count, balance_cents]
+      required: [id, email, display_name, phone, email_verified, rating_count, balance_cents]
       properties:
         id:
           type: string
@@ -1035,6 +1086,9 @@ components:
         phone:
           type: string
           description: E.164 phone number of this account; empty when unset
+        email_verified:
+          type: boolean
+          description: Whether the account may announce or reserve
         rating:
           type: number
           format: double
@@ -1044,6 +1098,13 @@ components:
         balance_cents:
           type: integer
           format: int64
+
+    ConfirmEmailRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
 
     UpdateMeRequest:
       type: object

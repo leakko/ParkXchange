@@ -33,6 +33,16 @@ func (m LogMailer) SendPasswordReset(_ context.Context, to domain.Email, resetUR
 	return nil
 }
 
+// SendEmailVerification implements accounts.Mailer.
+func (m LogMailer) SendEmailVerification(_ context.Context, to domain.Email, verifyURL string) error {
+	log := m.Log
+	if log == nil {
+		log = slog.Default()
+	}
+	log.Info("email verification link", "to", to.String(), "url", verifyURL)
+	return nil
+}
+
 // ResendMailer sends mail through the Resend HTTP API.
 type ResendMailer struct {
 	APIKey string
@@ -73,6 +83,43 @@ func (m ResendMailer) SendPasswordReset(ctx context.Context, to domain.Email, re
 		return fmt.Errorf("mailer: encode resend body: %w", err)
 	}
 
+	return m.post(ctx, client, body)
+}
+
+// SendEmailVerification implements accounts.Mailer.
+func (m ResendMailer) SendEmailVerification(ctx context.Context, to domain.Email, verifyURL string) error {
+	if m.APIKey == "" || m.From == "" {
+		return fmt.Errorf("mailer: Resend API key and from address are required")
+	}
+	client := m.Client
+	if client == nil {
+		client = &http.Client{Timeout: 15 * time.Second}
+	}
+
+	safeURL := html.EscapeString(verifyURL)
+	htmlBody := `<div style="font-family:system-ui,sans-serif;font-size:16px;line-height:1.5;color:#111">` +
+		`<p>Confirm your email to announce or reserve parking spots on ParkXchange. This link expires in 24 hours.</p>` +
+		`<p><a href="` + safeURL + `" style="color:#1B9AAA;font-weight:600;text-decoration:underline">Confirm your email</a></p>` +
+		`<p style="word-break:break-all"><a href="` + safeURL + `" style="color:#1B9AAA">` + safeURL + `</a></p>` +
+		`<p style="color:#666;font-size:14px">If you did not create an account, you can ignore this email.</p>` +
+		`</div>`
+
+	body, err := json.Marshal(map[string]any{
+		"from":    m.From,
+		"to":      []string{to.String()},
+		"subject": "Confirm your ParkXchange email",
+		"text": "Confirm your email to announce or reserve parking spots on ParkXchange. This link expires in 24 hours.\n\n" +
+			verifyURL + "\n\nIf you did not create an account, you can ignore this email.\n",
+		"html": htmlBody,
+	})
+	if err != nil {
+		return fmt.Errorf("mailer: encode resend body: %w", err)
+	}
+
+	return m.post(ctx, client, body)
+}
+
+func (m ResendMailer) post(ctx context.Context, client *http.Client, body []byte) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.resend.com/emails", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("mailer: build resend request: %w", err)

@@ -92,7 +92,7 @@ func newServerFrom(t *testing.T, cfg config.Config) (*httptest.Server, *postgres
 
 	accountsService, err := accounts.New(
 		db, auth.NewArgon2Hasher(), tokens, cfg.RefreshTokenTTL,
-		nil, mailer.LogMailer{}, "parkxchange://auth/reset")
+		nil, mailer.LogMailer{}, "parkxchange://auth/reset", "parkxchange://auth/verify-email")
 	if err != nil {
 		t.Fatalf("build accounts service: %v", err)
 	}

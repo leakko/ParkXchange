@@ -19,9 +19,11 @@ import {
   updateSpot,
   withdrawSpot,
 } from "@/api/client";
+import { apiErrorMessage } from "@/api/errors";
 import { accountStyles } from "@/account/theme";
 import { AuthScroll } from "@/auth/AuthScroll";
 import { AuthTextInput } from "@/auth/AuthTextInput";
+import { ensureEmailVerified } from "@/auth/requireEmailVerified";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
 import { formatPoints, parsePointsInput } from "@/i18n/formatPoints";
@@ -147,7 +149,7 @@ export default function EditSpotScreen() {
     onError: (err) => {
       Alert.alert(
         t("account.spots.offer.updateFailed.title"),
-        err instanceof Error ? err.message : t("common.error"),
+        apiErrorMessage(err, t),
       );
     },
   });
@@ -328,7 +330,14 @@ export default function EditSpotScreen() {
                   <Pressable
                     style={[accountStyles.primary, { paddingHorizontal: 12 }]}
                     disabled={decideOffer.isPending}
-                    onPress={() => decideOffer.mutate({ offerId: offer.id, accept: true })}
+                    onPress={() => {
+                      void (async () => {
+                        if (!(await ensureEmailVerified({ t }))) {
+                          return;
+                        }
+                        decideOffer.mutate({ offerId: offer.id, accept: true });
+                      })();
+                    }}
                   >
                     <Text style={accountStyles.primaryText}>
                       {t("account.spots.edit.acceptOffer")}

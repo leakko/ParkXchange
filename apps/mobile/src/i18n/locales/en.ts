@@ -52,6 +52,19 @@ export const en: Record<TranslationKey, string> = {
   "auth.error.resetTokenInvalid": "That reset link is invalid or has expired",
   "auth.error.google": "Could not sign in with Google",
 
+  "auth.verify.title": "Confirm your email",
+  "auth.verify.body":
+    "We sent a link to confirm your email. You must confirm it before announcing or reserving.",
+  "auth.verify.resend": "Resend email",
+  "auth.verify.sent": "If needed, we sent you another link.",
+  "auth.verify.required": "Confirm your email before continuing",
+  "auth.verify.resendTooSoon": "Wait a moment before requesting another email",
+  "auth.verify.success": "Email confirmed",
+  "auth.verify.successBody": "You can now announce spots and make offers.",
+  "auth.verify.note":
+    "We will email you a confirmation link before you can announce or reserve.",
+  "auth.verify.openTitle": "Confirm email",
+
   "account.signIn": "Sign in",
   "account.signedOut.title": "Signed out",
   "account.signedOut.message":

@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/marco/parkxchange/services/api/internal/postgres"
 )
 
 // uniqueEmail keeps parallel tests from colliding on the unique email index.
@@ -29,11 +31,12 @@ type session struct {
 	TokenType    string `json:"token_type"`
 	ExpiresIn    int    `json:"expires_in"`
 	User         struct {
-		ID          string   `json:"id"`
-		Email       string   `json:"email"`
-		DisplayName string   `json:"display_name"`
-		Phone       string   `json:"phone"`
-		Rating      *float64 `json:"rating"`
+		ID            string   `json:"id"`
+		Email         string   `json:"email"`
+		DisplayName   string   `json:"display_name"`
+		Phone         string   `json:"phone"`
+		Rating        *float64 `json:"rating"`
+		EmailVerified bool     `json:"email_verified"`
 	} `json:"user"`
 }
 
@@ -89,6 +92,25 @@ func registerUser(t *testing.T, server *httptest.Server) (session, string, strin
 	return decode[session](t, resp), email, password
 }
 
+// markEmailVerified sets email_verified_at so marketplace actions work in tests.
+func markEmailVerified(t *testing.T, db *postgres.DB, userID string) {
+	t.Helper()
+	_, err := db.Pool.Exec(t.Context(), `
+		UPDATE users SET email_verified_at = COALESCE(email_verified_at, now()) WHERE id = $1
+	`, userID)
+	if err != nil {
+		t.Fatalf("mark email verified: %v", err)
+	}
+}
+
+// registerVerifiedUser registers and marks the account verified for gated actions.
+func registerVerifiedUser(t *testing.T, server *httptest.Server, db *postgres.DB) (session, string, string) {
+	t.Helper()
+	sess, email, password := registerUser(t, server)
+	markEmailVerified(t, db, sess.User.ID)
+	return sess, email, password
+}
+
 func TestRegisterIssuesAUsableSession(t *testing.T) {
 	server, _ := newServer(t)
 
@@ -105,6 +127,9 @@ func TestRegisterIssuesAUsableSession(t *testing.T) {
 	}
 	if got.User.Email != email {
 		t.Errorf("user email = %q, want %q", got.User.Email, email)
+	}
+	if got.User.EmailVerified {
+		t.Error("email_verified = true, want false for a fresh password registration")
 	}
 	// A brand new user has no ratings, which must serialise as null rather
 	// than 0.0: the client renders "new user" and "zero stars" differently.

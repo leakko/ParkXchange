@@ -44,6 +44,9 @@ type fakeStore struct {
 	// ownerPhones overrides the default phone returned by OwnerPhone.
 	ownerPhones map[string]domain.Phone
 
+	// emailVerified overrides EmailVerified; nil/missing defaults to true.
+	emailVerified map[string]bool
+
 	updateCalls int
 	updateErr   error
 
@@ -147,6 +150,15 @@ func (f *fakeStore) OwnerPhone(_ context.Context, ownerID string) (domain.Phone,
 	}
 	// Default: owners in unit tests already have a phone so Offer keeps working.
 	return domain.NewPhone("+34600111222"), nil
+}
+
+func (f *fakeStore) EmailVerified(_ context.Context, userID string) (bool, error) {
+	if f.emailVerified != nil {
+		if v, ok := f.emailVerified[userID]; ok {
+			return v, nil
+		}
+	}
+	return true, nil
 }
 
 func (f *fakeStore) UpdateAvailableSpot(_ context.Context, spotID, ownerID string, patch spots.SpotPatch) (domain.Spot, error) {

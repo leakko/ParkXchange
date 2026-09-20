@@ -77,19 +77,13 @@ tasks:
           exit 0
         fi
         AVD="{{.CLI_ARGS}}"
-        # Detach on Windows/Git Bash: bare `&` dies when task exits.
-        if command -v cmd.exe >/dev/null 2>&1; then
-          EMU="$ANDROID_HOME/emulator/emulator.exe"
-          # Convert Git Bash path to Windows if needed.
-          case "$EMU" in
-            /*) EMU="$(cygpath -w "$EMU" 2>/dev/null || echo "$EMU")" ;;
-          esac
-          cmd.exe //c start "" "$EMU" -avd "$AVD"
-          echo "Starting AVD $AVD (detached). Wait ~20s then: task mobile:devices"
-        else
-          nohup "$ANDROID_HOME/emulator/emulator" -avd "$AVD" >/tmp/parkxchange-emulator.log 2>&1 &
-          echo "Starting AVD $AVD (pid $!). Log: /tmp/parkxchange-emulator.log"
-        fi
+        EMU="$ANDROID_HOME/emulator/emulator"
+        LOG="${TMPDIR:-/tmp}/parkxchange-emulator.log"
+        # nohup keeps the AVD alive after Task exits (Git Bash on Windows
+        # used to break on `cmd start` with mixed path separators).
+        nohup "$EMU" -avd "$AVD" >"$LOG" 2>&1 &
+        echo "Starting AVD $AVD (pid $!). Log: $LOG"
+        echo "Wait ~20s then: task mobile:devices"
 
   typecheck:
     desc: Typecheck the mobile app

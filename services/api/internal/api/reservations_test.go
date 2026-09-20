@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/marco/parkxchange/services/api/internal/domain"
+	"github.com/marco/parkxchange/services/api/internal/postgres"
 )
 
 type reservationBody struct {
@@ -39,13 +40,16 @@ type offerBody struct {
 func createOffer(
 	t *testing.T,
 	server *httptest.Server,
-	token, spotID, vehicleID string,
+	db *postgres.DB,
+	driver session,
+	spotID, vehicleID string,
 	exchangeAt time.Time,
 	amount int,
 ) offerBody {
 	t.Helper()
+	markEmailVerified(t, db, driver.User.ID)
 	resp := authedRequest(t, server, http.MethodPost,
-		"/v1/spots/"+spotID+"/offers", token, map[string]any{
+		"/v1/spots/"+spotID+"/offers", driver.AccessToken, map[string]any{
 			"vehicle_id": vehicleID, "exchange_at": exchangeAt,
 			"amount_cents": amount,
 		})
@@ -63,7 +67,7 @@ func TestOfferAcceptanceAndHandshakePayOwner(t *testing.T) {
 	driverVehicleID := insertTestVehicle(t, db, driver.User.ID)
 	exchangeAt := time.Now().Add(30 * time.Minute).UTC().Truncate(time.Second)
 
-	offer := createOffer(t, server, driver.AccessToken,
+	offer := createOffer(t, server, db, driver,
 		spot.ID, driverVehicleID, exchangeAt, 200)
 
 	listed := authedRequest(t, server, http.MethodGet,
@@ -129,9 +133,9 @@ func TestOfferRejectAndWithdraw(t *testing.T) {
 	spot := createSpot(t, server, db, owner, uniqueLocation(), nil)
 	exchangeAt := time.Now().Add(time.Hour).UTC()
 
-	withdrawn := createOffer(t, server, firstDriver.AccessToken,
+	withdrawn := createOffer(t, server, db, firstDriver,
 		spot.ID, insertTestVehicle(t, db, firstDriver.User.ID), exchangeAt, 100)
-	rejected := createOffer(t, server, secondDriver.AccessToken,
+	rejected := createOffer(t, server, db, secondDriver,
 		spot.ID, insertTestVehicle(t, db, secondDriver.User.ID), exchangeAt, 150)
 
 	resp := authedRequest(t, server, http.MethodPost,

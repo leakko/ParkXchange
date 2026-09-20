@@ -34,6 +34,10 @@ func (f *fakeStore) BalanceAvailable(context.Context, string) (int64, error) {
 	return f.balance, nil
 }
 
+func (f *fakeStore) EmailVerified(context.Context, string) (bool, error) {
+	return true, nil
+}
+
 func (f *fakeStore) CreateOffer(_ context.Context, draft domain.OfferDraft) (domain.Offer, error) {
 	f.createCalls++
 	offer := domain.Offer{

@@ -228,6 +228,11 @@ type ChangePasswordRequest struct {
 	NewPassword     string `json:"new_password"`
 }
 
+// ConfirmEmailRequest defines model for ConfirmEmailRequest.
+type ConfirmEmailRequest struct {
+	Token string `json:"token"`
+}
+
 // CreateOfferRequest defines model for CreateOfferRequest.
 type CreateOfferRequest struct {
 	AmountCents int                `json:"amount_cents"`
@@ -485,7 +490,10 @@ type UserResponse struct {
 	BalanceCents int64               `json:"balance_cents"`
 	DisplayName  string              `json:"display_name"`
 	Email        openapi_types.Email `json:"email"`
-	Id           openapi_types.UUID  `json:"id"`
+
+	// EmailVerified Whether the account may announce or reserve
+	EmailVerified bool               `json:"email_verified"`
+	Id            openapi_types.UUID `json:"id"`
 
 	// Phone E.164 phone number of this account; empty when unset
 	Phone       string   `json:"phone"`
@@ -571,6 +579,11 @@ type Zoom = int
 // Error defines model for Error.
 type Error = ErrorEnvelope
 
+// OpenEmailVerificationParams defines parameters for OpenEmailVerification.
+type OpenEmailVerificationParams struct {
+	Token string `form:"token" json:"token"`
+}
+
 // ListSpotsParams defines parameters for ListSpots.
 type ListSpotsParams struct {
 	// Bbox minLon,minLat,maxLon,maxLat
@@ -610,6 +623,9 @@ type RefreshJSONRequestBody = RefreshRequest
 
 // RegisterJSONRequestBody defines body for Register for application/json ContentType.
 type RegisterJSONRequestBody = RegisterRequest
+
+// ConfirmEmailJSONRequestBody defines body for ConfirmEmail for application/json ContentType.
+type ConfirmEmailJSONRequestBody = ConfirmEmailRequest
 
 // UpdateMeJSONRequestBody defines body for UpdateMe for application/json ContentType.
 type UpdateMeJSONRequestBody = UpdateMeRequest

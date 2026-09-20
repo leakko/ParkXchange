@@ -42,6 +42,15 @@ func (s *Service) Create(ctx context.Context, spotID string, viewer domain.Claim
 		return domain.Offer{}, unauthenticated()
 	}
 
+	verified, err := s.store.EmailVerified(ctx, viewer.UserID)
+	if err != nil {
+		return domain.Offer{}, domain.Internal(err)
+	}
+	if !verified {
+		return domain.Offer{}, domain.Forbidden("email_unverified",
+			"confirm your email before making an offer")
+	}
+
 	spot, err := s.store.SpotForOffer(ctx, strings.TrimSpace(spotID))
 	if err != nil {
 		return domain.Offer{}, mapSpotLoad(err)
@@ -155,6 +164,15 @@ func (s *Service) ListMine(ctx context.Context, viewer domain.Claims) ([]domain.
 func (s *Service) Accept(ctx context.Context, offerID string, viewer domain.Claims) (domain.Reservation, error) {
 	if !viewer.Authenticated() {
 		return domain.Reservation{}, unauthenticated()
+	}
+
+	verified, err := s.store.EmailVerified(ctx, viewer.UserID)
+	if err != nil {
+		return domain.Reservation{}, domain.Internal(err)
+	}
+	if !verified {
+		return domain.Reservation{}, domain.Forbidden("email_unverified",
+			"confirm your email before accepting an offer")
 	}
 
 	offer, spot, err := s.loadOfferAndSpot(ctx, offerID)

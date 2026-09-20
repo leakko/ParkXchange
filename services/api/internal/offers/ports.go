@@ -16,6 +16,9 @@ type Store interface {
 	VehicleOwnedBy(ctx context.Context, vehicleID, ownerID string) (bool, error)
 	BalanceAvailable(ctx context.Context, userID string) (int64, error)
 
+	// EmailVerified reports whether the user has confirmed their email.
+	EmailVerified(ctx context.Context, userID string) (bool, error)
+
 	// CreateOffer verifies that the spot is still available, the vehicle still
 	// belongs to the driver, and the driver can still cover the amount.
 	CreateOffer(ctx context.Context, draft domain.OfferDraft) (domain.Offer, error)

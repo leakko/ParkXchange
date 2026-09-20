@@ -43,23 +43,25 @@ type sessionResponse struct {
 }
 
 type userResponse struct {
-	ID           string   `json:"id"`
-	Email        string   `json:"email"`
-	DisplayName  string   `json:"display_name"`
-	Phone        string   `json:"phone"`
-	Rating       *float64 `json:"rating"`
-	RatingCount  int      `json:"rating_count"`
-	BalanceCents int64    `json:"balance_cents"`
+	ID            string   `json:"id"`
+	Email         string   `json:"email"`
+	DisplayName   string   `json:"display_name"`
+	Phone         string   `json:"phone"`
+	EmailVerified bool     `json:"email_verified"`
+	Rating        *float64 `json:"rating"`
+	RatingCount   int      `json:"rating_count"`
+	BalanceCents  int64    `json:"balance_cents"`
 }
 
 func toUserResponse(u domain.User) userResponse {
 	resp := userResponse{
-		ID:           u.ID,
-		Email:        u.Email.String(),
-		DisplayName:  u.DisplayName,
-		Phone:        u.Phone.String(),
-		RatingCount:  u.RatingCount,
-		BalanceCents: u.BalanceCents,
+		ID:            u.ID,
+		Email:         u.Email.String(),
+		DisplayName:   u.DisplayName,
+		Phone:         u.Phone.String(),
+		EmailVerified: u.EmailVerified(),
+		RatingCount:   u.RatingCount,
+		BalanceCents:  u.BalanceCents,
 	}
 
 	// null rather than 0.0 for an unrated user: a new user is not a zero-star
@@ -240,6 +242,58 @@ func (a *API) handlePasswordResetOpen(w http.ResponseWriter, r *http.Request) er
 	w.WriteHeader(http.StatusOK)
 	_, err := w.Write([]byte(body))
 	return err
+}
+
+type confirmEmailRequest struct {
+	Token string `json:"token"`
+}
+
+// handleEmailVerifyOpen is the https landing page linked from verification emails.
+func (a *API) handleEmailVerifyOpen(w http.ResponseWriter, r *http.Request) error {
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	if token == "" {
+		return domain.Invalid("token", "token is required")
+	}
+	deep := "parkxchange://auth/verify-email?token=" + url.QueryEscape(token)
+	safeDeep := html.EscapeString(deep)
+	body := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta http-equiv="refresh" content="0;url=%s"/>
+<title>ParkXchange — confirm email</title>
+</head>
+<body style="font-family:system-ui,sans-serif;padding:2rem;max-width:32rem;margin:auto">
+<p>Opening ParkXchange…</p>
+<p><a href="%s">Tap here if the app does not open</a></p>
+</body>
+</html>`, safeDeep, safeDeep)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, err := w.Write([]byte(body))
+	return err
+}
+
+func (a *API) handleConfirmEmail(w http.ResponseWriter, r *http.Request) error {
+	var req confirmEmailRequest
+	if err := web.DecodeJSON(w, r, &req); err != nil {
+		return err
+	}
+	user, err := a.accounts.ConfirmEmailVerification(r.Context(), req.Token)
+	if err != nil {
+		return err
+	}
+	return web.JSON(w, http.StatusOK, toUserResponse(user))
+}
+
+func (a *API) handleResendEmailVerification(w http.ResponseWriter, r *http.Request) error {
+	if err := a.accounts.RequestEmailVerification(r.Context(), claimsFrom(r.Context())); err != nil {
+		return err
+	}
+	return web.NoContent(w)
 }
 
 func (a *API) handleUpdateMe(w http.ResponseWriter, r *http.Request) error {

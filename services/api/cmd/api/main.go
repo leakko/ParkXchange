@@ -95,6 +95,7 @@ func run() error {
 		googleVerifier,
 		resetMailer,
 		cfg.PasswordResetDeepLinkBase,
+		cfg.EmailVerifyLinkBase,
 	)
 	if err != nil {
 		return err

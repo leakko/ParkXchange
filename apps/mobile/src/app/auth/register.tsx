@@ -104,6 +104,9 @@ export default function RegisterScreen() {
     <AuthScroll>
       <Text style={accountStyles.title}>{t("auth.register.title")}</Text>
       <Text style={accountStyles.meta}>{t("auth.register.subtitle")}</Text>
+      <Text style={[accountStyles.meta, { marginBottom: 8 }]}>
+        {t("auth.verify.note")}
+      </Text>
 
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("auth.displayName")}</Text>

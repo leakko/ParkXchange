@@ -146,6 +146,8 @@ func createSpot(
 ) feature {
 	t.Helper()
 
+	markEmailVerified(t, db, owner.User.ID)
+
 	body := map[string]any{
 		"lon":         at.Lon,
 		"lat":         at.Lat,
@@ -258,10 +260,28 @@ func TestCreateSpotRequiresAuthentication(t *testing.T) {
 	}
 }
 
+func TestCreateSpotRequiresVerifiedEmail(t *testing.T) {
+	server, db := newServer(t)
+	owner, _, _ := registerUser(t, server)
+	at := uniqueLocation()
+	body := map[string]any{
+		"lon": at.Lon, "lat": at.Lat, "size_class": "medium",
+		"price_cents": 150, "vehicle_id": insertTestVehicle(t, db, owner.User.ID),
+	}
+	resp := authedRequest(t, server, http.MethodPost, "/v1/spots", owner.AccessToken, body)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.StatusCode)
+	}
+	if got := errorCode(t, resp); got != "email_unverified" {
+		t.Fatalf("code = %q, want email_unverified", got)
+	}
+}
+
 func TestCreateSpotRejectsInvalidInput(t *testing.T) {
 	server, db := newServer(t)
 
 	owner, _, _ := registerUser(t, server)
+	markEmailVerified(t, db, owner.User.ID)
 	at := uniqueLocation()
 	vehicleID := insertTestVehicle(t, db, owner.User.ID)
 
@@ -812,7 +832,7 @@ func TestUpdateSpotRejectsAReservedOffer(t *testing.T) {
 	driver, _, _ := registerUser(t, server)
 	created := createSpot(t, server, db, owner, uniqueLocation(), nil)
 
-	offer := createOffer(t, server, driver.AccessToken, created.ID,
+	offer := createOffer(t, server, db, driver, created.ID,
 		insertTestVehicle(t, db, driver.User.ID), time.Now().Add(15*time.Minute), 150)
 	accept := authedRequest(t, server, http.MethodPost,
 		"/v1/offers/"+offer.ID+"/accept", owner.AccessToken, nil)

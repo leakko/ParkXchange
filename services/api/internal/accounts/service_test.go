@@ -135,6 +135,33 @@ func (f *fakeStore) CompletePasswordReset(context.Context, []byte, string) error
 	return domain.ErrNoRows
 }
 
+func (f *fakeStore) MarkEmailVerified(_ context.Context, userID string) (domain.User, error) {
+	u, found := f.users[userID]
+	if !found {
+		return domain.User{}, domain.ErrNoRows
+	}
+	now := time.Now()
+	u.EmailVerifiedAt = &now
+	f.users[userID] = u
+	return u, nil
+}
+
+func (f *fakeStore) InvalidateOpenEmailVerificationTokens(context.Context, string) error {
+	return nil
+}
+
+func (f *fakeStore) InsertEmailVerificationToken(context.Context, string, []byte, time.Time) error {
+	return nil
+}
+
+func (f *fakeStore) LatestEmailVerificationCreatedAt(context.Context, string) (*time.Time, error) {
+	return nil, domain.ErrNoRows
+}
+
+func (f *fakeStore) CompleteEmailVerification(context.Context, []byte) (domain.User, error) {
+	return domain.User{}, domain.ErrNoRows
+}
+
 // plainHasher stores the password itself so unit tests stay cheap.
 type plainHasher struct{}
 
@@ -163,7 +190,7 @@ func (stubTokens) ParseSocketTicket(string) (domain.Claims, error) {
 
 func newService(t *testing.T, store accounts.Store) *accounts.Service {
 	t.Helper()
-	svc, err := accounts.New(store, plainHasher{}, stubTokens{}, 24*time.Hour, nil, nil, "")
+	svc, err := accounts.New(store, plainHasher{}, stubTokens{}, 24*time.Hour, nil, nil, "", "")
 	if err != nil {
 		t.Fatalf("accounts.New: %v", err)
 	}
