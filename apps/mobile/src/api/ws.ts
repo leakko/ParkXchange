@@ -83,7 +83,8 @@ export class SpotSocket {
         msg.type === "spot.added" ||
         msg.type === "spot.updated" ||
         msg.type === "spot.removed" ||
-        msg.type === "reservation.updated"
+        msg.type === "reservation.updated" ||
+        msg.type === "offer.created"
       ) {
         this.handlers.onSpotEvent(msg);
       }
@@ -122,6 +123,10 @@ export function applySpotEvent(
     event.status === "expired";
   if (event.type === "spot.removed" || terminal) {
     return features.filter((f) => String(f.id) !== event.id);
+  }
+
+  if (event.type === "offer.created") {
+    return features;
   }
 
   const existing = features.find((f) => String(f.id) === event.id);

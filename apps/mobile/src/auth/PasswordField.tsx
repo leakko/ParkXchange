@@ -19,6 +19,7 @@ type PasswordFieldProps = Omit<
 > & {
   value: string;
   onChangeText: (value: string) => void;
+  invalid?: boolean;
 };
 
 /**
@@ -31,6 +32,7 @@ export function PasswordField({
   onChangeText,
   style,
   onFocus,
+  invalid,
   ...rest
 }: PasswordFieldProps) {
   const { t } = useTranslation();
@@ -67,7 +69,12 @@ export function PasswordField({
     >
       <TextInput
         {...rest}
-        style={[accountStyles.input, styles.input, style]}
+        style={[
+          accountStyles.input,
+          invalid && accountStyles.inputInvalid,
+          styles.input,
+          style,
+        ]}
         value={displayValue}
         onChangeText={onMaskedChange}
         secureTextEntry={maskNative}

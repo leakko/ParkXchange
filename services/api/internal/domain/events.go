@@ -11,6 +11,7 @@ const (
 	EventSpotUpdated        = "spot.updated"
 	EventSpotRemoved        = "spot.removed"
 	EventReservationUpdated = "reservation.updated"
+	EventOfferCreated       = "offer.created"
 )
 
 // SpotEvent is what a mutation publishes so every replica's hub can fan it

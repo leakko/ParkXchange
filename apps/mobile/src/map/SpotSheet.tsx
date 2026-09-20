@@ -2,7 +2,7 @@ import BottomSheet, {
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
-import { forwardRef, useEffect, useMemo, useState } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -87,6 +87,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
 ) {
   const { t, formatDateTime } = useTranslation();
   const snapPoints = useMemo(() => ["36%", "82%"], []);
+  const scrollRef = useRef<ComponentRef<typeof BottomSheetScrollView>>(null);
   const [makingOffer, setMakingOffer] = useState(false);
   const [vehicleId, setVehicleId] = useState("");
   const [exchangeAt, setExchangeAt] = useState(() => new Date(Date.now() + 60 * 60 * 1000));
@@ -157,6 +158,12 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
       return;
     }
     setMakingOffer(true);
+    // Offer form is taller than the peek snap; expand so the points field stays visible.
+    requestAnimationFrame(() => {
+      if (typeof ref !== "function" && ref?.current) {
+        ref.current.snapToIndex(1);
+      }
+    });
   };
 
   const beginEditOffer = () => {
@@ -174,6 +181,11 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
     setAmount(formatPoints(pendingOffer.amount_cents));
     setExchangeAt(new Date(pendingOffer.exchange_at));
     setMakingOffer(true);
+    requestAnimationFrame(() => {
+      if (typeof ref !== "function" && ref?.current) {
+        ref.current.snapToIndex(1);
+      }
+    });
   };
 
   const submitOffer = async () => {
@@ -219,13 +231,17 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
       index={-1}
       snapPoints={snapPoints}
       enablePanDownToClose
-      keyboardBehavior="interactive"
+      keyboardBehavior="extend"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
       backgroundStyle={styles.sheet}
       handleIndicatorStyle={styles.handle}
     >
-      <BottomSheetScrollView contentContainerStyle={styles.body}>
+      <BottomSheetScrollView
+        ref={scrollRef}
+        contentContainerStyle={[styles.body, makingOffer && styles.bodyOffer]}
+        keyboardShouldPersistTaps="handled"
+      >
         {spot ? (
           <>
             <Text style={styles.title}>{spot.properties.owner_name}</Text>
@@ -423,6 +439,11 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                       onChangeText={setAmount}
                       keyboardType="number-pad"
                       placeholderTextColor="#7A93A0"
+                      onFocus={() => {
+                        requestAnimationFrame(() => {
+                          scrollRef.current?.scrollToEnd({ animated: true });
+                        });
+                      }}
                     />
                     <Pressable
                       style={[
@@ -647,6 +668,7 @@ const styles = StyleSheet.create({
   sheet: { backgroundColor: "#0B1F33" },
   handle: { backgroundColor: "#5B7A8C" },
   body: { paddingHorizontal: 20, paddingBottom: 28, gap: 6 },
+  bodyOffer: { paddingBottom: 120 },
   title: { color: "#F4F7FA", fontSize: 18, fontWeight: "600" },
   mineBadge: { color: "#1B9AAA", fontSize: 13, fontWeight: "600" },
   meta: { color: "#9DB4C0", fontSize: 14 },

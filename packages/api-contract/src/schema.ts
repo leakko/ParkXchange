@@ -842,7 +842,7 @@ export interface components {
         /** @description Server to client incremental event */
         SpotEventMessage: {
             /** @enum {string} */
-            type: "spot.added" | "spot.updated" | "spot.removed" | "reservation.updated";
+            type: "spot.added" | "spot.updated" | "spot.removed" | "reservation.updated" | "offer.created";
             /** Format: uuid */
             id: string;
             /** Format: double */

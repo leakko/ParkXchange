@@ -13,6 +13,7 @@ import { accountStyles } from "@/account/theme";
 import { AuthScroll } from "@/auth/AuthScroll";
 import { AuthTextInput } from "@/auth/AuthTextInput";
 import { PasswordField } from "@/auth/PasswordField";
+import { normalizePhoneInput } from "@/auth/phone";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation, type AppLocale } from "@/i18n";
 
@@ -54,7 +55,7 @@ export default function ProfileScreen() {
   });
 
   const savePhone = useMutation({
-    mutationFn: () => updateMe({ phone: phone.trim() }),
+    mutationFn: () => updateMe({ phone: normalizePhoneInput(phone) }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["me"] });
       Alert.alert(t("account.profile.saved.title"), t("account.profile.saved.phone"));
@@ -163,11 +164,11 @@ export default function ProfileScreen() {
           value={phone}
           onChangeText={setPhone}
           keyboardType="phone-pad"
-          placeholder="+34600111222"
+          placeholder={t("auth.phone.placeholder")}
           placeholderTextColor="#7A93A0"
         />
       </View>
-      <Text style={accountStyles.meta}>{t("account.profile.phone.hint")}</Text>
+      <Text style={accountStyles.meta}>{t("auth.phone.hint")}</Text>
       <Pressable
         style={accountStyles.primary}
         disabled={savePhone.isPending}

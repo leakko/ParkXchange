@@ -12,8 +12,10 @@ import { accountColors, accountStyles } from "@/account/theme";
 import { AuthScroll } from "@/auth/AuthScroll";
 import { AuthTextInput } from "@/auth/AuthTextInput";
 import { authErrorMessage } from "@/auth/errors";
+import { apiFieldErrors } from "@/auth/fieldErrors";
 import { GoogleButton } from "@/auth/GoogleButton";
 import { useGoogleSignIn, googleSignInConfigured } from "@/auth/google";
+import { normalizePhoneInput } from "@/auth/phone";
 import { PasswordField } from "@/auth/PasswordField";
 import { applySession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
@@ -36,10 +38,12 @@ export default function RegisterScreen() {
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const onGoogleError = useCallback(
     (err: unknown) => {
       setError(authErrorMessage(err, t));
+      setFieldErrors({});
       setBusy(false);
     },
     [t],
@@ -50,9 +54,21 @@ export default function RegisterScreen() {
   }, [params.returnTo, router]);
   const google = useGoogleSignIn({ onError: onGoogleError, onSuccess: finish });
 
+  const clearField = (key: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[key]) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
   const onSubmit = async () => {
     setBusy(true);
     setError(null);
+    setFieldErrors({});
     try {
       const payload: {
         email: string;
@@ -64,15 +80,21 @@ export default function RegisterScreen() {
         password,
         display_name: displayName.trim(),
       };
-      const trimmedPhone = phone.trim();
-      if (trimmedPhone) {
-        payload.phone = trimmedPhone;
+      const normalisedPhone = normalizePhoneInput(phone);
+      if (normalisedPhone) {
+        payload.phone = normalisedPhone;
       }
       const session = await register(payload);
       await applySession(session.access_token, session.refresh_token);
       finish();
     } catch (err) {
-      setError(authErrorMessage(err, t));
+      const fields = apiFieldErrors(err, t);
+      setFieldErrors(fields);
+      setError(
+        Object.keys(fields).length > 0
+          ? t("auth.error.validation")
+          : authErrorMessage(err, t),
+      );
     } finally {
       setBusy(false);
     }
@@ -85,30 +107,66 @@ export default function RegisterScreen() {
 
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("auth.displayName")}</Text>
-        <AuthTextInput value={displayName} onChangeText={setDisplayName} />
+        <AuthTextInput
+          invalid={!!fieldErrors.display_name}
+          value={displayName}
+          onChangeText={(v) => {
+            setDisplayName(v);
+            clearField("display_name");
+          }}
+        />
+        {fieldErrors.display_name ? (
+          <Text style={accountStyles.fieldError}>{fieldErrors.display_name}</Text>
+        ) : null}
       </View>
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("auth.email")}</Text>
         <AuthTextInput
           autoCapitalize="none"
           keyboardType="email-address"
+          invalid={!!fieldErrors.email}
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(v) => {
+            setEmail(v);
+            clearField("email");
+          }}
         />
+        {fieldErrors.email ? (
+          <Text style={accountStyles.fieldError}>{fieldErrors.email}</Text>
+        ) : null}
       </View>
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("auth.password")}</Text>
-        <PasswordField value={password} onChangeText={setPassword} />
+        <PasswordField
+          invalid={!!fieldErrors.password}
+          value={password}
+          onChangeText={(v) => {
+            setPassword(v);
+            clearField("password");
+          }}
+        />
+        {fieldErrors.password ? (
+          <Text style={accountStyles.fieldError}>{fieldErrors.password}</Text>
+        ) : null}
       </View>
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("auth.phoneOptional")}</Text>
         <AuthTextInput
           keyboardType="phone-pad"
-          placeholder="+34600111222"
+          placeholder={t("auth.phone.placeholder")}
           placeholderTextColor={accountColors.window}
+          invalid={!!fieldErrors.phone}
           value={phone}
-          onChangeText={setPhone}
+          onChangeText={(v) => {
+            setPhone(v);
+            clearField("phone");
+          }}
         />
+        {fieldErrors.phone ? (
+          <Text style={accountStyles.fieldError}>{fieldErrors.phone}</Text>
+        ) : (
+          <Text style={accountStyles.meta}>{t("auth.phone.hint")}</Text>
+        )}
       </View>
 
       {error ? <Text style={accountStyles.error}>{error}</Text> : null}
@@ -133,6 +191,7 @@ export default function RegisterScreen() {
           onPress={() => {
             setBusy(true);
             setError(null);
+            setFieldErrors({});
             void google.prompt().finally(() => setBusy(false));
           }}
         />

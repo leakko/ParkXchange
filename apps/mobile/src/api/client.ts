@@ -27,6 +27,7 @@ export class ApiError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    readonly fields: Record<string, string> = {},
   ) {
     super(message);
     this.name = "ApiError";
@@ -72,11 +73,18 @@ async function tryRefreshTokens(): Promise<boolean> {
 
 async function parseError(res: Response): Promise<ApiError> {
   try {
-    const body = (await res.json()) as { error?: { code?: string; message?: string } };
+    const body = (await res.json()) as {
+      error?: {
+        code?: string;
+        message?: string;
+        fields?: Record<string, string>;
+      };
+    };
     return new ApiError(
       res.status,
       body.error?.code ?? "unknown",
       body.error?.message ?? res.statusText,
+      body.error?.fields ?? {},
     );
   } catch {
     return new ApiError(res.status, "unknown", res.statusText);

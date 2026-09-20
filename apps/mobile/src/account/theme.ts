@@ -53,6 +53,14 @@ export const accountStyles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 15,
   },
+  inputInvalid: {
+    borderColor: accountColors.dangerText,
+  },
+  fieldError: {
+    color: accountColors.dangerText,
+    fontSize: 12,
+    marginTop: 4,
+  },
   field: {
     marginBottom: 12,
   },

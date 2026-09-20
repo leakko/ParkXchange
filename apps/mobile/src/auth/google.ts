@@ -52,6 +52,13 @@ export function useGoogleSignIn(opts: {
     }
     try {
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      // Clear any cached Google session so the account picker appears when the
+      // device has several Google accounts (otherwise signIn reuses the last one).
+      try {
+        await GoogleSignin.signOut();
+      } catch {
+        /* not signed in with Google yet */
+      }
       const response = await GoogleSignin.signIn();
       if (!isSuccessResponse(response)) {
         return;

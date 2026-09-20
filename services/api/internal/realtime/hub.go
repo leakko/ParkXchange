@@ -87,6 +87,9 @@ func (h *Hub) SetViewport(client *Client, box geo.BBox) {
 
 // Publish delivers ev to every client whose viewport contains the point.
 //
+// offer.created is personal: it goes only to the spot owner, and does not
+// require a viewport — the owner may be on any screen with a live socket.
+//
 // A client whose buffer is full is dropped rather than blocked. Blocking
 // would stall fan-out for everyone else; dropping one slow phone does not.
 func (h *Hub) Publish(ev domain.SpotEvent) {
@@ -98,7 +101,11 @@ func (h *Hub) Publish(ev domain.SpotEvent) {
 	h.mu.Unlock()
 
 	for _, client := range clients {
-		if !client.watches(ev.Lon, ev.Lat) {
+		if ev.Type == domain.EventOfferCreated {
+			if client.claims.UserID == "" || client.claims.UserID != ev.OwnerID {
+				continue
+			}
+		} else if !client.watches(ev.Lon, ev.Lat) {
 			continue
 		}
 		payload, err := encodeFor(client.claims, ev, h.locationFuzzSecret)

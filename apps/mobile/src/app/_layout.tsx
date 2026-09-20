@@ -9,6 +9,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { I18nProvider } from "@/i18n";
+import { useOwnerOfferAlerts } from "@/hooks/useOwnerOfferAlerts";
 
 // Intermittent MapLibre tile/glyph stream errors on emulators are noisy but
 // non-fatal; the map still renders.
@@ -17,6 +18,11 @@ LogBox.ignoreLogs(["MapLibre Native", "unexpected end of stream"]);
 // OpenFreeMap vector tiles occasionally ship degenerate line features; MapLibre
 // logs them as WARN but still paints the rest of the style.
 LogManager.onLog(({ message }) => message.includes("Invalid geometry in line layer"));
+
+function OwnerOfferAlerts() {
+  useOwnerOfferAlerts();
+  return null;
+}
 
 export default function RootLayout() {
   const [queryClient] = useState(
@@ -35,6 +41,7 @@ export default function RootLayout() {
           <QueryClientProvider client={queryClient}>
             <BottomSheetModalProvider>
               <StatusBar style="light" />
+              <OwnerOfferAlerts />
               <Stack screenOptions={{ headerShown: false }} />
             </BottomSheetModalProvider>
           </QueryClientProvider>

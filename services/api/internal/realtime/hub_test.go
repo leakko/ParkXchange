@@ -65,6 +65,35 @@ func TestHubIgnoresClientsWithNoViewport(t *testing.T) {
 	}
 }
 
+func TestHubDeliversOfferCreatedToOwnerWithoutViewport(t *testing.T) {
+	t.Parallel()
+
+	hub := NewHub(8, []byte("test-location-fuzz-secret-32bytes!!"))
+	owner := hub.Connect(domain.Claims{UserID: "owner-1"})
+	stranger := hub.Connect(domain.Claims{UserID: "other"})
+	hub.SetViewport(stranger, barcelonaCentre())
+
+	hub.Publish(domain.SpotEvent{
+		Type:    domain.EventOfferCreated,
+		SpotID:  "spot-1",
+		OwnerID: "owner-1",
+		Lon:     2.17,
+		Lat:     41.39,
+		Status:  domain.SpotAvailable,
+	})
+
+	got := readJSON(t, owner)
+	if got["type"] != domain.EventOfferCreated {
+		t.Fatalf("type = %v, want %s", got["type"], domain.EventOfferCreated)
+	}
+
+	select {
+	case msg := <-stranger.Outgoing():
+		t.Fatalf("non-owner received offer.created: %s", msg)
+	case <-time.After(30 * time.Millisecond):
+	}
+}
+
 func TestHubDropsASlowClient(t *testing.T) {
 	t.Parallel()
 

@@ -88,13 +88,17 @@ func (db *DB) CreateOffer(ctx context.Context, draft domain.OfferDraft) (domain.
 		ownerID     string
 		status      string
 		listedUntil time.Time
+		lon         float64
+		lat         float64
+		guidePrice  int
 	)
 	if err := tx.QueryRow(ctx, `
-		SELECT owner_id, status, expires_at
+		SELECT owner_id, status, expires_at,
+		       ST_X(geom::geometry), ST_Y(geom::geometry), price_cents
 		  FROM spots
 		 WHERE id = $1
 		   FOR UPDATE
-	`, draft.SpotID).Scan(&ownerID, &status, &listedUntil); err != nil {
+	`, draft.SpotID).Scan(&ownerID, &status, &listedUntil, &lon, &lat, &guidePrice); err != nil {
 		return domain.Offer{}, translate(err, "lock offer spot")
 	}
 	if ownerID == draft.DriverID {
@@ -134,6 +138,17 @@ func (db *DB) CreateOffer(ctx context.Context, draft domain.OfferDraft) (domain.
 	))
 	if err != nil {
 		return domain.Offer{}, err
+	}
+	if err := notifySpot(ctx, tx, domain.SpotEvent{
+		Type:       domain.EventOfferCreated,
+		SpotID:     draft.SpotID,
+		OwnerID:    ownerID,
+		Lon:        lon,
+		Lat:        lat,
+		Status:     domain.SpotAvailable,
+		PriceCents: guidePrice,
+	}); err != nil {
+		return domain.Offer{}, translate(err, "notify offer created")
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.Offer{}, translate(err, "commit create offer")

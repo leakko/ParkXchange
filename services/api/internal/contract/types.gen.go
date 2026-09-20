@@ -89,6 +89,7 @@ func (e SnapshotMessageType) Valid() bool {
 
 // Defines values for SpotEventMessageType.
 const (
+	OfferCreated       SpotEventMessageType = "offer.created"
 	ReservationUpdated SpotEventMessageType = "reservation.updated"
 	SpotAdded          SpotEventMessageType = "spot.added"
 	SpotRemoved        SpotEventMessageType = "spot.removed"
@@ -98,6 +99,8 @@ const (
 // Valid indicates whether the value is a known member of the SpotEventMessageType enum.
 func (e SpotEventMessageType) Valid() bool {
 	switch e {
+	case OfferCreated:
+		return true
 	case ReservationUpdated:
 		return true
 	case SpotAdded:

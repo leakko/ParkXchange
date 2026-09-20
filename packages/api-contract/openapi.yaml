@@ -1482,7 +1482,7 @@ components:
       properties:
         type:
           type: string
-          enum: [spot.added, spot.updated, spot.removed, reservation.updated]
+          enum: [spot.added, spot.updated, spot.removed, reservation.updated, offer.created]
         id:
           type: string
           format: uuid
