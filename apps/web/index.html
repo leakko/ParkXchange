@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ParkXchange</title>
+    <meta
+      name="description"
+      content="Encuentra aparcamiento en cualquier lugar. ParkXchange conecta a quien busca plaza con quien se va."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Source+Sans+3:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <link rel="icon" href="assets/logo.png" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="logo-link" href="index.html">
+        <img src="assets/logo.png" width="32" height="32" alt="" />
+        <span data-i18n="brand">ParkXchange</span>
+      </a>
+      <nav class="header-nav" aria-label="Primary">
+        <a href="privacy.html" data-i18n="nav.privacy">Privacidad</a>
+        <a href="terms.html" data-i18n="nav.terms">Condiciones</a>
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button type="button" data-lang="es" data-i18n="nav.lang.es">ES</button>
+          <button type="button" data-lang="en" data-i18n="nav.lang.en">EN</button>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="brand" data-i18n="brand">ParkXchange</p>
+          <h1 data-i18n="hero.headline">Encuentra aparcamiento en cualquier lugar.</h1>
+          <p class="support" data-i18n="hero.support">
+            ParkXchange conecta a quien busca un sitio para aparcar en la ciudad
+            con quien se va a ir de todas formas.
+          </p>
+          <a class="cta" href="#how" data-i18n="hero.cta">Cómo funciona</a>
+        </div>
+        <figure class="hero-visual">
+          <img
+            src="assets/hero-parking.jpg"
+            width="1600"
+            height="900"
+            data-i18n-alt="hero.imageAlt"
+            alt="Calle urbana llena de coches aparcados, sin huecos libres"
+          />
+        </figure>
+      </section>
+
+      <section id="how" class="how">
+        <h2 data-i18n="how.title">Cómo funciona</h2>
+        <ol class="how-steps">
+          <li>
+            <span class="step-num">01</span>
+            <h3 data-i18n="how.step1.title">Anuncia</h3>
+            <p data-i18n="how.step1.body">
+              Cuando te vas, publicas cuándo y dónde liberas tu plaza de
+              aparcamiento.
+            </p>
+          </li>
+          <li>
+            <span class="step-num">02</span>
+            <h3 data-i18n="how.step2.title">Reserva</h3>
+            <p data-i18n="how.step2.body">
+              Quien busca parking lo ve en el mapa y reserva el intercambio.
+            </p>
+          </li>
+          <li>
+            <span class="step-num">03</span>
+            <h3 data-i18n="how.step3.title">Intercambio</h3>
+            <p data-i18n="how.step3.body">
+              En cuanto el otro coche llega, el que ocupaba el hueco sale para
+              dejárselo libre.
+            </p>
+          </li>
+        </ol>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-row">
+        <a href="privacy.html" data-i18n="nav.privacy">Privacidad</a>
+        <a href="terms.html" data-i18n="nav.terms">Condiciones</a>
+        <a href="mailto:marcossalvo95@gmail.com" data-i18n="footer.contact"
+          >Contacto</a
+        >
+      </div>
+      <p class="footer-tagline" data-i18n="footer.tagline">
+        Información y cortesía sobre aparcamiento — no vendemos suelo público.
+      </p>
+    </footer>
+
+    <script src="assets/i18n.js"></script>
+    <script>
+      ParkXchangeI18n.initI18n();
+    </script>
+  </body>
+</html>
