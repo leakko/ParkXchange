@@ -1,10 +1,12 @@
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 import { resetPassword } from "@/api/client";
 import { accountColors, accountStyles } from "@/account/theme";
+import { AuthScroll } from "@/auth/AuthScroll";
 import { authErrorMessage } from "@/auth/errors";
+import { PasswordField } from "@/auth/PasswordField";
 import { useTranslation } from "@/i18n";
 
 export default function ResetPasswordScreen() {
@@ -35,27 +37,17 @@ export default function ResetPasswordScreen() {
   };
 
   return (
-    <ScrollView style={accountStyles.screen} contentContainerStyle={accountStyles.scroll}>
+    <AuthScroll>
       <Text style={accountStyles.title}>{t("auth.reset.title")}</Text>
       <Text style={accountStyles.meta}>{t("auth.reset.subtitle")}</Text>
 
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("auth.password")}</Text>
-        <TextInput
-          style={accountStyles.input}
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
+        <PasswordField value={password} onChangeText={setPassword} />
       </View>
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("auth.reset.confirm")}</Text>
-        <TextInput
-          style={accountStyles.input}
-          secureTextEntry
-          value={confirm}
-          onChangeText={setConfirm}
-        />
+        <PasswordField value={confirm} onChangeText={setConfirm} />
       </View>
 
       {error ? <Text style={accountStyles.error}>{error}</Text> : null}
@@ -73,6 +65,6 @@ export default function ResetPasswordScreen() {
           <Text style={accountStyles.primaryText}>{t("auth.reset.submit")}</Text>
         )}
       </Pressable>
-    </ScrollView>
+    </AuthScroll>
   );
 }

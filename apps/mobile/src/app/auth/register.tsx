@@ -3,7 +3,6 @@ import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   Text,
   TextInput,
   View,
@@ -11,9 +10,11 @@ import {
 
 import { register } from "@/api/client";
 import { accountColors, accountStyles } from "@/account/theme";
+import { AuthScroll } from "@/auth/AuthScroll";
 import { authErrorMessage } from "@/auth/errors";
 import { GoogleButton } from "@/auth/GoogleButton";
 import { useGoogleSignIn, googleSignInConfigured } from "@/auth/google";
+import { PasswordField } from "@/auth/PasswordField";
 import { applySession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
 
@@ -77,7 +78,7 @@ export default function RegisterScreen() {
   };
 
   return (
-    <ScrollView style={accountStyles.screen} contentContainerStyle={accountStyles.scroll}>
+    <AuthScroll>
       <Text style={accountStyles.title}>{t("auth.register.title")}</Text>
       <Text style={accountStyles.meta}>{t("auth.register.subtitle")}</Text>
 
@@ -101,12 +102,7 @@ export default function RegisterScreen() {
       </View>
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("auth.password")}</Text>
-        <TextInput
-          style={accountStyles.input}
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
+        <PasswordField value={password} onChangeText={setPassword} />
       </View>
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("auth.phoneOptional")}</Text>
@@ -158,6 +154,6 @@ export default function RegisterScreen() {
       >
         <Text style={[accountStyles.link, { marginTop: 16 }]}>{t("auth.register.toLogin")}</Text>
       </Pressable>
-    </ScrollView>
+    </AuthScroll>
   );
 }

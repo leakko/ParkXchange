@@ -8,6 +8,8 @@ export const en: Record<TranslationKey, string> = {
 
   "auth.email": "Email",
   "auth.password": "Password",
+  "auth.password.show": "Show password",
+  "auth.password.hide": "Hide password",
   "auth.displayName": "Display name",
   "auth.phoneOptional": "Phone (optional, E.164)",
   "auth.backToLogin": "Back to sign in",

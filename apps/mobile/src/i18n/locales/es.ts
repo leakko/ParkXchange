@@ -6,6 +6,8 @@ export const es = {
 
   "auth.email": "Email",
   "auth.password": "Contraseña",
+  "auth.password.show": "Mostrar contraseña",
+  "auth.password.hide": "Ocultar contraseña",
   "auth.displayName": "Nombre",
   "auth.phoneOptional": "Teléfono (opcional, E.164)",
   "auth.backToLogin": "Volver al inicio de sesión",

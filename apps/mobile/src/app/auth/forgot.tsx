@@ -1,9 +1,10 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
 
 import { forgotPassword } from "@/api/client";
 import { accountColors, accountStyles } from "@/account/theme";
+import { AuthScroll } from "@/auth/AuthScroll";
 import { authErrorMessage } from "@/auth/errors";
 import { useTranslation } from "@/i18n";
 
@@ -29,7 +30,7 @@ export default function ForgotPasswordScreen() {
   };
 
   return (
-    <ScrollView style={accountStyles.screen} contentContainerStyle={accountStyles.scroll}>
+    <AuthScroll>
       <Text style={accountStyles.title}>{t("auth.forgot.title")}</Text>
       <Text style={accountStyles.meta}>{t("auth.forgot.subtitle")}</Text>
 
@@ -67,6 +68,6 @@ export default function ForgotPasswordScreen() {
       <Pressable onPress={() => router.back()}>
         <Text style={[accountStyles.link, { marginTop: 16 }]}>{t("auth.backToLogin")}</Text>
       </Pressable>
-    </ScrollView>
+    </AuthScroll>
   );
 }

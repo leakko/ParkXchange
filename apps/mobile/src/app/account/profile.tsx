@@ -4,7 +4,6 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
-  ScrollView,
   Text,
   TextInput,
   View,
@@ -12,6 +11,8 @@ import {
 
 import { changePassword, getMe, updateMe } from "@/api/client";
 import { accountStyles } from "@/account/theme";
+import { AuthScroll } from "@/auth/AuthScroll";
+import { PasswordField } from "@/auth/PasswordField";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation, type AppLocale } from "@/i18n";
 
@@ -108,11 +109,7 @@ export default function ProfileScreen() {
     ];
 
   return (
-    <ScrollView
-      style={accountStyles.screen}
-      contentContainerStyle={accountStyles.scroll}
-      keyboardShouldPersistTaps="handled"
-    >
+    <AuthScroll>
       <Text style={accountStyles.sectionTitle}>{t("account.profile.language.section")}</Text>
       <View style={accountStyles.section}>
         {languageOptions.map((opt) => {
@@ -189,36 +186,15 @@ export default function ProfileScreen() {
         <Text style={accountStyles.sectionTitle}>{t("account.profile.password.section")}</Text>
         <View style={accountStyles.field}>
           <Text style={accountStyles.label}>{t("account.profile.password.current")}</Text>
-          <TextInput
-            style={accountStyles.input}
-            value={currentPassword}
-            onChangeText={setCurrentPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            placeholderTextColor="#7A93A0"
-          />
+          <PasswordField value={currentPassword} onChangeText={setCurrentPassword} />
         </View>
         <View style={accountStyles.field}>
           <Text style={accountStyles.label}>{t("account.profile.password.new")}</Text>
-          <TextInput
-            style={accountStyles.input}
-            value={newPassword}
-            onChangeText={setNewPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            placeholderTextColor="#7A93A0"
-          />
+          <PasswordField value={newPassword} onChangeText={setNewPassword} />
         </View>
         <View style={accountStyles.field}>
           <Text style={accountStyles.label}>{t("account.profile.password.confirm")}</Text>
-          <TextInput
-            style={accountStyles.input}
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            placeholderTextColor="#7A93A0"
-          />
+          <PasswordField value={confirmPassword} onChangeText={setConfirmPassword} />
         </View>
         <Pressable
           style={accountStyles.primary}
@@ -237,6 +213,6 @@ export default function ProfileScreen() {
           )}
         </Pressable>
       </View>
-    </ScrollView>
+    </AuthScroll>
   );
 }

@@ -20,6 +20,7 @@ import {
   View,
   type NativeSyntheticEvent,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { OfferResponse, SpotFeature, VehicleResponse } from "@/api/client";
 import {
@@ -72,6 +73,7 @@ const DEBOUNCE_MS = 350;
 export default function MapScreen() {
   const { t, formatDateTime } = useTranslation();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const mapRef = useRef<MapRef>(null);
   const cameraRef = useRef<CameraRef>(null);
   const sheetRef = useRef<BottomSheet>(null);
@@ -866,7 +868,7 @@ export default function MapScreen() {
       ) : null}
 
       <Pressable
-        style={styles.accountFab}
+        style={[styles.accountFab, { bottom: 164 + insets.bottom }]}
         onPress={() => {
           if (!signedIn) {
             requireSignIn("/account");
@@ -883,6 +885,7 @@ export default function MapScreen() {
       <Pressable
         style={[
           styles.locateFab,
+          { bottom: 100 + insets.bottom },
           !follow.locationGranted ? styles.fabDisabled : null,
         ]}
         disabled={!follow.locationGranted}
@@ -894,7 +897,7 @@ export default function MapScreen() {
       </Pressable>
 
       <Pressable
-        style={styles.fab}
+        style={[styles.fab, { bottom: 36 + insets.bottom }]}
         disabled={announcing || !ready}
         onPress={() => {
           if (!signedIn) {
@@ -1077,7 +1080,6 @@ const styles = StyleSheet.create({
   accountFab: {
     position: "absolute",
     right: 20,
-    bottom: 164,
     width: 48,
     height: 48,
     borderRadius: 24,
@@ -1089,7 +1091,6 @@ const styles = StyleSheet.create({
   locateFab: {
     position: "absolute",
     right: 20,
-    bottom: 100,
     width: 48,
     height: 48,
     borderRadius: 24,
@@ -1102,7 +1103,6 @@ const styles = StyleSheet.create({
   fab: {
     position: "absolute",
     right: 20,
-    bottom: 36,
     backgroundColor: "#1B9AAA",
     borderRadius: 999,
     paddingHorizontal: 18,

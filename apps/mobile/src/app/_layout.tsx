@@ -6,6 +6,7 @@ import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
 import { LogBox } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { I18nProvider } from "@/i18n";
 
@@ -29,14 +30,16 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <I18nProvider>
-        <QueryClientProvider client={queryClient}>
-          <BottomSheetModalProvider>
-            <StatusBar style="light" />
-            <Stack screenOptions={{ headerShown: false }} />
-          </BottomSheetModalProvider>
-        </QueryClientProvider>
-      </I18nProvider>
+      <SafeAreaProvider>
+        <I18nProvider>
+          <QueryClientProvider client={queryClient}>
+            <BottomSheetModalProvider>
+              <StatusBar style="light" />
+              <Stack screenOptions={{ headerShown: false }} />
+            </BottomSheetModalProvider>
+          </QueryClientProvider>
+        </I18nProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

@@ -3,7 +3,6 @@ import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   Text,
   TextInput,
   View,
@@ -11,9 +10,11 @@ import {
 
 import { login } from "@/api/client";
 import { accountColors, accountStyles } from "@/account/theme";
+import { AuthScroll } from "@/auth/AuthScroll";
 import { authErrorMessage } from "@/auth/errors";
 import { GoogleButton } from "@/auth/GoogleButton";
 import { useGoogleSignIn, googleSignInConfigured } from "@/auth/google";
+import { PasswordField } from "@/auth/PasswordField";
 import { applySession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
 
@@ -61,7 +62,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <ScrollView style={accountStyles.screen} contentContainerStyle={accountStyles.scroll}>
+    <AuthScroll>
       <Text style={accountStyles.title}>{t("auth.login.title")}</Text>
       <Text style={accountStyles.meta}>{t("auth.login.subtitle")}</Text>
 
@@ -78,13 +79,7 @@ export default function LoginScreen() {
       </View>
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("auth.password")}</Text>
-        <TextInput
-          style={accountStyles.input}
-          secureTextEntry
-          autoComplete="password"
-          value={password}
-          onChangeText={setPassword}
-        />
+        <PasswordField value={password} onChangeText={setPassword} />
       </View>
 
       {error ? <Text style={accountStyles.error}>{error}</Text> : null}
@@ -128,6 +123,6 @@ export default function LoginScreen() {
       <Pressable onPress={() => router.push("/auth/forgot" as Href)}>
         <Text style={accountStyles.link}>{t("auth.login.forgot")}</Text>
       </Pressable>
-    </ScrollView>
+    </AuthScroll>
   );
 }

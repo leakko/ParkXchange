@@ -24,6 +24,7 @@ const config: ExpoConfig = {
   },
   android: {
     package: "com.parkxchange.mobile",
+    softwareKeyboardLayoutMode: "resize",
     adaptiveIcon: {
       backgroundColor: "#0B1F33",
       foregroundImage: "./assets/images/android-icon-foreground.png",
