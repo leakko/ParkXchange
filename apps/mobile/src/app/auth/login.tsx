@@ -4,13 +4,13 @@ import {
   ActivityIndicator,
   Pressable,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
 import { login } from "@/api/client";
 import { accountColors, accountStyles } from "@/account/theme";
 import { AuthScroll } from "@/auth/AuthScroll";
+import { AuthTextInput } from "@/auth/AuthTextInput";
 import { authErrorMessage } from "@/auth/errors";
 import { GoogleButton } from "@/auth/GoogleButton";
 import { useGoogleSignIn, googleSignInConfigured } from "@/auth/google";
@@ -68,8 +68,7 @@ export default function LoginScreen() {
 
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("auth.email")}</Text>
-        <TextInput
-          style={accountStyles.input}
+        <AuthTextInput
           autoCapitalize="none"
           autoComplete="email"
           keyboardType="email-address"

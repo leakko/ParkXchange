@@ -1,10 +1,11 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 import { forgotPassword } from "@/api/client";
 import { accountColors, accountStyles } from "@/account/theme";
 import { AuthScroll } from "@/auth/AuthScroll";
+import { AuthTextInput } from "@/auth/AuthTextInput";
 import { authErrorMessage } from "@/auth/errors";
 import { useTranslation } from "@/i18n";
 
@@ -40,8 +41,7 @@ export default function ForgotPasswordScreen() {
         <>
           <View style={accountStyles.field}>
             <Text style={accountStyles.label}>{t("auth.email")}</Text>
-            <TextInput
-              style={accountStyles.input}
+            <AuthTextInput
               autoCapitalize="none"
               keyboardType="email-address"
               value={email}

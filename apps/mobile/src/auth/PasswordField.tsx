@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -10,6 +10,7 @@ import {
 } from "react-native";
 
 import { accountColors, accountStyles } from "@/account/theme";
+import { useAuthScroll } from "@/auth/AuthScroll";
 import { useTranslation } from "@/i18n";
 
 type PasswordFieldProps = Omit<
@@ -29,9 +30,12 @@ export function PasswordField({
   value,
   onChangeText,
   style,
+  onFocus,
   ...rest
 }: PasswordFieldProps) {
   const { t } = useTranslation();
+  const authScroll = useAuthScroll();
+  const wrapRef = useRef<View>(null);
   const [visible, setVisible] = useState(false);
   const maskNative = Platform.OS === "ios" && !visible;
 
@@ -53,7 +57,14 @@ export function PasswordField({
   };
 
   return (
-    <View style={styles.wrap}>
+    <View
+      ref={wrapRef}
+      style={styles.wrap}
+      collapsable={false}
+      onLayout={() => {
+        /* keeps measureInWindow accurate after keyboard resize */
+      }}
+    >
       <TextInput
         {...rest}
         style={[accountStyles.input, styles.input, style]}
@@ -64,6 +75,12 @@ export function PasswordField({
         autoCorrect={false}
         textContentType="password"
         autoComplete="password"
+        onFocus={(e) => {
+          onFocus?.(e);
+          authScroll?.ensureVisible((cb) => {
+            wrapRef.current?.measureInWindow(cb);
+          });
+        }}
       />
       <Pressable
         style={styles.toggle}

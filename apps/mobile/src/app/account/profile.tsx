@@ -5,13 +5,13 @@ import {
   Alert,
   Pressable,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
 import { changePassword, getMe, updateMe } from "@/api/client";
 import { accountStyles } from "@/account/theme";
 import { AuthScroll } from "@/auth/AuthScroll";
+import { AuthTextInput } from "@/auth/AuthTextInput";
 import { PasswordField } from "@/auth/PasswordField";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation, type AppLocale } from "@/i18n";
@@ -132,8 +132,7 @@ export default function ProfileScreen() {
       </Text>
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("account.profile.displayName.label")}</Text>
-        <TextInput
-          style={accountStyles.input}
+        <AuthTextInput
           value={displayName}
           onChangeText={setDisplayName}
           autoCapitalize="words"
@@ -160,8 +159,7 @@ export default function ProfileScreen() {
       </Text>
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("account.profile.phone.label")}</Text>
-        <TextInput
-          style={accountStyles.input}
+        <AuthTextInput
           value={phone}
           onChangeText={setPhone}
           keyboardType="phone-pad"

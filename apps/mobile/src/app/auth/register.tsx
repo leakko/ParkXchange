@@ -4,13 +4,13 @@ import {
   ActivityIndicator,
   Pressable,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
 import { register } from "@/api/client";
 import { accountColors, accountStyles } from "@/account/theme";
 import { AuthScroll } from "@/auth/AuthScroll";
+import { AuthTextInput } from "@/auth/AuthTextInput";
 import { authErrorMessage } from "@/auth/errors";
 import { GoogleButton } from "@/auth/GoogleButton";
 import { useGoogleSignIn, googleSignInConfigured } from "@/auth/google";
@@ -84,16 +84,11 @@ export default function RegisterScreen() {
 
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("auth.displayName")}</Text>
-        <TextInput
-          style={accountStyles.input}
-          value={displayName}
-          onChangeText={setDisplayName}
-        />
+        <AuthTextInput value={displayName} onChangeText={setDisplayName} />
       </View>
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("auth.email")}</Text>
-        <TextInput
-          style={accountStyles.input}
+        <AuthTextInput
           autoCapitalize="none"
           keyboardType="email-address"
           value={email}
@@ -106,8 +101,7 @@ export default function RegisterScreen() {
       </View>
       <View style={accountStyles.field}>
         <Text style={accountStyles.label}>{t("auth.phoneOptional")}</Text>
-        <TextInput
-          style={accountStyles.input}
+        <AuthTextInput
           keyboardType="phone-pad"
           placeholder="+34600111222"
           placeholderTextColor={accountColors.window}
