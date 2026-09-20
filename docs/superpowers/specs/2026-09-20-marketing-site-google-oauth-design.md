@@ -1,7 +1,7 @@
 # Marketing site (landing + privacy + terms) for Google OAuth — design
 
 Date: 2026-09-20  
-Status: draft (awaiting user review)  
+Status: approved  
 Scope: static public site at `https://parkxchange.com` — landing, privacy
 policy, terms of service; ES/EN; GitHub Pages + DNS; copy and legal framing
 needed for Google OAuth brand verification (“production” / open to all users)  
