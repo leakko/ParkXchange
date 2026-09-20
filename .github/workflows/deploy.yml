@@ -65,7 +65,6 @@ jobs:
           LOCATION_FUZZ_SECRET: ${{ secrets.DEPLOY_LOCATION_FUZZ_SECRET }}
           RESEND_API_KEY: ${{ secrets.DEPLOY_RESEND_API_KEY }}
           EMAIL_FROM: ${{ secrets.DEPLOY_EMAIL_FROM }}
-          PASSWORD_RESET_DEEP_LINK_BASE: ${{ secrets.DEPLOY_PASSWORD_RESET_DEEP_LINK_BASE }}
           GOOGLE_WEB_CLIENT_ID: ${{ secrets.DEPLOY_GOOGLE_WEB_CLIENT_ID }}
           API_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
           CLONE_URL: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
@@ -75,7 +74,10 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: DOMAIN,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_DB,JWT_SECRET,LOCATION_FUZZ_SECRET,RESEND_API_KEY,EMAIL_FROM,PASSWORD_RESET_DEEP_LINK_BASE,GOOGLE_WEB_CLIENT_ID,API_IMAGE,CLONE_URL,GHCR_USER,GHCR_TOKEN
+          # Do not forward PASSWORD_RESET_DEEP_LINK_BASE: an empty Actions secret
+          # would export "" into the SSH shell and override deploy/hetzner/.env
+          # during compose interpolation, falling back to parkxchange://.
+          envs: DOMAIN,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_DB,JWT_SECRET,LOCATION_FUZZ_SECRET,RESEND_API_KEY,EMAIL_FROM,GOOGLE_WEB_CLIENT_ID,API_IMAGE,CLONE_URL,GHCR_USER,GHCR_TOKEN
           script: |
             set -euo pipefail
             APP_DIR=/opt/parkxchange
@@ -119,7 +121,11 @@ jobs:
               "GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID:-}" \
               > deploy/hetzner/.env
 
+            # Shell env wins over --env-file for compose ${VAR} substitution.
+            unset PASSWORD_RESET_DEEP_LINK_BASE || true
+
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
             docker compose -f deploy/hetzner/docker-compose.yml --env-file deploy/hetzner/.env pull api
+            docker compose -f deploy/hetzner/docker-compose.yml --env-file deploy/hetzner/.env up -d --force-recreate api
             docker compose -f deploy/hetzner/docker-compose.yml --env-file deploy/hetzner/.env up -d
             docker image prune -f
