@@ -1,8 +1,16 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Href, useRouter } from "expo-router";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { useCallback } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 
-import { getMe } from "@/api/client";
+import { deleteAccount, getMe } from "@/api/client";
 import { accountStyles } from "@/account/theme";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
@@ -11,12 +19,38 @@ import { formatPoints } from "@/i18n/formatPoints";
 export default function AccountHubScreen() {
   const { t } = useTranslation();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { ready, signedIn, signedOut, signOut } = useSession();
   const me = useQuery({
     queryKey: ["me"],
     queryFn: getMe,
     enabled: signedIn,
   });
+
+  const closeAccount = useMutation({
+    mutationFn: deleteAccount,
+    onSuccess: async () => {
+      queryClient.clear();
+      await signOut();
+    },
+    onError: (err) => {
+      Alert.alert(
+        t("account.delete.failed.title"),
+        err instanceof Error ? err.message : t("common.error"),
+      );
+    },
+  });
+
+  const confirmDelete = useCallback(() => {
+    Alert.alert(t("account.delete.confirmTitle"), t("account.delete.confirmMessage"), [
+      { text: t("common.cancel"), style: "cancel" },
+      {
+        text: t("account.delete.action"),
+        style: "destructive",
+        onPress: () => closeAccount.mutate(),
+      },
+    ]);
+  }, [closeAccount, t]);
 
   if (!ready) {
     return (
@@ -138,6 +172,14 @@ export default function AccountHubScreen() {
         }}
       >
         <Text style={accountStyles.dangerText}>{t("account.signOut")}</Text>
+      </Pressable>
+
+      <Pressable
+        style={[accountStyles.danger, { marginTop: 12 }]}
+        disabled={closeAccount.isPending}
+        onPress={confirmDelete}
+      >
+        <Text style={accountStyles.dangerText}>{t("account.delete.title")}</Text>
       </Pressable>
     </ScrollView>
   );

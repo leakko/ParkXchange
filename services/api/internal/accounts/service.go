@@ -546,6 +546,22 @@ func (s *Service) Profile(ctx context.Context, userID string) (domain.User, erro
 	return user, nil
 }
 
+// DeleteAccount closes the signed-in user's account: cancels active marketplace
+// commitments, erases personal data, and tombstones the row so the ledger can
+// stay append-only.
+func (s *Service) DeleteAccount(ctx context.Context, viewer domain.Claims) error {
+	if !viewer.Authenticated() {
+		return domain.Unauthenticated("unauthorized", "an access token is required")
+	}
+	if err := s.store.CloseAccount(ctx, viewer.UserID); err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			return domain.Unauthenticated("unauthorized", "this account no longer exists")
+		}
+		return domain.Internal(err)
+	}
+	return nil
+}
+
 // UpdateDisplayName changes the signed-in user's public name.
 func (s *Service) UpdateDisplayName(ctx context.Context, viewer domain.Claims, displayName string) (domain.User, error) {
 	if !viewer.Authenticated() {

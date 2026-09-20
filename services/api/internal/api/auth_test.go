@@ -677,3 +677,34 @@ func TestChangePasswordRejectsAWrongCurrentPassword(t *testing.T) {
 		t.Fatalf("status = %d, want 401", resp.StatusCode)
 	}
 }
+
+func TestDeleteMeClosesAccountAndBlocksLogin(t *testing.T) {
+	server, _ := newServer(t)
+
+	sess, email, password := registerUser(t, server)
+	oldRefresh := sess.RefreshToken
+
+	resp := authedRequest(t, server, http.MethodDelete, "/v1/me", sess.AccessToken, nil)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE /v1/me: status = %d, want 204", resp.StatusCode)
+	}
+
+	me := authedRequest(t, server, http.MethodGet, "/v1/me", sess.AccessToken, nil)
+	if me.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("GET /v1/me after delete: status = %d, want 401", me.StatusCode)
+	}
+
+	login := postJSON(t, server, "/v1/auth/login", map[string]string{
+		"email": email, "password": password,
+	})
+	if login.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("login after delete: status = %d, want 401", login.StatusCode)
+	}
+
+	refresh := postJSON(t, server, "/v1/auth/refresh", map[string]string{
+		"refresh_token": oldRefresh,
+	})
+	if refresh.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("refresh after delete: status = %d, want 401", refresh.StatusCode)
+	}
+}

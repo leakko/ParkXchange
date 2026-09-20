@@ -118,6 +118,7 @@ func (a *API) Handler() http.Handler {
 
 	mux.Handle("GET /v1/me", a.requireAuth(a.handleMe))
 	mux.Handle("PATCH /v1/me", a.requireAuth(a.handleUpdateMe))
+	mux.Handle("DELETE /v1/me", a.requireAuth(a.handleDeleteMe))
 	mux.Handle("POST /v1/me/password", a.requireAuth(a.handleChangePassword))
 
 	mux.Handle("GET /v1/vehicles", a.requireAuth(a.handleListVehicles))

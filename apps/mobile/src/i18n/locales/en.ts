@@ -82,6 +82,12 @@ export const en: Record<TranslationKey, string> = {
   "account.reservations.title": "My reservations",
   "account.reservations.manage": "Offers and exchanges",
   "account.signOut": "Sign out",
+  "account.delete.title": "Delete account",
+  "account.delete.confirmTitle": "Delete your account?",
+  "account.delete.confirmMessage":
+    "Your active listings, offers, and reservations will be cancelled. Any remaining points balance will be lost. This cannot be undone.",
+  "account.delete.action": "Delete account",
+  "account.delete.failed.title": "Could not delete account",
 
   "account.nav.account": "Account",
   "account.nav.profile": "Profile",

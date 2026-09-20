@@ -80,6 +80,12 @@ export const es = {
   "account.reservations.title": "Mis reservas",
   "account.reservations.manage": "Ofertas e intercambios",
   "account.signOut": "Cerrar sesión",
+  "account.delete.title": "Borrar cuenta",
+  "account.delete.confirmTitle": "¿Borrar tu cuenta?",
+  "account.delete.confirmMessage":
+    "Se cancelarán tus plazas, ofertas y reservas activas. Perderás el saldo de puntos restante. Esta acción no se puede deshacer.",
+  "account.delete.action": "Borrar cuenta",
+  "account.delete.failed.title": "No se pudo borrar la cuenta",
 
   "account.nav.account": "Cuenta",
   "account.nav.profile": "Perfil",

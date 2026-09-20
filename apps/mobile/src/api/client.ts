@@ -300,6 +300,13 @@ export async function changePassword(body: {
   }
 }
 
+export async function deleteAccount(): Promise<void> {
+  const res = await apiFetch("/v1/me", { method: "DELETE" });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+}
+
 export async function listVehicles(): Promise<VehicleResponse[]> {
   const res = await apiFetch("/v1/vehicles");
   if (!res.ok) {

@@ -103,14 +103,14 @@ func (db *DB) CreateUser(
 // registered as "Marco@..." can sign in as "marco@...". If this and the index
 // disagreed, an address could be registered twice.
 func (db *DB) UserByEmail(ctx context.Context, email domain.Email) (domain.User, error) {
-	return scanUser(db.Pool.QueryRow(ctx,
-		`SELECT `+userColumns+` FROM users WHERE lower(email) = lower($1)`, email.String()))
+	return scanUser(db.q().QueryRow(ctx,
+		`SELECT `+userColumns+` FROM users WHERE lower(email) = lower($1) AND deleted_at IS NULL`, email.String()))
 }
 
 // UserByID loads an account by its identifier.
 func (db *DB) UserByID(ctx context.Context, id string) (domain.User, error) {
-	return scanUser(db.Pool.QueryRow(ctx,
-		`SELECT `+userColumns+` FROM users WHERE id = $1`, id))
+	return scanUser(db.q().QueryRow(ctx,
+		`SELECT `+userColumns+` FROM users WHERE id = $1 AND deleted_at IS NULL`, id))
 }
 
 // InsertRefreshToken stores the hash of a freshly issued refresh token.
@@ -213,7 +213,7 @@ func (db *DB) RotateRefreshToken(
 	}
 
 	user, err := scanUser(tx.QueryRow(ctx,
-		`SELECT `+userColumns+` FROM users WHERE id = $1`, userID))
+		`SELECT `+userColumns+` FROM users WHERE id = $1 AND deleted_at IS NULL`, userID))
 	if err != nil {
 		return domain.User{}, err
 	}
@@ -299,8 +299,8 @@ func (db *DB) ChangePassword(ctx context.Context, userID, passwordHash string) e
 
 // UserByGoogleSub loads an account by its Google subject.
 func (db *DB) UserByGoogleSub(ctx context.Context, googleSub string) (domain.User, error) {
-	return scanUser(db.Pool.QueryRow(ctx,
-		`SELECT `+userColumns+` FROM users WHERE google_sub = $1`, googleSub))
+	return scanUser(db.q().QueryRow(ctx,
+		`SELECT `+userColumns+` FROM users WHERE google_sub = $1 AND deleted_at IS NULL`, googleSub))
 }
 
 // LinkGoogleSub attaches a Google subject to an account.

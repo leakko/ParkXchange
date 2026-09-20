@@ -15,9 +15,10 @@ import (
 type fakeStore struct {
 	users map[string]domain.User
 
-	updatedDisplayName string
+	updatedDisplayName  string
 	updatedPasswordHash string
 	revokedAllFor       string
+	closedAccountFor    string
 
 	refreshTokens map[string][][]byte // userID → hashes
 }
@@ -160,6 +161,16 @@ func (f *fakeStore) LatestEmailVerificationCreatedAt(context.Context, string) (*
 
 func (f *fakeStore) CompleteEmailVerification(context.Context, []byte) (domain.User, error) {
 	return domain.User{}, domain.ErrNoRows
+}
+
+func (f *fakeStore) CloseAccount(_ context.Context, userID string) error {
+	if _, found := f.users[userID]; !found {
+		return domain.ErrNoRows
+	}
+	f.closedAccountFor = userID
+	delete(f.users, userID)
+	delete(f.refreshTokens, userID)
+	return nil
 }
 
 // plainHasher stores the password itself so unit tests stay cheap.
@@ -351,6 +362,45 @@ func TestChangePasswordRequiresAuthentication(t *testing.T) {
 	svc := newService(t, newFakeStore())
 
 	err := svc.ChangePassword(context.Background(), domain.Claims{}, "x", "a-perfectly-fine-password")
+	if domain.KindOf(err) != domain.KindUnauthenticated {
+		t.Errorf("kind = %v, want KindUnauthenticated", domain.KindOf(err))
+	}
+}
+
+func TestDeleteAccountCallsCloseAccount(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	seededUser(store)
+	svc := newService(t, store)
+
+	err := svc.DeleteAccount(context.Background(), domain.Claims{UserID: "user-1"})
+	if err != nil {
+		t.Fatalf("DeleteAccount: %v", err)
+	}
+	if store.closedAccountFor != "user-1" {
+		t.Errorf("CloseAccount called for %q, want user-1", store.closedAccountFor)
+	}
+	if _, found := store.users["user-1"]; found {
+		t.Error("user still present after CloseAccount")
+	}
+}
+
+func TestDeleteAccountRequiresAuthentication(t *testing.T) {
+	t.Parallel()
+
+	svc := newService(t, newFakeStore())
+	err := svc.DeleteAccount(context.Background(), domain.Claims{})
+	if domain.KindOf(err) != domain.KindUnauthenticated {
+		t.Errorf("kind = %v, want KindUnauthenticated", domain.KindOf(err))
+	}
+}
+
+func TestDeleteAccountMissingUser(t *testing.T) {
+	t.Parallel()
+
+	svc := newService(t, newFakeStore())
+	err := svc.DeleteAccount(context.Background(), domain.Claims{UserID: "missing"})
 	if domain.KindOf(err) != domain.KindUnauthenticated {
 		t.Errorf("kind = %v, want KindUnauthenticated", domain.KindOf(err))
 	}

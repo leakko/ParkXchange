@@ -21,17 +21,16 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** email verification soft-gate on
-  `feature/email-verification-soft-gate` — backend + mobile wired; unit/API
-  tests green after `task db:migrate` (00012). Emulator deep-link smoke still
-  pending before merge.
+- **Phase in progress:** account deletion (GDPR erase) — implemented on `main`
+  (migration 00013, `DELETE /v1/me`, mobile confirm button, privacy/terms copy).
+  `task api:test` green after migrate.
 - **Also open:** spot-exchange matrix UX on `feature/spot-exchange-handshake`
-  (may need rebase onto this or main).
+  (may need rebase onto main).
 - **Also open:** marketing site on **`park-xchange.com`** — GitHub Pages green;
   confirm apex DNS + HTTPS + OAuth consent URLs if not done yet.
 - **Last updated:** 2026-09-20
 - **Phases complete:** 12 of 12 (MVP) + post-MVP handshake + email verify soft-gate
-  (code complete, deploy + mobile smoke pending)
+  + account deletion (code complete; mobile smoke optional)
 - **Blockers:** Play Console identity verification still pending for public
   listing; payments deferred until after email gate.
 
@@ -39,13 +38,9 @@ If that test fails, fix the code, not the test.
 
 ## Next immediate step
 
-On `feature/email-verification-soft-gate`: deploy API (migration 00012 +
-`EMAIL_VERIFY_LINK_BASE=https://api.park-xchange.com/v1/auth/verify-email`),
-then mobile smoke — register → mail link → `parkxchange://auth/verify-email`
-→ announce/offer unlocked; unverified user sees resend modal.
-
-Then commit/PR this branch. Payments and Play Store public listing wait on
-identity verification.
+Smoke-test account deletion on a device/emulator: Account → Delete account →
+confirm → session cleared; re-login with same email fails. Redeploy API with
+migration 00013 before production.
 
 Optional: DNS/OAuth for `park-xchange.com` if still incomplete
 (`apps/web/README.md`).
@@ -908,4 +903,15 @@ so `replace ../../libs/go/geo` resolves. `libs/go/geo` has no `go.sum`; do not
 - `task api:test` green after migrate. Deploy needs
   `EMAIL_VERIFY_LINK_BASE=https://api…/v1/auth/verify-email`. Emulator smoke
   pending before calling the demo done.
+
+### 2026-09-20 — Account deletion (GDPR erase)
+
+- Migration `00013_account_deletion.sql`: `users.deleted_at` tombstone.
+- `accounts.DeleteAccount` → postgres `CloseAccount` (one TX): cancel active
+  spots/offers/reservations, scrub vehicles and spot notes, wipe tokens,
+  anonymise user. Ledger retained.
+- `DELETE /v1/me` → 204; OpenAPI + generated types updated.
+- Mobile account hub: danger «Borrar cuenta» + confirm Alert; clears session.
+- Privacy/terms ES/EN: in-app delete is the erasure path; MVP points forfeited.
+- Spec/plan under `docs/superpowers/`; `task api:test` green after migrate.
 

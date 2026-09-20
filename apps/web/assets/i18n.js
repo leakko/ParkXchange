@@ -67,10 +67,10 @@
         "Algunos encargados (por ejemplo Google u hospedaje) pueden tratar datos fuera del EEE. Cuando ocurra, se aplicarán garantías adecuadas (como cláusulas contractuales tipo) según la normativa aplicable.",
       "privacy.retention.h": "Conservación",
       "privacy.retention.p":
-        "Conservamos los datos mientras la cuenta esté activa y el tiempo necesario para disputas, seguridad o obligaciones legales. Si solicitas la eliminación de la cuenta, borraremos o anonimizaremos los datos personales cuando sea viable, salvo retención legal.",
+        "Conservamos los datos mientras la cuenta esté activa y el tiempo necesario para disputas, seguridad u obligaciones legales. Si borras la cuenta desde la app (Cuenta → Borrar cuenta), anonimizamos o eliminamos los datos personales de forma automática. El historial operativo (por ejemplo asientos del libro de puntos) puede conservarse sin datos identificativos cuando la ley o la seguridad lo exijan. En el MVP, el saldo de puntos restante se pierde al borrar la cuenta.",
       "privacy.rights.h": "Tus derechos",
       "privacy.rights.p":
-        "Puedes solicitar acceso, rectificación, supresión, limitación, portabilidad y oposición escribiendo a marcossalvo95@gmail.com. También puedes reclamar ante la Agencia Española de Protección de Datos (AEPD).",
+        "Puedes ejercer la supresión borrando tu cuenta en la app (Cuenta → Borrar cuenta), con confirmación previa. Para acceso, rectificación, limitación, portabilidad, oposición u otras solicitudes, escribe a marcossalvo95@gmail.com. También puedes reclamar ante la Agencia Española de Protección de Datos (AEPD).",
       "privacy.children.h": "Menores",
       "privacy.children.p":
         "El servicio está pensado para usuarios de 16 años o más.",
@@ -93,7 +93,7 @@
         "Debes proporcionar información veraz, respetar las normas de tráfico y estacionamiento aplicables, no acosar a otros usuarios y no eludir la plataforma de mala fe para evitar puntos u otras contraprestaciones del sistema.",
       "terms.points.h": "Puntos",
       "terms.points.p":
-        "Los puntos son créditos internos de la aplicación. No son dinero de curso legal y no garantizan canje en efectivo salvo que en el futuro se active una función de pago o cobro real y se describa en estas condiciones.",
+        "Los puntos son créditos internos de la aplicación. No son dinero de curso legal y no garantizan canje en efectivo salvo que en el futuro se active una función de pago o cobro real y se describa en estas condiciones. Si borras la cuenta en el MVP, pierdes el saldo de puntos restante.",
       "terms.future.h": "Monetización futura",
       "terms.future.p":
         "El operador puede introducir pagos o cobros en dinero real. Se informará a los usuarios; el uso continuado tras el aviso puede implicar la aceptación de las condiciones actualizadas cuando la ley lo permita.",
@@ -169,10 +169,10 @@
         "Some processors (for example Google or hosting) may process data outside the EEA. Where that happens, appropriate safeguards (such as standard contractual clauses) will apply under applicable law.",
       "privacy.retention.h": "Retention",
       "privacy.retention.p":
-        "We keep data while the account is active and as needed for disputes, security, or legal duties. If you request account deletion, we will delete or anonymise personal data where feasible, subject to legal retention.",
+        "We keep data while the account is active and as needed for disputes, security, or legal duties. If you delete your account in the app (Account → Delete account), we automatically delete or anonymise personal data. Operational history (for example points ledger entries) may be retained without identifying data where required for law or security. In the MVP, any remaining points balance is forfeited when you delete your account.",
       "privacy.rights.h": "Your rights",
       "privacy.rights.p":
-        "You may request access, rectification, erasure, restriction, portability, and objection by emailing marcossalvo95@gmail.com. You may also lodge a complaint with Spain’s AEPD.",
+        "You can erase your data by deleting your account in the app (Account → Delete account), after a confirmation prompt. For access, rectification, restriction, portability, objection, or other requests, email marcossalvo95@gmail.com. You may also lodge a complaint with Spain’s AEPD.",
       "privacy.children.h": "Children",
       "privacy.children.p":
         "The service is intended for users aged 16 or older.",
@@ -195,7 +195,7 @@
         "You must provide truthful information, follow applicable traffic and parking rules, not harass other users, and not circumvent the platform in bad faith to avoid points or other in-system consideration.",
       "terms.points.h": "Points",
       "terms.points.p":
-        "Points are internal app credits. They are not legal tender and do not guarantee cash-out unless a real payment or payout feature ships and is described in these terms.",
+        "Points are internal app credits. They are not legal tender and do not guarantee cash-out unless a real payment or payout feature ships and is described in these terms. If you delete your account in the MVP, any remaining points balance is forfeited.",
       "terms.future.h": "Future monetisation",
       "terms.future.p":
         "The operator may introduce real-money payments or payouts. Users will be informed; continued use after notice may constitute acceptance of updated terms where legally permitted.",

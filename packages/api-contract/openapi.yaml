@@ -306,6 +306,19 @@ paths:
           $ref: "#/components/responses/Error"
         "422":
           $ref: "#/components/responses/Error"
+    delete:
+      tags: [auth]
+      operationId: deleteMe
+      summary: Close the account and erase personal data
+      description: >
+        Cancels active marketplace commitments, anonymises personal data,
+        and tombstones the user. Remaining MVP points are forfeited.
+        Ledger history is retained without identifying data.
+      responses:
+        "204":
+          description: Account closed
+        "401":
+          $ref: "#/components/responses/Error"
 
   /v1/me/password:
     post:

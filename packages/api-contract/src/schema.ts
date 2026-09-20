@@ -220,7 +220,11 @@ export interface paths {
         get: operations["getMe"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Close the account and erase personal data
+         * @description Cancels active marketplace commitments, anonymises personal data, and tombstones the user. Remaining MVP points are forfeited. Ledger history is retained without identifying data.
+         */
+        delete: operations["deleteMe"];
         options?: never;
         head?: never;
         /** Update the caller's display name */
@@ -1260,6 +1264,25 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["UserResponse"];
                 };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    deleteMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Account closed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             401: components["responses"]["Error"];
         };

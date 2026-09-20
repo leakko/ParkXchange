@@ -418,7 +418,7 @@ func (db *DB) SpotVehiclePhoto(ctx context.Context, spotID string) ([]byte, stri
 // and the owner debited. Doing those as separate statements is how a crash
 // leaves a claimed spot with a stranded hold.
 func (db *DB) CancelSpot(ctx context.Context, spotID, ownerID string) error {
-	tx, err := db.Pool.Begin(ctx)
+	tx, err := db.begin(ctx)
 	if err != nil {
 		return translate(err, "begin withdraw")
 	}

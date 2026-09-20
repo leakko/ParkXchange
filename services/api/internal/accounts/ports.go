@@ -88,6 +88,11 @@ type Store interface {
 
 	// CompleteEmailVerification consumes tokenHash and sets email_verified_at.
 	CompleteEmailVerification(ctx context.Context, tokenHash []byte) (domain.User, error)
+
+	// CloseAccount cancels the caller's active marketplace state, scrubs
+	// personal data, wipes tokens, and tombstones the user in one transaction.
+	// Reports domain.ErrNoRows when the account is missing or already closed.
+	CloseAccount(ctx context.Context, userID string) error
 }
 
 // GoogleIdentity is what a verified ID token asserts about the Google account.

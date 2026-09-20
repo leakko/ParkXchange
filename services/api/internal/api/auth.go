@@ -326,6 +326,13 @@ func (a *API) handleUpdateMe(w http.ResponseWriter, r *http.Request) error {
 	return web.JSON(w, http.StatusOK, toUserResponse(user))
 }
 
+func (a *API) handleDeleteMe(w http.ResponseWriter, r *http.Request) error {
+	if err := a.accounts.DeleteAccount(r.Context(), claimsFrom(r.Context())); err != nil {
+		return err
+	}
+	return web.NoContent(w)
+}
+
 func (a *API) handleChangePassword(w http.ResponseWriter, r *http.Request) error {
 	var req changePasswordRequest
 	if err := web.DecodeJSON(w, r, &req); err != nil {
