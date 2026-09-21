@@ -48,6 +48,17 @@ import {
   useDiscovery,
   type Viewport,
 } from "@/hooks/useDiscovery";
+
+/** Fields the open sheet cares about — ignore referential churn from polls/WS. */
+function sheetSpotDrifted(current: SpotFeature, next: SpotFeature): boolean {
+  return (
+    current.properties.status !== next.properties.status ||
+    current.properties.exact_location !== next.properties.exact_location ||
+    current.properties.price_cents !== next.properties.price_cents ||
+    current.geometry.coordinates[0] !== next.geometry.coordinates[0] ||
+    current.geometry.coordinates[1] !== next.geometry.coordinates[1]
+  );
+}
 import { useSession } from "@/hooks/useSession";
 import { useMapLocation } from "@/hooks/useMapLocation";
 import { announceAt, useActiveReservation } from "@/hooks/useSpotActions";
@@ -279,41 +290,25 @@ export default function MapScreen() {
     void refreshVehicles();
   }, [selected, signedIn, refreshVehicles]);
 
-  // Keep the sheet in sync when the viewport fetch flips exact_location
-  // (e.g. after an offer is accepted and the driver becomes the holder).
+  // Discovery/WS must not overwrite the open sheet during a live exchange:
+  // getSpot (exact, reserved/handover) and the viewport copy (often fuzzed or
+  // a beat behind on status) used to thrash setSelected forever — the sheet
+  // meta line flickering reserved ↔ handover/other until the app is killed.
   useEffect(() => {
     if (!selected?.id) {
+      return;
+    }
+    if (active && String(active.spot_id) === String(selected.id)) {
       return;
     }
     const live = featureById(String(selected.id));
     if (!live) {
       return;
     }
-    if (
-      live.properties.exact_location !== selected.properties.exact_location ||
-      live.geometry.coordinates[0] !== selected.geometry.coordinates[0] ||
-      live.geometry.coordinates[1] !== selected.geometry.coordinates[1]
-    ) {
+    if (sheetSpotDrifted(selected, live)) {
       setSelected(live);
     }
-  }, [featureById, selected]);
-
-  // Prefer the exact active-exchange spot once it loads for the open sheet.
-  useEffect(() => {
-    if (!selected?.id || !activeSpot) {
-      return;
-    }
-    if (String(activeSpot.id) !== String(selected.id)) {
-      return;
-    }
-    if (
-      activeSpot.properties.exact_location !== selected.properties.exact_location ||
-      activeSpot.geometry.coordinates[0] !== selected.geometry.coordinates[0] ||
-      activeSpot.geometry.coordinates[1] !== selected.geometry.coordinates[1]
-    ) {
-      setSelected(activeSpot);
-    }
-  }, [activeSpot, selected]);
+  }, [featureById, selected, active]);
 
   const spotData = useMemo(() => {
     const byId = new Map<
@@ -405,13 +400,17 @@ export default function MapScreen() {
     isOwner,
   ]);
 
-  // Keep the sheet on the exact holder payload once the exchange is live.
+  // Live exchange: sheet follows getSpot only, and only when fields actually drift
+  // (poll every 5s must not rewrite selected with a fresh object each time).
   useEffect(() => {
     if (!activeSpot) {
       return;
     }
     setSelected((prev) => {
       if (!prev || String(prev.id) !== String(activeSpot.id)) {
+        return prev;
+      }
+      if (!sheetSpotDrifted(prev, activeSpot)) {
         return prev;
       }
       return activeSpot;
