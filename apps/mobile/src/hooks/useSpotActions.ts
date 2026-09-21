@@ -18,7 +18,7 @@ import {
 import { useTranslation } from "@/i18n";
 import { distanceMeters } from "@/map/exchange";
 import { detectExchangeNotif } from "@/map/exchangeNotifs";
-import { armGeofenceForReservation, disarmArrivalGeofence, isArrivalGeofenceArmed } from "@/push/geofence";
+import { armGeofenceForReservation, disarmArrivalGeofence, clearArrivalPromptFired, hasArrivalPromptFired, isArrivalGeofenceArmed } from "@/push/geofence";
 import { useToast } from "@/ui/toast";
 
 function isLiveStatus(status: string | undefined): boolean {
@@ -119,9 +119,9 @@ export function useActiveReservation(enabled: boolean) {
       setActive(next);
       setSpot(spotFeature);
 
-      // Recover geofence if the user already marked en-route (e.g. from detail
-      // screen before that path armed it, or after process death).
-        if (
+      // Recover geofence only if this exchange never got its one-shot arrival
+      // push — otherwise oscillating the fence would keep re-arming and firing.
+      if (
         next &&
         spotFeature &&
         isLiveStatus(next.status) &&
@@ -133,8 +133,15 @@ export function useActiveReservation(enabled: boolean) {
         const lon = Number(coords[0]);
         const lat = Number(coords[1]);
         if (Number.isFinite(lon) && Number.isFinite(lat)) {
-          void armGeofenceForReservation(next.id, { lon, lat });
+          void hasArrivalPromptFired(next.id).then((fired) => {
+            if (!fired) {
+              void armGeofenceForReservation(next.id, { lon, lat });
+            }
+          });
         }
+      } else if (prev && (!next || !isLiveStatus(next.status))) {
+        void clearArrivalPromptFired(prev.id);
+        void disarmArrivalGeofence();
       }
     } catch {
       /* keep previous */
@@ -292,6 +299,7 @@ export function useActiveReservation(enabled: boolean) {
           return;
         }
         await reservationUnready(current.id);
+        // Stay on the server coaching loop (1 min tips); do not re-arm GPS.
       }),
     cancel: () =>
       run(async () => {
@@ -300,6 +308,8 @@ export function useActiveReservation(enabled: boolean) {
           return;
         }
         await cancelReservation(current.id);
+        await disarmArrivalGeofence();
+        await clearArrivalPromptFired(current.id);
       }),
   };
 }

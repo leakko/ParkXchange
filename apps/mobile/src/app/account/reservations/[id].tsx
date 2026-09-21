@@ -28,7 +28,7 @@ import {
   shouldShowNoShowDeadline,
 } from "@/map/exchangeLeave";
 import { reservationPointsDelta } from "@/map/reservationPoints";
-import { armGeofenceForReservation, disarmArrivalGeofence } from "@/push/geofence";
+import { armGeofenceForReservation, disarmArrivalGeofence, clearArrivalPromptFired } from "@/push/geofence";
 
 function reservationStatusKey(status: string): TranslationKey {
   return `account.reservations.status.${status}` as TranslationKey;
@@ -84,6 +84,7 @@ export default function ReservationDetailScreen() {
         case "cancel":
           await cancelReservation(id);
           await disarmArrivalGeofence();
+          await clearArrivalPromptFired(id);
           return { completed: false };
       }
     },

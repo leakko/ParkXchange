@@ -8,7 +8,7 @@ export const es = {
   "location.always.message":
     "Para avisar cuando llegues al punto de intercambio con la app cerrada, elige «Permitir siempre» (o «Permitir todo el tiempo») en la siguiente pantalla. Así la ayuda de llegada funciona bien.",
 
-  "map.search.placeholder": "Buscar sitio (p. ej. Burger King)",
+  "map.search.placeholder": "Busca un lugar",
   "map.search.button": "Buscar",
   "map.search.empty.title": "Sin resultados en esta zona",
   "map.search.empty.message":
@@ -16,7 +16,8 @@ export const es = {
   "map.search.pickHint": "Toca un pin o una fila de la lista",
   "map.search.clear": "Limpiar búsqueda",
   "map.search.failed": "No se pudo buscar",
-  "map.search.resultsTitle": "{count} resultados en la zona",
+  "map.search.resultsTitle": "{count} resultados (cerca → lejos)",
+  "map.search.announceHit": "Anunciar en este lugar",
 
   "offline.title": "Sin conexión",
   "offline.body": "No tienes internet. Conéctate para usar ParkXchange.",
@@ -391,22 +392,19 @@ export const es = {
     "Añade un teléfono en tu perfil antes de anunciar que te vas",
   "announce.error.phoneInvalid": "El teléfono debe estar en formato E.164 (+…)",
   "announce.location.label": "Ubicación",
-  "announce.location.placeholder": "Escribe una dirección y búscala",
-  "announce.location.search": "Buscar",
   "announce.location.useGps": "Mi ubicación",
   "announce.location.pickOnMap": "Elegir en el mapa",
-  "announce.location.pickHint": "Toca el mapa para marcar dónde estás",
+  "announce.location.pickHint": "Busca o toca el mapa para marcar el hueco",
+  "announce.location.backToForm": "Volver al formulario",
   "announce.location.currentGps": "Ubicación actual del GPS",
   "announce.location.coords": "{lat}, {lon}",
   "announce.location.edit": "Editar ubicación",
   "announce.location.keepSelection": "Mantener esta ubicación",
-  "announce.location.noneYet": "Elige una dirección, el GPS o un punto en el mapa.",
+  "announce.location.noneYet":
+    "Usa tu GPS o elige un punto en el mapa (puedes buscar sitios allí).",
   "announce.location.required.title": "Falta la ubicación",
   "announce.location.required.message":
-    "Indica dónde está el coche: busca una dirección, usa el GPS o elige en el mapa.",
-  "announce.location.searchEmpty.title": "Sin resultados",
-  "announce.location.searchEmpty.message": "Prueba con otra dirección.",
-  "announce.location.searchFailed.title": "Búsqueda fallida",
+    "Indica dónde está el hueco con GPS o eligiendo un punto en el mapa.",
 
   "exchange.farAway.title": "¿Estás saliendo desde el punto?",
   "exchange.farAway.message":

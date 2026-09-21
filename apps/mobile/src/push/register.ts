@@ -52,16 +52,22 @@ export async function registerPushToken(locale?: AppLocale): Promise<string | nu
   try {
     token = (await Notifications.getExpoPushTokenAsync({ projectId: id })).data;
   } catch (err) {
-    // Typical on Android emulators / debug builds when FCM (FIS) is not wired
-    // for this signing key. Remote push needs a Play-services build (EAS APK);
-    // local notifs still work. Log once to avoid AppState spam.
-    if (__DEV__ && !(globalThis as { __pxPushTokenWarned?: boolean }).__pxPushTokenWarned) {
+    // Emulators and debug APKs without Firebase often throw FIS_AUTH_ERROR.
+    // Local notifications still work; remote push needs an EAS preview APK.
+    // Stay silent for that known case so Metro is not noisy.
+    const msg = err instanceof Error ? err.message : String(err);
+    const expected =
+      msg.includes("FIS_AUTH") ||
+      msg.includes("FirebaseApp") ||
+      msg.includes("DEFAULT_APP") ||
+      msg.includes("SERVICE_NOT_AVAILABLE");
+    if (
+      __DEV__ &&
+      !expected &&
+      !(globalThis as { __pxPushTokenWarned?: boolean }).__pxPushTokenWarned
+    ) {
       (globalThis as { __pxPushTokenWarned?: boolean }).__pxPushTokenWarned = true;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(
-        "[push] Expo push token unavailable (local notifs OK). Use EAS preview APK for remote push.",
-        msg.includes("FIS_AUTH") ? "FIS_AUTH_ERROR" : msg,
-      );
+      console.warn("[push] Expo push token unavailable:", msg);
     }
     return null;
   }

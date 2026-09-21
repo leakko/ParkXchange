@@ -9,6 +9,7 @@ import {
 } from "@/api/client";
 import {
   armGeofenceForReservation,
+  clearArrivalPromptFired,
   disarmArrivalGeofence,
 } from "@/push/geofence";
 import { routeForPushData, type PushData } from "@/push/routePush";
@@ -97,6 +98,7 @@ export async function handleNotificationResponse(
     }
     if (reservationId && action === "unready") {
       await reservationUnready(reservationId);
+      // Coaching continues on the server 1-min loop — do not re-arm GPS.
       await openReservation(reservationId);
       return;
     }

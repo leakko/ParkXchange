@@ -82,7 +82,7 @@ import {
 } from "@/map/AnnounceModal";
 import {
   boundsForHits,
-  searchPlaces,
+  searchPlacesDetailed,
   type AddressSuggestion,
   type ViewBox,
 } from "@/map/geocode";
@@ -135,6 +135,8 @@ export default function MapScreen() {
   );
   const [announceLabel, setAnnounceLabel] = useState<string | null>(null);
   const [announcePickMode, setAnnouncePickMode] = useState(false);
+  /** Keep form fields when returning from map pick / search. */
+  const [announceKeepForm, setAnnounceKeepForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchHits, setSearchHits] = useState<AddressSuggestion[]>([]);
   const [selectedSearchId, setSelectedSearchId] = useState<string | null>(null);
@@ -621,10 +623,17 @@ export default function MapScreen() {
     [featureById, mySpotsById, activeSpot, refreshActiveReservation],
   );
 
+  const clearSearchHits = useCallback(() => {
+    setSearchHits([]);
+    setSelectedSearchId(null);
+    setSearchQuery("");
+  }, []);
+
   const onPressMap = useCallback(
     (event: NativeSyntheticEvent<PressEvent>) => {
       if (announcePickMode) {
         const [lon, lat] = event.nativeEvent.lngLat;
+        clearSearchHits();
         setAnnounceCoords([lon, lat]);
         setAnnounceLabel(
           t("announce.location.coords", {
@@ -639,14 +648,8 @@ export default function MapScreen() {
       setSelected(null);
       sheetRef.current?.close();
     },
-    [announcePickMode, t],
+    [announcePickMode, clearSearchHits, t],
   );
-
-  const clearSearchHits = useCallback(() => {
-    setSearchHits([]);
-    setSelectedSearchId(null);
-    setSearchQuery("");
-  }, []);
 
   const onPressSearchHit = useCallback(
     (id: string) => {
@@ -654,6 +657,7 @@ export default function MapScreen() {
       if (!hit) {
         return;
       }
+      // Always preview on the map — choosing a place is the + button (or map tap).
       setSelectedSearchId(id);
       dispatchFollow({ type: "user_gesture" });
       cameraRef.current?.easeTo({
@@ -661,15 +665,8 @@ export default function MapScreen() {
         zoom: Math.max(userZoom, 15),
         duration: 450,
       });
-      if (announcePickMode) {
-        setAnnounceCoords([hit.lon, hit.lat]);
-        setAnnounceLabel(hit.label);
-        setAnnouncePickMode(false);
-        setAnnounceOpen(true);
-        // Keep hits so the user can re-pick if needed; clear only pick mode.
-      }
     },
-    [searchHits, announcePickMode],
+    [searchHits, userZoom],
   );
 
   const runMapSearch = useCallback(async () => {
@@ -679,7 +676,6 @@ export default function MapScreen() {
     }
     setSearchBusy(true);
     try {
-      // Live bounds — stale mapViewbox is why searches jumped continents.
       let viewbox = mapViewbox;
       try {
         const bounds = await mapRef.current?.getBounds();
@@ -695,9 +691,10 @@ export default function MapScreen() {
         /* keep state */
       }
 
-      const hits = await searchPlaces(q, {
-        viewbox: viewbox ?? undefined,
-      });
+      const { hits, inViewport, shouldZoomOut } = await searchPlacesDetailed(
+        q,
+        { viewbox: viewbox ?? undefined },
+      );
       setSearchHits(hits);
       setSelectedSearchId(null);
       if (hits.length === 0) {
@@ -705,15 +702,21 @@ export default function MapScreen() {
         return;
       }
       dispatchFollow({ type: "user_gesture" });
-      const fit = boundsForHits(hits);
-      if (fit) {
-        const [west, south, east, north] = fit;
-        cameraRef.current?.fitBounds([west, south, east, north], {
-          padding: { top: 160, right: 48, bottom: 48, left: 48 },
-          duration: 450,
-        });
+      // Google-like: keep zoom if something is already on screen; otherwise
+      // pull back enough to compare nearby matches.
+      if (shouldZoomOut) {
+        const fit = boundsForHits(hits.slice(0, 8));
+        if (fit) {
+          const [west, south, east, north] = fit;
+          cameraRef.current?.fitBounds([west, south, east, north], {
+            padding: { top: 180, right: 48, bottom: 48, left: 48 },
+            duration: 450,
+          });
+        }
       }
-      if (hits.length === 1) {
+      if (inViewport.length === 1) {
+        setSelectedSearchId(inViewport[0]!.id);
+      } else if (hits.length === 1) {
         setSelectedSearchId(hits[0]!.id);
       }
     } catch {
@@ -823,6 +826,7 @@ export default function MapScreen() {
         setAnnounceVehicles(list);
         setAnnounceCoords(coords);
         setAnnounceLabel(label);
+        setAnnounceKeepForm(false);
         setAnnouncePickMode(false);
         setAnnounceOpen(true);
       } catch (err) {
@@ -841,6 +845,41 @@ export default function MapScreen() {
     [requireEmailVerified, requireSignIn, router, signedIn, t],
   );
 
+  const announceFromSearchHit = useCallback(
+    (hit: AddressSuggestion, opts: { confirm: boolean }) => {
+      const go = () => {
+        clearSearchHits();
+        if (announcePickMode) {
+          setAnnounceCoords([hit.lon, hit.lat]);
+          setAnnounceLabel(hit.label);
+          setAnnouncePickMode(false);
+          setAnnounceOpen(true);
+          return;
+        }
+        void openAnnounce([hit.lon, hit.lat], hit.label);
+      };
+      if (!opts.confirm) {
+        go();
+        return;
+      }
+      Alert.alert(
+        t("map.alert.announceHere.title"),
+        t("map.alert.announceHere.message", {
+          lat: hit.lat.toFixed(5),
+          lon: hit.lon.toFixed(5),
+        }),
+        [
+          { text: t("common.cancel"), style: "cancel" },
+          {
+            text: t("map.alert.announceHere.confirm"),
+            onPress: go,
+          },
+        ],
+      );
+    },
+    [announcePickMode, clearSearchHits, openAnnounce, t],
+  );
+
   const submitAnnouncement = useCallback(
     async (values: AnnounceValues) => {
       setAnnouncing(true);
@@ -855,6 +894,7 @@ export default function MapScreen() {
         setAnnounceOpen(false);
         setAnnounceCoords(null);
         setAnnounceLabel(null);
+        setAnnounceKeepForm(false);
         await afterAnnounce(spot, t("map.alert.announced.message"));
       } catch (err) {
         Alert.alert(
@@ -1030,7 +1070,7 @@ export default function MapScreen() {
       <View style={[styles.topChrome, { top: insets.top + 8 }]}>
         {ready && !isLoading ? (
           <View style={styles.spotCountChip} pointerEvents="none">
-            <Text style={styles.bannerText}>
+            <Text style={styles.spotCountText}>
               {t("map.banner.spotCount", { count: collection.features.length })}
             </Text>
           </View>
@@ -1094,10 +1134,41 @@ export default function MapScreen() {
                   >
                     {hit.label}
                   </Text>
+                  <Pressable
+                    style={styles.searchResultAnnounce}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("map.search.announceHit")}
+                    hitSlop={8}
+                    onPress={() =>
+                      announceFromSearchHit(hit, { confirm: false })
+                    }
+                  >
+                    <Text style={styles.searchResultAnnounceText}>+</Text>
+                  </Pressable>
                 </Pressable>
               );
             })}
           </ScrollView>
+        ) : null}
+        {announcePickMode ? (
+          <View style={styles.pickBanner}>
+            <Text style={styles.pickBannerText}>
+              {searchHits.length > 0
+                ? t("map.search.pickHint")
+                : t("announce.location.pickHint")}
+            </Text>
+            <Pressable
+              style={styles.pickBannerBack}
+              accessibilityRole="button"
+              accessibilityLabel={t("announce.location.backToForm")}
+              onPress={() => {
+                setAnnouncePickMode(false);
+                setAnnounceOpen(true);
+              }}
+            >
+              <Ionicons name="arrow-back" size={20} color="#F4F7FA" />
+            </Pressable>
+          </View>
         ) : null}
       </View>
 
@@ -1151,29 +1222,6 @@ export default function MapScreen() {
             );
           })()}
         </Pressable>
-      ) : null}
-      {announcePickMode ? (
-        <View
-          style={[
-            styles.banner,
-            styles.pickBanner,
-            { top: insets.top + (searchHits.length > 0 ? 280 : 118) },
-          ]}
-        >
-          <Text style={styles.bannerText}>
-            {searchHits.length > 0
-              ? t("map.search.pickHint")
-              : t("announce.location.pickHint")}
-          </Text>
-          <Pressable
-            onPress={() => {
-              setAnnouncePickMode(false);
-              setAnnounceOpen(true);
-            }}
-          >
-            <Text style={styles.link}>{t("common.cancel")}</Text>
-          </Pressable>
-        </View>
       ) : null}
 
       {error ? (
@@ -1339,20 +1387,18 @@ export default function MapScreen() {
         vehicles={announceVehicles}
         initialCoordinates={announceCoords}
         initialAddressLabel={announceLabel}
-        viewbox={mapViewbox}
+        keepForm={announceKeepForm}
         onCancel={() => {
           setAnnounceOpen(false);
           setAnnouncePickMode(false);
           setAnnounceCoords(null);
           setAnnounceLabel(null);
+          setAnnounceKeepForm(false);
         }}
         onPickOnMap={() => {
+          setAnnounceKeepForm(true);
           setAnnounceOpen(false);
           setAnnouncePickMode(true);
-        }}
-        onSearchHits={(hits) => {
-          setSearchHits(hits);
-          setSelectedSearchId(null);
         }}
         onSubmit={submitAnnouncement}
       />
@@ -1375,6 +1421,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999,
+  },
+  spotCountText: {
+    color: "#F4F7FA",
+    fontSize: 13,
+    fontWeight: "600",
   },
   spotCountPlaceholder: {
     height: 32,
@@ -1419,9 +1470,12 @@ const styles = StyleSheet.create({
   },
   searchResultRow: {
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "rgba(157,180,192,0.25)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   searchResultRowSelected: {
     backgroundColor: "rgba(0,187,249,0.18)",
@@ -1430,11 +1484,28 @@ const styles = StyleSheet.create({
     color: "#F4F7FA",
     fontSize: 14,
     lineHeight: 18,
+    flex: 1,
+  },
+  searchResultAnnounce: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#1B9AAA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  searchResultAnnounceText: {
+    color: "#fff",
+    fontSize: 22,
+    fontWeight: "700",
+    lineHeight: 24,
+    marginTop: -1,
   },
   banner: {
     position: "absolute",
     top: 108,
     alignSelf: "center",
+    maxWidth: "92%",
     flexDirection: "row",
     gap: 8,
     alignItems: "center",
@@ -1477,8 +1548,27 @@ const styles = StyleSheet.create({
   },
   bannerPeer: { color: "#FFE8D6", fontSize: 12, lineHeight: 16 },
   pickBanner: {
-    top: 88,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
     backgroundColor: "rgba(27,154,170,0.95)",
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  pickBannerText: {
+    flex: 1,
+    color: "#F4F7FA",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  pickBannerBack: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(11,31,51,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   bannerText: { color: "#F4F7FA", fontSize: 13 },
   link: { color: "#fff", fontWeight: "700", fontSize: 13 },

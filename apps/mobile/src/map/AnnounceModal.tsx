@@ -16,7 +16,7 @@ import { AuthScroll } from "@/auth/AuthScroll";
 import { AuthTextInput } from "@/auth/AuthTextInput";
 import { useTranslation } from "@/i18n";
 import { parsePointsInput } from "@/i18n/formatPoints";
-import { reverseGeocode, searchPlaces, type AddressSuggestion, type ViewBox } from "@/map/geocode";
+import { reverseGeocode } from "@/map/geocode";
 import { DateTimeField } from "@/ui/DateTimeField";
 
 export type AnnounceValues = {
@@ -35,13 +35,14 @@ type Props = {
   /** Pre-filled when opening from map pick / long-press. */
   initialCoordinates: [number, number] | null;
   initialAddressLabel: string | null;
-  /** Current map viewport for biased place search. */
-  viewbox?: ViewBox | null;
+  /**
+   * When true (return from “pick on map”), keep price / vehicle / toggles
+   * and only refresh the location.
+   */
+  keepForm?: boolean;
   onCancel: () => void;
-  /** Hide the form so the user can tap the map, then reopen with coords. */
+  /** Hide the form so the user can tap / search on the map, then reopen. */
   onPickOnMap: () => void;
-  /** Show Nominatim hits as map pins and let the user pick one. */
-  onSearchHits?: (hits: AddressSuggestion[]) => void;
   onSubmit: (values: AnnounceValues) => Promise<void>;
 };
 
@@ -53,20 +54,15 @@ function vehicleLabel(v: VehicleResponse): string {
   return `${v.plate} · ${v.make_model}`;
 }
 
-function coordsQuery(lon: number, lat: number): string {
-  return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
-}
-
 export function AnnounceModal({
   visible,
   busy,
   vehicles,
   initialCoordinates,
   initialAddressLabel,
-  viewbox = null,
+  keepForm = false,
   onCancel,
   onPickOnMap,
-  onSearchHits,
   onSubmit,
 }: Props) {
   const { t } = useTranslation();
@@ -78,9 +74,6 @@ export function AnnounceModal({
   const [vehicleOpen, setVehicleOpen] = useState(false);
   const [coords, setCoords] = useState<[number, number] | null>(null);
   const [addressLabel, setAddressLabel] = useState<string | null>(null);
-  const [addressQuery, setAddressQuery] = useState("");
-  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
-  const [searching, setSearching] = useState(false);
   const [locating, setLocating] = useState(false);
   const [locationEditing, setLocationEditing] = useState(true);
   const [resolvingLabel, setResolvingLabel] = useState(false);
@@ -91,7 +84,6 @@ export function AnnounceModal({
     labelHint: string | null,
   ) => {
     setCoords([lon, lat]);
-    setSuggestions([]);
     setLocationEditing(false);
     if (labelHint && !/^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(labelHint.trim())) {
       setAddressLabel(labelHint);
@@ -113,76 +105,32 @@ export function AnnounceModal({
     if (!visible) {
       return;
     }
-    setPreferredTime(defaultPreferred());
-    setPrice("50");
     setVehicleOpen(false);
-    setSuggestions([]);
-    setAddressQuery("");
-    setVehicleId(vehicles[0]?.id ?? null);
+    if (!keepForm) {
+      setPreferredTime(defaultPreferred());
+      setPrice("50");
+      setHasPreferredTime(false);
+      setAutoCancel(true);
+      setVehicleId(vehicles[0]?.id ?? null);
+    } else if (!vehicleId && vehicles[0]) {
+      setVehicleId(vehicles[0].id);
+    }
     if (initialCoordinates) {
-      setLocationEditing(false);
       void applySelection(
         initialCoordinates[0],
         initialCoordinates[1],
         initialAddressLabel,
       );
-    } else {
+    } else if (!keepForm) {
       setCoords(null);
       setAddressLabel(null);
       setLocationEditing(true);
     }
-    // Seed only when the modal opens or the map pick changes.
+    // Seed when the modal opens or the map pick changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
-  }, [visible, vehicles, initialCoordinates, initialAddressLabel]);
+  }, [visible, vehicles, initialCoordinates, initialAddressLabel, keepForm]);
 
   const selectedVehicle = vehicles.find((v) => v.id === vehicleId) ?? null;
-
-  const beginEditLocation = () => {
-    if (coords) {
-      // Prefill exact coords so Search re-applies the same point (street labels
-      // often resolve to a distant Nominatim hit).
-      setAddressQuery(coordsQuery(coords[0], coords[1]));
-    }
-    setSuggestions([]);
-    setLocationEditing(true);
-  };
-
-  const runSearch = async () => {
-    const coordMatch = addressQuery
-      .trim()
-      .match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
-    if (coordMatch) {
-      const lat = Number.parseFloat(coordMatch[1]!);
-      const lon = Number.parseFloat(coordMatch[2]!);
-      if (Number.isFinite(lat) && Number.isFinite(lon)) {
-        await applySelection(lon, lat, null);
-        return;
-      }
-    }
-    setSearching(true);
-    try {
-      const hits = await searchPlaces(addressQuery, {
-        viewbox: viewbox ?? undefined,
-      });
-      setSuggestions(hits);
-      onSearchHits?.(hits);
-      if (hits.length === 0) {
-        Alert.alert(
-          t("announce.location.searchEmpty.title"),
-          t("announce.location.searchEmpty.message"),
-        );
-      } else if (hits.length > 1 && onSearchHits) {
-        // Let the user compare pins on the map.
-        onPickOnMap();
-      } else if (hits.length === 1) {
-        await applySelection(hits[0]!.lon, hits[0]!.lat, hits[0]!.label);
-      }
-    } catch {
-      Alert.alert(t("announce.location.searchFailed.title"), t("common.error"));
-    } finally {
-      setSearching(false);
-    }
-  };
 
   const useMyLocation = async () => {
     setLocating(true);
@@ -345,41 +293,14 @@ export function AnnounceModal({
                 <Pressable
                   style={styles.editBtn}
                   accessibilityLabel={t("announce.location.edit")}
-                  onPress={beginEditLocation}
+                  onPress={() => setLocationEditing(true)}
                 >
                   <Text style={styles.editBtnText}>✎</Text>
                 </Pressable>
               </View>
             ) : (
               <>
-                <AuthTextInput
-                  style={styles.input}
-                  value={addressQuery}
-                  onChangeText={setAddressQuery}
-                  placeholder={t("announce.location.placeholder")}
-                  placeholderTextColor="#7A93A0"
-                  autoCapitalize="none"
-                  returnKeyType="search"
-                  onSubmitEditing={() => {
-                    void runSearch();
-                  }}
-                />
                 <View style={styles.rowBtns}>
-                  <Pressable
-                    style={[styles.secondaryBtn, { flex: 1 }]}
-                    disabled={searching || busy}
-                    onPress={() => {
-                      void runSearch();
-                    }}
-                  >
-                    {searching ? (
-                      <ActivityIndicator color="#F4F7FA" />
-                    ) : (
-                      <Text style={styles.secondaryBtnText}>
-                        {t("announce.location.search")}
-                      </Text>
-                    )}
-                  </Pressable>
                   <Pressable
                     style={[styles.secondaryBtn, { flex: 1 }]}
                     disabled={locating || busy}
@@ -395,28 +316,16 @@ export function AnnounceModal({
                       </Text>
                     )}
                   </Pressable>
-                </View>
-                <Pressable
-                  style={styles.secondaryBtn}
-                  disabled={busy}
-                  onPress={onPickOnMap}
-                >
-                  <Text style={styles.secondaryBtnText}>
-                    {t("announce.location.pickOnMap")}
-                  </Text>
-                </Pressable>
-
-                {suggestions.map((s) => (
                   <Pressable
-                    key={s.id}
-                    style={styles.option}
-                    onPress={() => {
-                      void applySelection(s.lon, s.lat, s.label);
-                    }}
+                    style={[styles.secondaryBtn, { flex: 1 }]}
+                    disabled={busy}
+                    onPress={onPickOnMap}
                   >
-                    <Text style={styles.optionTitle}>{s.label}</Text>
+                    <Text style={styles.secondaryBtnText}>
+                      {t("announce.location.pickOnMap")}
+                    </Text>
                   </Pressable>
-                ))}
+                </View>
 
                 {!coords ? (
                   <Text style={styles.help}>{t("announce.location.noneYet")}</Text>

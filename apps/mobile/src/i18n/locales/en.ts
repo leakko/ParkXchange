@@ -10,7 +10,7 @@ export const en: Record<TranslationKey, string> = {
   "location.always.message":
     "To notify you when you arrive at the exchange with the app closed, choose “Allow all the time” on the next screen. That keeps arrival assistance working.",
 
-  "map.search.placeholder": "Search places (e.g. Burger King)",
+  "map.search.placeholder": "Search for a place",
   "map.search.button": "Search",
   "map.search.empty.title": "No results in this area",
   "map.search.empty.message":
@@ -18,7 +18,8 @@ export const en: Record<TranslationKey, string> = {
   "map.search.pickHint": "Tap a pin or a row in the list",
   "map.search.clear": "Clear search",
   "map.search.failed": "Search failed",
-  "map.search.resultsTitle": "{count} results in this area",
+  "map.search.resultsTitle": "{count} results (near → far)",
+  "map.search.announceHit": "Announce at this place",
 
   "offline.title": "No connection",
   "offline.body": "You’re offline. Connect to the internet to use ParkXchange.",
@@ -392,22 +393,19 @@ export const en: Record<TranslationKey, string> = {
     "Add a phone number in your profile before announcing that you are leaving",
   "announce.error.phoneInvalid": "Phone must be E.164 (+…)",
   "announce.location.label": "Location",
-  "announce.location.placeholder": "Type an address and search",
-  "announce.location.search": "Search",
   "announce.location.useGps": "My location",
   "announce.location.pickOnMap": "Pick on map",
-  "announce.location.pickHint": "Tap the map to mark where you are",
+  "announce.location.pickHint": "Search or tap the map to mark the spot",
+  "announce.location.backToForm": "Back to form",
   "announce.location.currentGps": "Current GPS location",
   "announce.location.coords": "{lat}, {lon}",
   "announce.location.edit": "Edit location",
   "announce.location.keepSelection": "Keep this location",
-  "announce.location.noneYet": "Choose an address, GPS, or a point on the map.",
+  "announce.location.noneYet":
+    "Use GPS or pick a point on the map (you can search places there).",
   "announce.location.required.title": "Location required",
   "announce.location.required.message":
-    "Say where the car is: search an address, use GPS, or pick on the map.",
-  "announce.location.searchEmpty.title": "No results",
-  "announce.location.searchEmpty.message": "Try a different address.",
-  "announce.location.searchFailed.title": "Search failed",
+    "Set the spot with GPS or by picking a point on the map.",
 
   "exchange.farAway.title": "Leaving from the spot?",
   "exchange.farAway.message":
