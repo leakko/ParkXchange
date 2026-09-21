@@ -41,8 +41,9 @@ full UI, except when they choose to open the reservation detail.
 | “Ya estoy aquí” | **Same as Listo** — same `POST …/ready`; copy only |
 | “Voy a dar una vuelta” | **Retract Listo** — same as `DELETE …/ready` (clear ready); not a new domain flag |
 | Scheduler split | **Hybrid:** server owns peer signals + time tips (−30 min, +1 min coaching); client owns geofence → **local** notif |
-| Geofence | Assisted only (prompt, never auto-Listo). Radius **~30 m** (same as map uncertainty). |
-| Geofence lifetime | **One-shot** on first Yendo → first enter prompt; **no** re-arm inside wait tips |
+| Geofence | Assisted only (prompt, never auto-Listo). Radius **~75 m** (GPS-tolerant; still “at the spot”). |
+| Geofence lifetime | **One-shot** on first Yendo → first enter prompt; **no** re-arm inside wait tips. Re-arm if process died while still en-route and not ready. |
+| Geofence transport | OS `startGeofencingAsync` (background) + foreground `watchPositionAsync` fallback |
 | Wait tips windows | **A–D** (ignore matrix window for coaching; simpler; early complete already allowed) |
 | Wait tip audience | **Driver only**, when driver is Listo and owner is not |
 | Wait tip cadence | Not a loop: one delayed tip per **state change**; ignore → no further tips until a new state change |

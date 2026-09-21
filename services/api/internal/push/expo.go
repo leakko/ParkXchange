@@ -271,8 +271,8 @@ var copyES = map[string]pushCopy{
 		"La reserva se cerró porque se acabó el tiempo",
 	},
 	reservations.EventPreDeparture: {
-		"El intercambio es pronto",
-		"Avisa cuando salgas hacia el punto",
+		"Tu intercambio es en media hora",
+		"Pulsa «Voy de camino» cuando salgas, para que la otra persona sepa que vas y pueda prepararse",
 	},
 	reservations.EventDriverWaitTip: {
 		"¿Necesitas dar una vuelta?",
@@ -350,8 +350,8 @@ var copyEN = map[string]pushCopy{
 		"The reservation closed because time ran out",
 	},
 	reservations.EventPreDeparture: {
-		"Exchange coming up",
-		"Let them know when you head to the spot",
+		"Your exchange is in 30 minutes",
+		"Tap «I'm on my way» when you leave, so the other person knows you're coming and can get ready",
 	},
 	reservations.EventDriverWaitTip: {
 		"Need to drive around the block?",

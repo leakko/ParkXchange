@@ -94,3 +94,27 @@ func TestCopyForDefaultsToSpanish(t *testing.T) {
 		t.Fatalf("empty locale should default to es: got %q want %q", empty, es)
 	}
 }
+
+func TestCopyForPreDepartureRemindsToTapEnRoute(t *testing.T) {
+	t.Parallel()
+	n := reservations.Notification{Type: reservations.EventPreDeparture}
+
+	titleES, bodyES := copyFor(n, "es")
+	if !strings.Contains(strings.ToLower(titleES), "media hora") && !strings.Contains(strings.ToLower(bodyES), "media hora") {
+		t.Fatalf("ES pre-departure should mention half an hour: %q / %q", titleES, bodyES)
+	}
+	if !strings.Contains(bodyES, "Voy de camino") {
+		t.Fatalf("ES pre-departure should name the Voy de camino action: %q", bodyES)
+	}
+	if !strings.Contains(strings.ToLower(bodyES), "prepar") {
+		t.Fatalf("ES pre-departure should explain the other person can prepare: %q", bodyES)
+	}
+
+	titleEN, bodyEN := copyFor(n, "en")
+	if !strings.Contains(strings.ToLower(titleEN), "30") && !strings.Contains(strings.ToLower(bodyEN), "30") {
+		t.Fatalf("EN pre-departure should mention 30 minutes: %q / %q", titleEN, bodyEN)
+	}
+	if !strings.Contains(bodyEN, "I'm on my way") && !strings.Contains(bodyEN, "on my way") {
+		t.Fatalf("EN pre-departure should name the on-my-way action: %q", bodyEN)
+	}
+}

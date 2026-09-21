@@ -18,6 +18,8 @@ import { accountColors } from "@/account/theme";
 import { I18nProvider } from "@/i18n";
 import { useOwnerOfferAlerts } from "@/hooks/useOwnerOfferAlerts";
 import { ExchangePushBootstrap } from "@/push/ExchangePushBootstrap";
+// Side-effect: register background geofence TaskManager handler at startup.
+import "@/push/geofence";
 import { OfflineGate } from "@/ui/OfflineGate";
 import { ToastProvider } from "@/ui/toast";
 

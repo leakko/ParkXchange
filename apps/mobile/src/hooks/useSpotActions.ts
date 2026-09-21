@@ -18,11 +18,31 @@ import {
 import { useTranslation } from "@/i18n";
 import { distanceMeters } from "@/map/exchange";
 import { detectExchangeNotif } from "@/map/exchangeNotifs";
-import { armArrivalGeofence, disarmArrivalGeofence } from "@/push/geofence";
+import { armGeofenceForReservation, disarmArrivalGeofence, isArrivalGeofenceArmed } from "@/push/geofence";
 import { useToast } from "@/ui/toast";
 
 function isLiveStatus(status: string | undefined): boolean {
   return status === "pending" || status === "confirmed" || status === "arrived";
+}
+
+function myEnRouteAt(res: ReservationResponse, meId: string): string | null {
+  if (res.owner_id === meId) {
+    return res.owner_en_route_at ?? null;
+  }
+  if (res.driver_id === meId) {
+    return res.driver_en_route_at ?? null;
+  }
+  return null;
+}
+
+function myReadyAt(res: ReservationResponse, meId: string): string | null {
+  if (res.owner_id === meId) {
+    return res.owner_ready_at ?? null;
+  }
+  if (res.driver_id === meId) {
+    return res.driver_ready_at ?? null;
+  }
+  return null;
 }
 
 export function useActiveReservation(enabled: boolean) {
@@ -98,6 +118,24 @@ export function useActiveReservation(enabled: boolean) {
       const spotFeature = next ? await getSpot(next.spot_id) : null;
       setActive(next);
       setSpot(spotFeature);
+
+      // Recover geofence if the user already marked en-route (e.g. from detail
+      // screen before that path armed it, or after process death).
+        if (
+        next &&
+        spotFeature &&
+        isLiveStatus(next.status) &&
+        myEnRouteAt(next, me.id) &&
+        !myReadyAt(next, me.id) &&
+        !isArrivalGeofenceArmed(next.id)
+      ) {
+        const coords = spotFeature.geometry.coordinates;
+        const lon = Number(coords[0]);
+        const lat = Number(coords[1]);
+        if (Number.isFinite(lon) && Number.isFinite(lat)) {
+          void armGeofenceForReservation(next.id, { lon, lat });
+        }
+      }
     } catch {
       /* keep previous */
     }
@@ -230,14 +268,13 @@ export function useActiveReservation(enabled: boolean) {
           return;
         }
         await reservationEnRoute(current.id);
-        if (spot?.geometry?.coordinates) {
-          const [lon, lat] = spot.geometry.coordinates;
-          await armArrivalGeofence({
-            reservationId: current.id,
-            lon: Number(lon),
-            lat: Number(lat),
-          });
-        }
+        const coords = spot?.geometry?.coordinates
+          ? {
+              lon: Number(spot.geometry.coordinates[0]),
+              lat: Number(spot.geometry.coordinates[1]),
+            }
+          : null;
+        await armGeofenceForReservation(current.id, coords);
       }),
     markReady: () =>
       run(async () => {

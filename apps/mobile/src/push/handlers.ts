@@ -3,13 +3,14 @@ import { router, type Href } from "expo-router";
 import { Platform } from "react-native";
 
 import {
-  getReservation,
-  getSpot,
   reservationEnRoute,
   reservationReady,
   reservationUnready,
 } from "@/api/client";
-import { armArrivalGeofence, disarmArrivalGeofence } from "@/push/geofence";
+import {
+  armGeofenceForReservation,
+  disarmArrivalGeofence,
+} from "@/push/geofence";
 
 type PushData = {
   type?: string;
@@ -59,28 +60,6 @@ async function dismissActed(
   }
 }
 
-/** After en-route, replace the shade tip with the next step (ready). */
-async function presentReadyPrompt(reservationId: string): Promise<void> {
-  try {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: "En el punto",
-        body: "Marca que estás listo cuando llegues",
-        categoryIdentifier: "exchange_ready",
-        data: {
-          type: "reservation.ready_prompt",
-          reservation_id: reservationId,
-        },
-        sound: "default",
-        ...(Platform.OS === "android" ? { channelId: "exchange" } : {}),
-      },
-      trigger: null,
-    });
-  } catch {
-    /* best-effort */
-  }
-}
-
 /**
  * Handle notification taps and action buttons.
  * Always: open the app (category opensAppToForeground) + dismiss the notification.
@@ -113,16 +92,8 @@ export async function handleNotificationResponse(
   try {
     if (action === "en_route") {
       await reservationEnRoute(reservationId);
-      const res = await getReservation(reservationId);
-      const spot = await getSpot(res.spot_id);
-      const coords = spot.geometry.coordinates;
-      const lon = Number(coords[0]);
-      const lat = Number(coords[1]);
-      if (Number.isFinite(lon) && Number.isFinite(lat)) {
-        await armArrivalGeofence({ reservationId, lon, lat });
-      }
+      await armGeofenceForReservation(reservationId);
       await openReservation(reservationId);
-      await presentReadyPrompt(reservationId);
       return;
     }
     if (action === "ready") {

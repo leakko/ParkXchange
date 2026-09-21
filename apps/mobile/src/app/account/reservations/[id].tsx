@@ -27,6 +27,7 @@ import {
   ownerNoShowDeadline,
   shouldShowNoShowDeadline,
 } from "@/map/exchangeLeave";
+import { armGeofenceForReservation, disarmArrivalGeofence } from "@/push/geofence";
 
 function reservationStatusKey(status: string): TranslationKey {
   return `account.reservations.status.${status}` as TranslationKey;
@@ -66,16 +67,22 @@ export default function ReservationDetailScreen() {
         throw new Error(t("account.reservations.notFound"));
       }
       switch (kind) {
-        case "en-route":
+        case "en-route": {
           await reservationEnRoute(id);
+          await armGeofenceForReservation(id);
           return { completed: false };
-        case "ready":
-          return reservationReady(id);
+        }
+        case "ready": {
+          const result = await reservationReady(id);
+          await disarmArrivalGeofence();
+          return result;
+        }
         case "unready":
           await reservationUnready(id);
           return { completed: false };
         case "cancel":
           await cancelReservation(id);
+          await disarmArrivalGeofence();
           return { completed: false };
       }
     },
