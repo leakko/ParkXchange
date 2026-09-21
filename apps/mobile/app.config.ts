@@ -24,7 +24,9 @@ const config: ExpoConfig = {
   },
   android: {
     package: "com.parkxchange.mobile",
-    googleServicesFile: "./google-services.json",
+    // EAS file env (GOOGLE_SERVICES_JSON) on remote builds; local file for dev.
+    googleServicesFile:
+      process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
     softwareKeyboardLayoutMode: "resize",
     adaptiveIcon: {
       backgroundColor: "#0B1F33",
