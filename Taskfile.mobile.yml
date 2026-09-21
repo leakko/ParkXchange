@@ -71,19 +71,48 @@ tasks:
     desc: 'Boot an Android emulator, e.g. task mobile:emulator -- Pixel_9a'
     cmds:
       - |
+        set -e
         if [ -z "{{.CLI_ARGS}}" ]; then
           echo "Available AVDs:"
           "$ANDROID_HOME/emulator/emulator" -list-avds
           exit 0
         fi
         AVD="{{.CLI_ARGS}}"
-        EMU="$ANDROID_HOME/emulator/emulator"
-        LOG="${TMPDIR:-/tmp}/parkxchange-emulator.log"
-        # nohup keeps the AVD alive after Task exits (Git Bash on Windows
-        # used to break on `cmd start` with mixed path separators).
-        nohup "$EMU" -avd "$AVD" >"$LOG" 2>&1 &
-        echo "Starting AVD $AVD (pid $!). Log: $LOG"
-        echo "Wait ~20s then: task mobile:devices"
+        EMU_BIN="$ANDROID_HOME/emulator/emulator"
+        if [ -f "$ANDROID_HOME/emulator/emulator.exe" ]; then
+          EMU_BIN="$ANDROID_HOME/emulator/emulator.exe"
+        fi
+        if ! "$EMU_BIN" -list-avds | grep -Fxq "$AVD"; then
+          echo "Unknown AVD: $AVD"
+          echo "Available:"
+          "$EMU_BIN" -list-avds
+          exit 1
+        fi
+        # Prefer a real Windows path for logs; /tmp under Git Bash often vanishes.
+        if [ -n "${LOCALAPPDATA:-}" ]; then
+          LOG="$LOCALAPPDATA/parkxchange-emulator.log"
+        else
+          LOG="${TMPDIR:-/tmp}/parkxchange-emulator.log"
+        fi
+        case "$(uname -s 2>/dev/null || echo unknown)" in
+          MINGW*|MSYS*|CYGWIN*)
+            # nohup does not keep Win32 emulator.exe alive after Task's shell
+            # exits. Detach with cmd start from the emulator directory.
+            EMU_DIR="$ANDROID_HOME/emulator"
+            if command -v cygpath >/dev/null 2>&1; then
+              EMU_DIR="$(cygpath -w "$EMU_DIR")"
+            fi
+            cmd.exe /c "start \"px-$AVD\" /D \"$EMU_DIR\" emulator.exe -avd $AVD" \
+              >"$LOG" 2>&1 || true
+            ;;
+          *)
+            nohup "$EMU_BIN" -avd "$AVD" >"$LOG" 2>&1 &
+            echo "pid $!"
+            ;;
+        esac
+        echo "Starting AVD $AVD"
+        echo "Log: $LOG"
+        echo "Wait ~30s (until boot finishes), then: task mobile:devices"
 
   typecheck:
     desc: Typecheck the mobile app
