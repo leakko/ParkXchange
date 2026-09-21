@@ -1539,6 +1539,13 @@ components:
           type: string
           format: date-time
           nullable: true
+        cancel_reason:
+          type: string
+          nullable: true
+          description: >
+            Why the reservation ended when status is cancelled/expired.
+            Values include owner, driver, driver_late, driver_no_show,
+            owner_no_show, safety_net, safety_net_owner_ready.
         created_at:
           type: string
           format: date-time

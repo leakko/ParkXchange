@@ -6,6 +6,15 @@ export function formatPoints(amount: number): string {
   return String(n);
 }
 
+/** Signed display for gains (+) / losses (−) / zero. */
+export function formatSignedPoints(amount: number): string {
+  const n = Number.isFinite(amount) ? Math.round(amount) : 0;
+  if (n > 0) {
+    return `+${n}`;
+  }
+  return String(n);
+}
+
 /** Parse a points field from the user; returns null when invalid. */
 export function parsePointsInput(raw: string): number | null {
   const trimmed = raw.trim();

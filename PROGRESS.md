@@ -21,14 +21,12 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** exchange UX hardening (push i18n, marketplace push,
-  offline gate, safe area, vehicle delete, nav chrome) on branch
-  `feature/exchange-ux-push-offline` — API tests green; awaiting merge → deploy
-  + preview APK.
+- **Phase in progress:** cancel-notif actor fix + product terminology
+  (sin «dueño»/«conductor») + puntos firmados en reservas; push `main` + APK.
 - **Also open:** Play Console identity verification; payments deferred.
 - **Last updated:** 2026-09-21
 - **Phases complete:** 12 of 12 (MVP) + post-MVP handshake + email verify soft-gate
-  + account deletion (code complete; mobile smoke optional)
+  + account deletion (code complete; mobile smoke optional) + exchange push coaching
 - **Blockers:** Play Console identity verification still pending for public
   listing; payments deferred until after email gate.
 
@@ -36,8 +34,9 @@ If that test fails, fix the code, not the test.
 
 ## Next immediate step
 
-1. Merge `feature/exchange-ux-push-offline` → `main` (migration `00016_users_locale`).
-2. Confirm GitHub Actions deploy + `curl …/healthz`.
+1. Deploy API after push to `main`; install preview APK.
+2. Device smoke: driver late-cancel → only peer gets cancel push/toast; signed points.
+3. Confirm GitHub Actions deploy + `curl …/healthz`.
 3. `eas build --profile preview --platform android` (NetInfo is native).
 4. Device smoke: locale EN push, offline overlay, safe area on cancel, push
    open+dismiss, single peer car, stack slides without white flash.

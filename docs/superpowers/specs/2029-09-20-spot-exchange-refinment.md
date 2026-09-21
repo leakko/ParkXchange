@@ -7,6 +7,17 @@ Push remoto + coaching / acciones / geocerca asistida:
 [2026-09-21-exchange-push-coaching-design.md](./2026-09-21-exchange-push-coaching-design.md)
 (infra Expo: [2026-09-20-remote-push-implementation-brief.md](./2026-09-20-remote-push-implementation-brief.md)).
 
+### Terminología de producto (locked 2026-09-21)
+
+En copy de usuario **no** usar «dueño» ni «conductor» (jerga interna / riesgo legal sobre suelo público):
+
+| Rol interno | Copy de producto (ES) |
+| --- | --- |
+| owner | «Dejaste libre el hueco» / «quien deja el hueco» |
+| driver | «Reservaste el hueco» / «quien reservó» |
+
+Los campos API (`owner_id`, `driver_*`) no cambian.
+
 ---
 
 ## Como leer las celdas

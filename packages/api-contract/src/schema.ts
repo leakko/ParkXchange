@@ -889,6 +889,8 @@ export interface components {
             owner_ready_at?: string | null;
             /** Format: date-time */
             driver_ready_at?: string | null;
+            /** @description Why the reservation ended when status is cancelled/expired. Values include owner, driver, driver_late, driver_no_show, owner_no_show, safety_net, safety_net_owner_ready. */
+            cancel_reason?: string | null;
             /** Format: date-time */
             created_at: string;
         };

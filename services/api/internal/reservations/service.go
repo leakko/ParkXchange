@@ -342,6 +342,9 @@ func (s *Service) Cancel(ctx context.Context, id string, viewer domain.Claims) e
 	if viewer.UserID == res.DriverID {
 		peer = res.OwnerID
 		typ = EventCancelledByDriver
+		if !res.FairCancel(s.now()) {
+			typ = EventCancelledByDriverLate
+		}
 	}
 	s.push(ctx, Notification{
 		Type: typ, ReservationID: res.ID, RecipientID: peer,

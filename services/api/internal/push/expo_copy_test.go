@@ -97,24 +97,46 @@ func TestCopyForDefaultsToSpanish(t *testing.T) {
 
 func TestCopyForPreDepartureRemindsToTapEnRoute(t *testing.T) {
 	t.Parallel()
-	n := reservations.Notification{Type: reservations.EventPreDeparture}
 
-	titleES, bodyES := copyFor(n, "es")
-	if !strings.Contains(strings.ToLower(titleES), "media hora") && !strings.Contains(strings.ToLower(bodyES), "media hora") {
-		t.Fatalf("ES pre-departure should mention half an hour: %q / %q", titleES, bodyES)
+	owner := reservations.Notification{
+		Type: reservations.EventPreDeparture, CoachingMark: reservations.CoachingOwnerDepart,
 	}
-	if !strings.Contains(bodyES, "Voy de camino") {
-		t.Fatalf("ES pre-departure should name the Voy de camino action: %q", bodyES)
+	titleOwner, bodyOwner := copyFor(owner, "es")
+	if !strings.Contains(strings.ToLower(titleOwner), "dejar") {
+		t.Fatalf("ES owner pre-departure should say leave the parking: %q", titleOwner)
 	}
-	if !strings.Contains(strings.ToLower(bodyES), "prepar") {
-		t.Fatalf("ES pre-departure should explain the other person can prepare: %q", bodyES)
+	if !strings.Contains(bodyOwner, "Voy de camino") {
+		t.Fatalf("ES pre-departure should name the Voy de camino action: %q", bodyOwner)
 	}
 
-	titleEN, bodyEN := copyFor(n, "en")
-	if !strings.Contains(strings.ToLower(titleEN), "30") && !strings.Contains(strings.ToLower(bodyEN), "30") {
-		t.Fatalf("EN pre-departure should mention 30 minutes: %q / %q", titleEN, bodyEN)
+	driver := reservations.Notification{
+		Type: reservations.EventPreDeparture, CoachingMark: reservations.CoachingDriverDepart,
 	}
-	if !strings.Contains(bodyEN, "I'm on my way") && !strings.Contains(bodyEN, "on my way") {
-		t.Fatalf("EN pre-departure should name the on-my-way action: %q", bodyEN)
+	titleDriver, _ := copyFor(driver, "es")
+	if !strings.Contains(strings.ToLower(titleDriver), "libre") {
+		t.Fatalf("ES driver pre-departure should say the spot frees up: %q", titleDriver)
+	}
+
+	_, enBody := copyFor(owner, "en")
+	if !strings.Contains(enBody, "I'm on my way") && !strings.Contains(enBody, "on my way") {
+		t.Fatalf("EN pre-departure should name the on-my-way action: %q", enBody)
+	}
+}
+
+func TestCopyForExchangeAvoidsDueñoConductor(t *testing.T) {
+	t.Parallel()
+	types := []string{
+		reservations.EventOwnerEnRoute,
+		reservations.EventDriverEnRoute,
+		reservations.EventCancelledByOwner,
+		reservations.EventCancelledByDriver,
+		reservations.EventCancelledByDriverLate,
+	}
+	for _, typ := range types {
+		_, body := copyFor(reservations.Notification{Type: typ}, "es")
+		lower := strings.ToLower(body)
+		if strings.Contains(lower, "dueño") || strings.Contains(lower, "conductor") {
+			t.Fatalf("%s ES body still uses dueño/conductor: %q", typ, body)
+		}
 	}
 }

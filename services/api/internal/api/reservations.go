@@ -10,22 +10,23 @@ import (
 )
 
 type reservationResponse struct {
-	ID              string               `json:"id"`
-	SpotID          string               `json:"spot_id"`
-	DriverID        string               `json:"driver_id"`
-	OwnerID         string               `json:"owner_id"`
-	OfferID         string               `json:"offer_id,omitempty"`
-	DriverVehicleID string               `json:"driver_vehicle_id,omitempty"`
-	Status          string               `json:"status"`
-	PriceCents      int                  `json:"price_cents"`
-	ExchangeAt      time.Time            `json:"exchange_at"`
-	OwnerEnRouteAt  *time.Time           `json:"owner_en_route_at,omitempty"`
-	DriverEnRouteAt *time.Time           `json:"driver_en_route_at,omitempty"`
-	OwnerReadyAt    *time.Time           `json:"owner_ready_at,omitempty"`
-	DriverReadyAt   *time.Time           `json:"driver_ready_at,omitempty"`
-	CreatedAt       time.Time            `json:"created_at"`
-	OwnerVehicle    *vehicleSummaryJSON  `json:"owner_vehicle,omitempty"`
-	DriverVehicle   *vehicleSummaryJSON  `json:"driver_vehicle,omitempty"`
+	ID              string              `json:"id"`
+	SpotID          string              `json:"spot_id"`
+	DriverID        string              `json:"driver_id"`
+	OwnerID         string              `json:"owner_id"`
+	OfferID         string              `json:"offer_id,omitempty"`
+	DriverVehicleID string              `json:"driver_vehicle_id,omitempty"`
+	Status          string              `json:"status"`
+	PriceCents      int                 `json:"price_cents"`
+	ExchangeAt      time.Time           `json:"exchange_at"`
+	OwnerEnRouteAt  *time.Time          `json:"owner_en_route_at,omitempty"`
+	DriverEnRouteAt *time.Time          `json:"driver_en_route_at,omitempty"`
+	OwnerReadyAt    *time.Time          `json:"owner_ready_at,omitempty"`
+	DriverReadyAt   *time.Time          `json:"driver_ready_at,omitempty"`
+	CancelReason    string              `json:"cancel_reason,omitempty"`
+	CreatedAt       time.Time           `json:"created_at"`
+	OwnerVehicle    *vehicleSummaryJSON `json:"owner_vehicle,omitempty"`
+	DriverVehicle   *vehicleSummaryJSON `json:"driver_vehicle,omitempty"`
 }
 
 func toReservationResponse(r domain.Reservation) reservationResponse {
@@ -33,10 +34,11 @@ func toReservationResponse(r domain.Reservation) reservationResponse {
 		ID: r.ID, SpotID: r.SpotID, DriverID: r.DriverID, OwnerID: r.OwnerID,
 		OfferID: r.OfferID, DriverVehicleID: r.DriverVehicleID,
 		Status: string(r.Status), PriceCents: r.PriceCents,
-		ExchangeAt: r.ExchangeAt,
+		ExchangeAt:     r.ExchangeAt,
 		OwnerEnRouteAt: r.OwnerEnRouteAt, DriverEnRouteAt: r.DriverEnRouteAt,
 		OwnerReadyAt: r.OwnerReadyAt, DriverReadyAt: r.DriverReadyAt,
-		CreatedAt: r.CreatedAt,
+		CancelReason: r.CancelReason,
+		CreatedAt:    r.CreatedAt,
 	}
 }
 

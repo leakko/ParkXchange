@@ -7,7 +7,8 @@ import {
 import { accountStyles } from "@/account/theme";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
-import { formatPoints } from "@/i18n/formatPoints";
+import { formatPoints, formatSignedPoints } from "@/i18n/formatPoints";
+import { reservationPointsDelta } from "@/map/reservationPoints";
 import { useQueries, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { type Href, useRouter } from "expo-router";
@@ -168,7 +169,12 @@ export default function MySpotsScreen() {
                       </Text>
                       <Text style={accountStyles.rowMeta}>
                         {t("account.spots.spotTitle", {
-                          points: formatPoints(reservation.price_cents),
+                          points: formatSignedPoints(
+                            reservationPointsDelta(
+                              reservation,
+                              reservation.owner_id,
+                            ),
+                          ),
                           status: item.properties.status,
                         })}
                       </Text>

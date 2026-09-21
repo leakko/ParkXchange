@@ -1,9 +1,9 @@
-import type { TranslationKey } from "@/i18n";
+import type { TranslationKey } from "../i18n/locales/es.ts";
 
 import {
   exchangeWindow,
   type HandshakeFields,
-} from "@/map/exchangeLeave";
+} from "./exchangeLeave.ts";
 
 export type NotifEvent =
   | { kind: "peer_en_route"; key: TranslationKey }
@@ -12,13 +12,75 @@ export type NotifEvent =
   | { kind: "completed"; key: TranslationKey }
   | { kind: "cancelled"; key: TranslationKey };
 
+type ReservationSnapshot = HandshakeFields & {
+  id?: string;
+  status?: string;
+  cancel_reason?: string | null;
+};
+
+/**
+ * Who ended the reservation from `cancel_reason` (postgres).
+ * Returns null when unknown — never invent a peer blame.
+ */
+function cancelActor(
+  reason: string | null | undefined,
+): "owner" | "driver" | "system" | null {
+  if (!reason) {
+    return null;
+  }
+  switch (reason) {
+    case "owner":
+    case "driver_no_show":
+      return "owner";
+    case "driver":
+    case "driver_late":
+      return "driver";
+    case "owner_no_show":
+    case "safety_net":
+    case "safety_net_owner_ready":
+      return "system";
+    default:
+      return null;
+  }
+}
+
+function cancelNotifKey(
+  reason: string,
+  iAmOwner: boolean,
+  window: ReturnType<typeof exchangeWindow>,
+): TranslationKey {
+  switch (reason) {
+    case "owner":
+      return "exchange.notif.ownerCancelled.release";
+    case "driver":
+      return "exchange.notif.driverCancelled.release";
+    case "driver_late":
+      return "exchange.notif.driverCancelled.late";
+    case "driver_no_show":
+      return "exchange.notif.driverCancelled.late";
+    case "owner_no_show":
+      return "exchange.notif.ownerCancelled.release";
+    case "safety_net":
+    case "safety_net_owner_ready":
+      return "exchange.notif.cancelled.generic";
+    default:
+      // Window-based fallback only when reason is exotic.
+      if (iAmOwner) {
+        return window === "B" || window === "C" || window === "D"
+          ? "exchange.notif.driverCancelled.late"
+          : "exchange.notif.driverCancelled.release";
+      }
+      return "exchange.notif.ownerCancelled.release";
+  }
+}
+
 /**
  * Diff previous vs next reservation for the current user.
  * Returns at most one high-priority event (complete/cancel > ready > unready > en-route).
  */
 export function detectExchangeNotif(opts: {
-  prev: HandshakeFields & { id?: string; status?: string } | null;
-  next: HandshakeFields & { id?: string; status?: string } | null;
+  prev: ReservationSnapshot | null;
+  next: ReservationSnapshot | null;
   iAmOwner: boolean;
   nowMs?: number;
 }): NotifEvent | null {
@@ -42,19 +104,24 @@ export function detectExchangeNotif(opts: {
     prev.status !== "cancelled" &&
     prev.status !== "expired"
   ) {
-    // Peer (or system) ended it while we still had a live view.
-    if (iAmOwner) {
+    const actor = cancelActor(next.cancel_reason);
+    // Never tell the canceller that the other party cancelled (or invent a refund).
+    if (actor === "owner" && iAmOwner) {
+      return null;
+    }
+    if (actor === "driver" && !iAmOwner) {
+      return null;
+    }
+    if (!next.cancel_reason || actor == null) {
       return {
         kind: "cancelled",
-        key:
-          window === "B" || window === "C" || window === "D"
-            ? "exchange.notif.driverCancelled.late"
-            : "exchange.notif.driverCancelled.release",
+        key: "exchange.notif.cancelled.generic",
       };
     }
+    // System / peer cancel — notify the remaining party (both if system).
     return {
       kind: "cancelled",
-      key: "exchange.notif.ownerCancelled.release",
+      key: cancelNotifKey(next.cancel_reason, iAmOwner, window),
     };
   }
 

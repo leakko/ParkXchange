@@ -404,6 +404,8 @@ type RegisterRequest struct {
 
 // ReservationResponse defines model for ReservationResponse.
 type ReservationResponse struct {
+	// CancelReason Why the reservation ended when status is cancelled/expired. Values include owner, driver, driver_late, driver_no_show, owner_no_show, safety_net, safety_net_owner_ready.
+	CancelReason    *string            `json:"cancel_reason,omitempty"`
 	CreatedAt       time.Time          `json:"created_at"`
 	DriverEnRouteAt *time.Time         `json:"driver_en_route_at,omitempty"`
 	DriverId        openapi_types.UUID `json:"driver_id"`

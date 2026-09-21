@@ -25,7 +25,8 @@ import { AuthScroll } from "@/auth/AuthScroll";
 import { AuthTextInput } from "@/auth/AuthTextInput";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation, type TranslationKey } from "@/i18n";
-import { formatPoints, parsePointsInput } from "@/i18n/formatPoints";
+import { formatPoints, formatSignedPoints, parsePointsInput } from "@/i18n/formatPoints";
+import { reservationPointsDelta } from "@/map/reservationPoints";
 import { DateTimeField } from "@/ui/DateTimeField";
 
 function reservationStatusKey(status: string): TranslationKey {
@@ -229,7 +230,11 @@ export default function MyReservationsScreen() {
             >
               <Text style={accountStyles.rowTitle}>
                 {t("account.reservations.offerTitle", {
-                  points: formatPoints(offer.amount_cents),
+                  points: formatSignedPoints(
+                    offer.status === "pending"
+                      ? -Math.abs(offer.amount_cents)
+                      : 0,
+                  ),
                   status: t(offerStatusKey(offer.status)),
                 })}
               </Text>
@@ -305,7 +310,11 @@ export default function MyReservationsScreen() {
           >
             <Text style={accountStyles.rowTitle}>
               {t("account.reservations.rowTitle", {
-                points: formatPoints(res.price_cents),
+                points: formatSignedPoints(
+                  userId
+                    ? reservationPointsDelta(res, userId)
+                    : res.price_cents,
+                ),
                 status: t(reservationStatusKey(res.status)),
               })}
             </Text>

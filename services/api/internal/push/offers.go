@@ -142,19 +142,19 @@ var offerCopyES = map[string]pushCopy{
 	},
 	offers.EventAccepted: {
 		"Oferta aceptada",
-		"El dueño aceptó tu oferta — abre la app para el intercambio",
+		"Quien deja el hueco aceptó tu oferta — abre la app para el intercambio",
 	},
 	offers.EventRejected: {
 		"Oferta rechazada",
-		"El dueño no aceptó tu oferta",
+		"Quien deja el hueco no aceptó tu oferta",
 	},
 	offers.EventWithdrawn: {
 		"Oferta retirada",
-		"El conductor retiró su oferta",
+		"Quien reservó retiró su oferta",
 	},
 	spots.EventWithdrawnPendingOffer: {
 		"Plaza retirada",
-		"El dueño retiró la plaza — tu oferta ya no está activa",
+		"Quien deja el hueco retiró la plaza — tu oferta ya no está activa",
 	},
 	"_default": {
 		"ParkXchange",
@@ -169,19 +169,19 @@ var offerCopyEN = map[string]pushCopy{
 	},
 	offers.EventAccepted: {
 		"Offer accepted",
-		"The owner accepted your offer — open the app for the exchange",
+		"The person freeing the spot accepted your offer — open the app for the exchange",
 	},
 	offers.EventRejected: {
 		"Offer declined",
-		"The owner did not accept your offer",
+		"The person freeing the spot did not accept your offer",
 	},
 	offers.EventWithdrawn: {
 		"Offer withdrawn",
-		"The driver withdrew their offer",
+		"The person who reserved withdrew their offer",
 	},
 	spots.EventWithdrawnPendingOffer: {
 		"Listing withdrawn",
-		"The owner withdrew the spot — your offer is no longer active",
+		"The person freeing the spot withdrew the spot — your offer is no longer active",
 	},
 	"_default": {
 		"ParkXchange",
