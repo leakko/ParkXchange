@@ -64,7 +64,10 @@ func (e *Expo) Notify(ctx context.Context, n reservations.Notification) error {
 			},
 			Priority: "default",
 		}
-		if n.Urgent {
+		// Actionable tips / phase prompts need HIGH so Android shows buttons
+		// when the shade is expanded (DEFAULT often hides them on OEMs).
+		actionable := hasActionableButton(n.Actions)
+		if n.Urgent || actionable {
 			msg.Priority = "high"
 			msg.ChannelID = "exchange-urgent"
 		} else {
@@ -160,6 +163,15 @@ func categoryFor(actions []string) string {
 	default:
 		return "exchange_open"
 	}
+}
+
+func hasActionableButton(actions []string) bool {
+	for _, a := range actions {
+		if a == "en_route" || a == "ready" || a == "unready" {
+			return true
+		}
+	}
+	return false
 }
 
 func copyFor(n reservations.Notification) (title, body string) {

@@ -35,6 +35,7 @@ import {
   ownerCancelMessageKey,
 } from "@/map/exchangeCopy";
 import { ExchangeStatusPanel } from "@/map/ExchangeStatusPanel";
+import { PeerVehiclePanel } from "@/map/PeerVehiclePanel";
 
 type Props = {
   spot: SpotFeature | null;
@@ -208,6 +209,13 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
       Alert.alert(
         t("announce.alert.invalidDate.title"),
         t("announce.alert.invalidDate.message"),
+      );
+      return;
+    }
+    if (exchangeAt.getTime() <= Date.now()) {
+      Alert.alert(
+        t("spotSheet.offer.exchangeInPast.title"),
+        t("spotSheet.offer.exchangeInPast.message"),
       );
       return;
     }
@@ -431,7 +439,11 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                     <Text style={styles.formLabel}>
                       {t("spotSheet.offer.exchangeDatetime")}
                     </Text>
-                    <DateTimeField value={exchangeAt} onChange={setExchangeAt} />
+                    <DateTimeField
+                      value={exchangeAt}
+                      onChange={setExchangeAt}
+                      minimumDate={new Date()}
+                    />
                     <Text style={styles.formLabel}>{t("spotSheet.offer.amount")}</Text>
                     <BottomSheetTextInput
                       style={styles.input}
@@ -498,6 +510,12 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
 
               {isActiveForSpot && active ? (
                 <>
+                  <PeerVehiclePanel
+                    vehicle={
+                      isOwner ? active.driver_vehicle : active.owner_vehicle
+                    }
+                    counterpart
+                  />
                   <ExchangeStatusPanel
                     res={active}
                     iAmOwner={isOwner}

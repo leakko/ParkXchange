@@ -33,7 +33,7 @@ export function ExchangePushBootstrap() {
     let cancelled = false;
     let sub: Notifications.Subscription | undefined;
 
-    void (async () => {
+    const boot = async () => {
       await ensureNotificationCategories();
       if (cancelled) {
         return;
@@ -43,6 +43,10 @@ export function ExchangePushBootstrap() {
       } catch {
         /* best-effort */
       }
+    };
+
+    void (async () => {
+      await boot();
       if (cancelled) {
         return;
       }
@@ -58,7 +62,11 @@ export function ExchangePushBootstrap() {
 
     const appSub = AppState.addEventListener("change", (state) => {
       if (state === "active" && signedIn) {
-        void registerPushToken().catch(() => undefined);
+        // Re-register categories on foreground so Android action buttons stay
+        // attached after OEM kills / before the next −30m tip arrives.
+        void ensureNotificationCategories().then(() =>
+          registerPushToken().catch(() => undefined),
+        );
       }
     });
 

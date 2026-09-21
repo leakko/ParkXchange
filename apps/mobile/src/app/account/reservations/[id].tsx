@@ -6,7 +6,6 @@ import {
   cancelReservation,
   getMe,
   getReservation,
-  getSpot,
   reservationEnRoute,
   reservationReady,
   reservationUnready,
@@ -15,12 +14,13 @@ import { accountStyles } from "@/account/theme";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation, type TranslationKey } from "@/i18n";
 import { formatPoints } from "@/i18n/formatPoints";
+import { ExchangeStatusPanel } from "@/map/ExchangeStatusPanel";
+import { PeerVehiclePanel } from "@/map/PeerVehiclePanel";
 import {
   completedMessageKey,
   driverCancelMessageKey,
   ownerCancelMessageKey,
 } from "@/map/exchangeCopy";
-import { ExchangeStatusPanel } from "@/map/ExchangeStatusPanel";
 import {
   driverNoShowDeadline,
   ownerNoShowDeadline,
@@ -48,11 +48,6 @@ export default function ReservationDetailScreen() {
     queryFn: () => getReservation(id),
     enabled: signedIn && !!id,
     refetchInterval: 5_000,
-  });
-  const spot = useQuery({
-    queryKey: ["spot", reservation.data?.spot_id],
-    queryFn: () => getSpot(String(reservation.data!.spot_id)),
-    enabled: !!reservation.data?.spot_id,
   });
 
   const invalidate = async () => {
@@ -181,14 +176,13 @@ export default function ReservationDetailScreen() {
           datetime: formatDateTime(res.exchange_at),
         })}
       </Text>
-      {spot.data?.properties.vehicle ? (
-        <Text style={accountStyles.meta}>
-          {spot.data.properties.vehicle.plate} · {spot.data.properties.vehicle.make_model}
-        </Text>
-      ) : null}
 
       {live && (isOwner || isDriver) ? (
         <View style={{ gap: 10, marginTop: 16 }}>
+          <PeerVehiclePanel
+            vehicle={isOwner ? res.driver_vehicle : res.owner_vehicle}
+            counterpart
+          />
           <ExchangeStatusPanel
             res={res}
             iAmOwner={isOwner}

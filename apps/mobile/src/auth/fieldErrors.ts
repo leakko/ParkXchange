@@ -13,6 +13,25 @@ const messageToKey: Record<string, TranslationKey> = {
   "must be at most 60 characters": "auth.field.displayNameMax",
   "phone must be E.164, starting with +": "auth.field.phoneInvalid",
   "phone must be E.164 (+ and 8–15 digits)": "auth.field.phoneInvalid",
+  "must be in the future": "auth.field.mustBeFuture",
+  "must not be negative": "auth.field.notNegative",
+  "must be at most 2000 (20 euros)": "auth.field.amountMax",
+};
+
+const fieldLabelKey: Record<string, TranslationKey> = {
+  exchange_at: "spotSheet.offer.exchangeDatetime",
+  preferred_departure_at: "announce.preferredDeparture",
+  amount_cents: "spotSheet.offer.amount",
+  price_cents: "announce.guidePrice",
+  vehicle_id: "spotSheet.offer.yourVehicle",
+  plate: "account.vehicles.form.plate",
+  make_model: "account.vehicles.form.makeModel",
+  color: "account.vehicles.form.color",
+  year: "account.vehicles.form.year",
+  phone: "account.profile.phone.label",
+  email: "auth.email",
+  password: "auth.password",
+  display_name: "auth.displayName",
 };
 
 export function fieldErrorMessage(
@@ -39,4 +58,23 @@ export function apiFieldErrors(
     out[field] = fieldErrorMessage(message, t);
   }
   return out;
+}
+
+/** Human-readable multi-line summary for alerts (announce / offer / etc.). */
+export function apiValidationSummary(
+  err: unknown,
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string,
+): string | null {
+  const fields = apiFieldErrors(err, t);
+  const entries = Object.entries(fields);
+  if (entries.length === 0) {
+    return null;
+  }
+  return entries
+    .map(([field, message]) => {
+      const labelKey = fieldLabelKey[field];
+      const label = labelKey ? t(labelKey) : field;
+      return `${label}: ${message}`;
+    })
+    .join("\n");
 }

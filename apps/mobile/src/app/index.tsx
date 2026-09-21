@@ -9,7 +9,7 @@ import {
   type PressEvent,
   type ViewStateChangeEvent,
 } from "@maplibre/maplibre-react-native";
-import { type Href, useLocalSearchParams, useRouter } from "expo-router";
+import { type Href, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -77,7 +77,7 @@ import {
   AnnounceModal,
   type AnnounceValues,
 } from "@/map/AnnounceModal";
-import { bannerPeerStatusKey } from "@/map/exchangeCopy";
+import { bannerNextStep, bannerPeerStatusKey } from "@/map/exchangeCopy";
 import { SpotLayers } from "@/map/SpotLayers";
 import { SpotSheet } from "@/map/SpotSheet";
 
@@ -289,6 +289,16 @@ export default function MapScreen() {
     }
     void refreshVehicles();
   }, [selected, signedIn, refreshVehicles]);
+
+  // Returning from /account/vehicles/new must refresh the list — invalidateQueries
+  // alone does not update this screen's local vehicles state.
+  useFocusEffect(
+    useCallback(() => {
+      if (signedIn) {
+        void refreshVehicles();
+      }
+    }, [signedIn, refreshVehicles]),
+  );
 
   // Discovery/WS must not overwrite the open sheet during a live exchange:
   // getSpot (exact, reserved/handover) and the viewport copy (often fuzzed or
@@ -903,7 +913,17 @@ export default function MapScreen() {
         </View>
       ) : null}
       {active ? (
-        <View style={[styles.banner, styles.activeBanner]}>
+        <Pressable
+          style={[styles.banner, styles.activeBanner]}
+          onPress={() => {
+            if (activeSpot) {
+              setSelected(activeSpot);
+              sheetRef.current?.snapToIndex(1);
+            }
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={t("map.banner.openExchange")}
+        >
           <View style={styles.activeBannerBody}>
             <Text style={styles.bannerText}>
               {t("map.banner.exchangeActive", {
@@ -919,32 +939,29 @@ export default function MapScreen() {
               )}
             </Text>
           </View>
-          <View style={styles.activeBannerActions}>
-            <Pressable
-              style={styles.bannerBtn}
-              onPress={() => {
-                if (activeSpot) {
-                  setSelected(activeSpot);
-                  sheetRef.current?.snapToIndex(1);
-                }
-              }}
-            >
-              <Text style={styles.bannerBtnText}>{t("map.banner.openExchange")}</Text>
-            </Pressable>
-            {!((isOwner && active.owner_en_route_at) ||
-              (isDriver && active.driver_en_route_at)) ? (
-              <Pressable
-                style={[styles.bannerBtn, busy && styles.bannerBtnDisabled]}
-                disabled={busy}
-                onPress={() => {
-                  void markEnRoute();
-                }}
-              >
-                <Text style={styles.bannerBtnText}>{t("map.banner.enRoute")}</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        </View>
+          {(() => {
+            const next = bannerNextStep({ res: active, iAmOwner: isOwner });
+            return (
+              <View style={styles.activeBannerActions}>
+                <Pressable
+                  style={[styles.bannerBtn, busy && styles.bannerBtnDisabled]}
+                  disabled={busy}
+                  onPress={() => {
+                    if (next.action === "en_route") {
+                      void markEnRoute();
+                    } else if (next.action === "ready") {
+                      void markReady();
+                    } else {
+                      void clearReady();
+                    }
+                  }}
+                >
+                  <Text style={styles.bannerBtnText}>{t(next.labelKey)}</Text>
+                </Pressable>
+              </View>
+            );
+          })()}
+        </Pressable>
       ) : null}
       {announcePickMode ? (
         <View style={[styles.banner, styles.pickBanner]}>

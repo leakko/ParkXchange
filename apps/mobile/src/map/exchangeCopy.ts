@@ -122,4 +122,24 @@ export function bannerPeerStatusKey(opts: {
     : "map.banner.peer.ownerIdle";
 }
 
+/** Next handshake step for the map banner CTA (never cancel). */
+export function bannerNextStep(opts: {
+  res: HandshakeFields;
+  iAmOwner: boolean;
+}): { action: "en_route" | "ready" | "unready"; labelKey: TranslationKey } {
+  const myEnRoute = opts.iAmOwner
+    ? opts.res.owner_en_route_at
+    : opts.res.driver_en_route_at;
+  const myReady = opts.iAmOwner
+    ? opts.res.owner_ready_at
+    : opts.res.driver_ready_at;
+  if (!myEnRoute) {
+    return { action: "en_route", labelKey: "map.banner.enRoute" };
+  }
+  if (!myReady) {
+    return { action: "ready", labelKey: "map.banner.ready" };
+  }
+  return { action: "unready", labelKey: "map.banner.unready" };
+}
+
 export { exchangeWindow, peerPhase, shouldShowNoShowDeadline };

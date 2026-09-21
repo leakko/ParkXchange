@@ -1,4 +1,5 @@
 import { ApiError } from "@/api/client";
+import { apiValidationSummary } from "@/auth/fieldErrors";
 import type { TranslationKey } from "@/i18n";
 
 const codeToKey: Record<string, TranslationKey> = {
@@ -22,6 +23,10 @@ export function apiErrorMessage(
   err: unknown,
   t: (key: TranslationKey, params?: Record<string, string | number>) => string,
 ): string {
+  const fieldSummary = apiValidationSummary(err, t);
+  if (fieldSummary) {
+    return fieldSummary;
+  }
   if (err instanceof ApiError) {
     const key = codeToKey[err.code];
     if (key) {

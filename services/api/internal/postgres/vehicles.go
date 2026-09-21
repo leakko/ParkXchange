@@ -190,3 +190,36 @@ func (db *DB) ActiveSpotCount(ctx context.Context, vehicleID string) (int, error
 	}
 	return n, nil
 }
+
+// VehicleSummaryByID loads the public car identity for reservation parties.
+func (db *DB) VehicleSummaryByID(ctx context.Context, id string) (domain.VehicleSummary, error) {
+	v, err := db.ByID(ctx, id)
+	if err != nil {
+		return domain.VehicleSummary{}, err
+	}
+	return v.Summary(), nil
+}
+
+// SpotOwnerVehicleSummary loads the vehicle linked to a spot.
+func (db *DB) SpotOwnerVehicleSummary(ctx context.Context, spotID string) (domain.VehicleSummary, error) {
+	var (
+		id, plate, makeModel, color, size string
+		year                              int
+		hasPhoto                          bool
+	)
+	err := db.q().QueryRow(ctx, `
+		SELECT v.id, v.plate, v.make_model, v.color, v.year, v.size_class,
+		       (v.photo IS NOT NULL)
+		  FROM spots s
+		  JOIN vehicles v ON v.id = s.vehicle_id
+		 WHERE s.id = $1`, spotID).Scan(
+		&id, &plate, &makeModel, &color, &year, &size, &hasPhoto,
+	)
+	if err != nil {
+		return domain.VehicleSummary{}, translate(err, "load spot owner vehicle")
+	}
+	return domain.VehicleSummary{
+		ID: id, Plate: plate, MakeModel: makeModel, Color: color,
+		Year: year, Size: domain.SpotSize(size), HasPhoto: hasPhoto,
+	}, nil
+}

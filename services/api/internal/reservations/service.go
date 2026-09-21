@@ -99,6 +99,27 @@ func (s *Service) Get(ctx context.Context, id string, viewer domain.Claims) (dom
 	return res, nil
 }
 
+// PartyVehicles is the owner’s spot car and the driver’s offer car — what each
+// party needs to recognise the other at the handover.
+type PartyVehicles struct {
+	Owner  domain.VehicleSummary
+	Driver domain.VehicleSummary
+}
+
+// PartyVehicles loads both cars for a reservation the caller already fetched.
+func (s *Service) PartyVehicles(ctx context.Context, res domain.Reservation) PartyVehicles {
+	var out PartyVehicles
+	if owner, err := s.store.SpotOwnerVehicleSummary(ctx, res.SpotID); err == nil && owner.ID != "" {
+		out.Owner = owner
+	}
+	if res.DriverVehicleID != "" {
+		if driver, err := s.store.VehicleSummaryByID(ctx, res.DriverVehicleID); err == nil && driver.ID != "" {
+			out.Driver = driver
+		}
+	}
+	return out
+}
+
 // Active lists the caller's live reservations (as driver or owner).
 func (s *Service) Active(ctx context.Context, viewer domain.Claims) ([]domain.Reservation, error) {
 	if !viewer.Authenticated() {
@@ -185,10 +206,18 @@ func (s *Service) EnRoute(ctx context.Context, id string, viewer domain.Claims) 
 		peer = res.OwnerID
 		typ = EventDriverEnRoute
 	}
+	// Peer must always hear the phase advance (open + ready prompt so they
+	// can catch up from the shade without unlocking the full UI).
+	peerActions := []string{"open"}
+	if viewer.UserID == res.OwnerID && res.DriverEnRouteAt == nil {
+		peerActions = []string{"en_route", "open"}
+	} else if viewer.UserID == res.DriverID && res.OwnerEnRouteAt == nil {
+		peerActions = []string{"en_route", "open"}
+	}
 	s.push(ctx, Notification{
 		Type: typ, ReservationID: res.ID, RecipientID: peer,
-		ExchangeAt: res.ExchangeAt, Actions: []string{"open"},
-		Urgent: !s.now().Before(res.ExchangeAt),
+		ExchangeAt: res.ExchangeAt, Actions: peerActions,
+		Urgent: true,
 	})
 	return nil
 }
@@ -236,10 +265,9 @@ func (s *Service) Ready(ctx context.Context, id string, viewer domain.Claims) (b
 		peer = res.OwnerID
 		typ = EventDriverReady
 	}
-	urgent := !s.now().Before(res.ExchangeAt)
 	s.push(ctx, Notification{
 		Type: typ, ReservationID: res.ID, RecipientID: peer,
-		ExchangeAt: res.ExchangeAt, Actions: []string{"ready", "open"}, Urgent: urgent,
+		ExchangeAt: res.ExchangeAt, Actions: []string{"ready", "open"}, Urgent: true,
 	})
 	return false, nil
 }

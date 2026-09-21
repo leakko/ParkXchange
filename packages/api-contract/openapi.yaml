@@ -1506,6 +1506,12 @@ components:
         driver_vehicle_id:
           type: string
           format: uuid
+        owner_vehicle:
+          $ref: "#/components/schemas/VehicleSummary"
+          description: Car occupying the spot (owner) — visible to both parties
+        driver_vehicle:
+          $ref: "#/components/schemas/VehicleSummary"
+          description: Driver's car from the accepted offer — visible to both parties
         exchange_at:
           type: string
           format: date-time

@@ -36,19 +36,6 @@ export async function registerPushToken(): Promise<string | null> {
     return null;
   }
 
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("exchange", {
-      name: "Intercambio",
-      importance: Notifications.AndroidImportance.DEFAULT,
-    });
-    await Notifications.setNotificationChannelAsync("exchange-urgent", {
-      name: "Intercambio urgente",
-      importance: Notifications.AndroidImportance.HIGH,
-      sound: "default",
-      vibrationPattern: [0, 250, 250, 250],
-    });
-  }
-
   const id = projectId();
   if (!id) {
     if (__DEV__) {

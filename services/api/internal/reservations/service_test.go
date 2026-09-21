@@ -57,6 +57,12 @@ func (f *fakeStore) DueCoachingTips(context.Context, time.Time) ([]reservations.
 func (f *fakeStore) MarkCoachingTipSent(context.Context, reservations.Notification, time.Time) error {
 	return nil
 }
+func (f *fakeStore) VehicleSummaryByID(context.Context, string) (domain.VehicleSummary, error) {
+	return domain.VehicleSummary{}, domain.ErrNoRows
+}
+func (f *fakeStore) SpotOwnerVehicleSummary(context.Context, string) (domain.VehicleSummary, error) {
+	return domain.VehicleSummary{}, domain.ErrNoRows
+}
 
 func TestReadyCompletesWhenStoreSaysSo(t *testing.T) {
 	t.Parallel()

@@ -148,6 +148,7 @@ func (db *DB) listDepartTips(ctx context.Context, now time.Time, forOwner bool) 
 			Type: reservations.EventPreDeparture, ReservationID: id,
 			RecipientID: recipient, ExchangeAt: exchangeAt,
 			Actions: []string{"en_route", "open"}, CoachingMark: mark,
+			Urgent: true,
 		})
 	}
 	return out, translate(rows.Err(), "iterate depart tips")

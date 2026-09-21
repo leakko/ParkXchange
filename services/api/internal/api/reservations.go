@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -9,20 +10,22 @@ import (
 )
 
 type reservationResponse struct {
-	ID              string     `json:"id"`
-	SpotID          string     `json:"spot_id"`
-	DriverID        string     `json:"driver_id"`
-	OwnerID         string     `json:"owner_id"`
-	OfferID         string     `json:"offer_id,omitempty"`
-	DriverVehicleID string     `json:"driver_vehicle_id,omitempty"`
-	Status          string     `json:"status"`
-	PriceCents      int        `json:"price_cents"`
-	ExchangeAt      time.Time  `json:"exchange_at"`
-	OwnerEnRouteAt  *time.Time `json:"owner_en_route_at,omitempty"`
-	DriverEnRouteAt *time.Time `json:"driver_en_route_at,omitempty"`
-	OwnerReadyAt    *time.Time `json:"owner_ready_at,omitempty"`
-	DriverReadyAt   *time.Time `json:"driver_ready_at,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
+	ID              string               `json:"id"`
+	SpotID          string               `json:"spot_id"`
+	DriverID        string               `json:"driver_id"`
+	OwnerID         string               `json:"owner_id"`
+	OfferID         string               `json:"offer_id,omitempty"`
+	DriverVehicleID string               `json:"driver_vehicle_id,omitempty"`
+	Status          string               `json:"status"`
+	PriceCents      int                  `json:"price_cents"`
+	ExchangeAt      time.Time            `json:"exchange_at"`
+	OwnerEnRouteAt  *time.Time           `json:"owner_en_route_at,omitempty"`
+	DriverEnRouteAt *time.Time           `json:"driver_en_route_at,omitempty"`
+	OwnerReadyAt    *time.Time           `json:"owner_ready_at,omitempty"`
+	DriverReadyAt   *time.Time           `json:"driver_ready_at,omitempty"`
+	CreatedAt       time.Time            `json:"created_at"`
+	OwnerVehicle    *vehicleSummaryJSON  `json:"owner_vehicle,omitempty"`
+	DriverVehicle   *vehicleSummaryJSON  `json:"driver_vehicle,omitempty"`
 }
 
 func toReservationResponse(r domain.Reservation) reservationResponse {
@@ -37,12 +40,29 @@ func toReservationResponse(r domain.Reservation) reservationResponse {
 	}
 }
 
+func (a *API) enrichReservation(ctx context.Context, r domain.Reservation) reservationResponse {
+	out := toReservationResponse(r)
+	if a.reserves == nil {
+		return out
+	}
+	parties := a.reserves.PartyVehicles(ctx, r)
+	if parties.Owner.ID != "" {
+		v := toVehicleSummary(parties.Owner)
+		out.OwnerVehicle = &v
+	}
+	if parties.Driver.ID != "" {
+		v := toVehicleSummary(parties.Driver)
+		out.DriverVehicle = &v
+	}
+	return out
+}
+
 func (a *API) handleGetReservation(w http.ResponseWriter, r *http.Request) error {
 	res, err := a.reserves.Get(r.Context(), r.PathValue("id"), claimsFrom(r.Context()))
 	if err != nil {
 		return err
 	}
-	return web.JSON(w, http.StatusOK, toReservationResponse(res))
+	return web.JSON(w, http.StatusOK, a.enrichReservation(r.Context(), res))
 }
 
 func (a *API) handleActiveReservations(w http.ResponseWriter, r *http.Request) error {
@@ -52,7 +72,7 @@ func (a *API) handleActiveReservations(w http.ResponseWriter, r *http.Request) e
 	}
 	out := make([]reservationResponse, 0, len(found))
 	for _, res := range found {
-		out = append(out, toReservationResponse(res))
+		out = append(out, a.enrichReservation(r.Context(), res))
 	}
 	return web.JSON(w, http.StatusOK, out)
 }
@@ -64,7 +84,7 @@ func (a *API) handleListReservations(w http.ResponseWriter, r *http.Request) err
 	}
 	out := make([]reservationResponse, 0, len(found))
 	for _, res := range found {
-		out = append(out, toReservationResponse(res))
+		out = append(out, a.enrichReservation(r.Context(), res))
 	}
 	return web.JSON(w, http.StatusOK, out)
 }

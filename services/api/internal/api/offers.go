@@ -84,7 +84,7 @@ func (a *API) handleAcceptOffer(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return web.JSON(w, http.StatusCreated, toReservationResponse(reservation))
+	return web.JSON(w, http.StatusCreated, a.enrichReservation(r.Context(), reservation))
 }
 
 func (a *API) handleRejectOffer(w http.ResponseWriter, r *http.Request) error {

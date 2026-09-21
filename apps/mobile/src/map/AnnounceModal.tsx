@@ -226,6 +226,13 @@ export function AnnounceModal({
       );
       return;
     }
+    if (hasPreferredTime && preferredTime.getTime() <= Date.now()) {
+      Alert.alert(
+        t("announce.alert.dateInPast.title"),
+        t("announce.alert.dateInPast.message"),
+      );
+      return;
+    }
     await onSubmit({
       guidePriceCents: points,
       preferredDepartureAt: hasPreferredTime
@@ -422,7 +429,11 @@ export function AnnounceModal({
               <Switch value={hasPreferredTime} onValueChange={setHasPreferredTime} />
             </View>
             {hasPreferredTime ? (
-              <DateTimeField value={preferredTime} onChange={setPreferredTime} />
+              <DateTimeField
+                value={preferredTime}
+                onChange={setPreferredTime}
+                minimumDate={new Date()}
+              />
             ) : null}
             <View style={styles.toggleRow}>
               <View style={{ flex: 1 }}>

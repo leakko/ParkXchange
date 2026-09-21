@@ -368,10 +368,13 @@ type RegisterRequest struct {
 
 // ReservationResponse defines model for ReservationResponse.
 type ReservationResponse struct {
-	CreatedAt       time.Time           `json:"created_at"`
-	DriverEnRouteAt *time.Time          `json:"driver_en_route_at,omitempty"`
-	DriverId        openapi_types.UUID  `json:"driver_id"`
-	DriverReadyAt   *time.Time          `json:"driver_ready_at,omitempty"`
+	CreatedAt       time.Time          `json:"created_at"`
+	DriverEnRouteAt *time.Time         `json:"driver_en_route_at,omitempty"`
+	DriverId        openapi_types.UUID `json:"driver_id"`
+	DriverReadyAt   *time.Time         `json:"driver_ready_at,omitempty"`
+
+	// DriverVehicle Driver's car from the accepted offer — visible to both parties
+	DriverVehicle   *VehicleSummary     `json:"driver_vehicle,omitempty"`
 	DriverVehicleId *openapi_types.UUID `json:"driver_vehicle_id,omitempty"`
 	ExchangeAt      time.Time           `json:"exchange_at"`
 	Id              openapi_types.UUID  `json:"id"`
@@ -379,9 +382,12 @@ type ReservationResponse struct {
 	OwnerEnRouteAt  *time.Time          `json:"owner_en_route_at,omitempty"`
 	OwnerId         openapi_types.UUID  `json:"owner_id"`
 	OwnerReadyAt    *time.Time          `json:"owner_ready_at,omitempty"`
-	PriceCents      int                 `json:"price_cents"`
-	SpotId          openapi_types.UUID  `json:"spot_id"`
-	Status          string              `json:"status"`
+
+	// OwnerVehicle Car occupying the spot (owner) — visible to both parties
+	OwnerVehicle *VehicleSummary    `json:"owner_vehicle,omitempty"`
+	PriceCents   int                `json:"price_cents"`
+	SpotId       openapi_types.UUID `json:"spot_id"`
+	Status       string             `json:"status"`
 }
 
 // ResetPasswordRequest defines model for ResetPasswordRequest.

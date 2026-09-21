@@ -37,6 +37,39 @@ async function openReservation(id: string): Promise<void> {
   router.push(`/account/reservations/${id}` as Href);
 }
 
+async function dismissActed(response: Notifications.NotificationResponse): Promise<void> {
+  const id = response.notification.request.identifier;
+  if (id) {
+    try {
+      await Notifications.dismissNotificationAsync(id);
+    } catch {
+      /* best-effort */
+    }
+  }
+}
+
+/** After en-route, replace the shade tip with the next step (Listo). */
+async function presentReadyPrompt(reservationId: string): Promise<void> {
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "En el punto",
+        body: "Marca Listo cuando llegues al intercambio",
+        categoryIdentifier: "exchange_ready",
+        data: {
+          type: "reservation.ready_prompt",
+          reservation_id: reservationId,
+        },
+        sound: "default",
+        ...(Platform.OS === "android" ? { channelId: "exchange" } : {}),
+      },
+      trigger: null,
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
 /**
  * Handle notification taps and action buttons.
  * Action identifiers: en_route | ready | unready | open (or default tap).
@@ -69,15 +102,19 @@ export async function handleNotificationResponse(
       if (Number.isFinite(lon) && Number.isFinite(lat)) {
         await armArrivalGeofence({ reservationId, lon, lat });
       }
+      await dismissActed(response);
+      await presentReadyPrompt(reservationId);
       return;
     }
     if (action === "ready") {
       await reservationReady(reservationId);
       await disarmArrivalGeofence();
+      await dismissActed(response);
       return;
     }
     if (action === "unready") {
       await reservationUnready(reservationId);
+      await dismissActed(response);
       return;
     }
     if (isDefault) {

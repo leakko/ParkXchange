@@ -865,6 +865,10 @@ export interface components {
             offer_id?: string;
             /** Format: uuid */
             driver_vehicle_id?: string;
+            /** @description Car occupying the spot (owner) — visible to both parties */
+            owner_vehicle?: components["schemas"]["VehicleSummary"];
+            /** @description Driver's car from the accepted offer — visible to both parties */
+            driver_vehicle?: components["schemas"]["VehicleSummary"];
             /** Format: date-time */
             exchange_at: string;
             /** Format: date-time */

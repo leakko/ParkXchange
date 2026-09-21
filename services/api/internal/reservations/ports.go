@@ -28,6 +28,11 @@ type Store interface {
 	DueCoachingTips(ctx context.Context, now time.Time) ([]Notification, error)
 	// MarkCoachingTipSent records a successful delivery so the tip is not retried.
 	MarkCoachingTipSent(ctx context.Context, n Notification, at time.Time) error
+
+	// VehicleSummaryByID loads plate/model/color for a reservation party.
+	VehicleSummaryByID(ctx context.Context, id string) (domain.VehicleSummary, error)
+	// SpotOwnerVehicleSummary loads the car linked to the reserved spot.
+	SpotOwnerVehicleSummary(ctx context.Context, spotID string) (domain.VehicleSummary, error)
 }
 
 // SweepResult is what one pass of the sweeper did, for logs and tests.
