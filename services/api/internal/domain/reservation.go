@@ -18,6 +18,14 @@ const OwnerSafetyNet = 60 * time.Minute
 // exchange_at releases the deposit; later than that forfeits to the owner.
 const DriverFairCancelWindow = 30 * time.Minute
 
+// CoachingWaitDelay is how long after a coaching-relevant state change before
+// the wait / back tips may fire.
+const CoachingWaitDelay = 1 * time.Minute
+
+// PreDepartureLead is how long before exchange_at the “avisa cuando salgas”
+// push may be sent.
+const PreDepartureLead = DriverFairCancelWindow
+
 // SignupGrantCents is credited to every new account so a first claim is
 // possible. A new user's balance is otherwise zero, and a hold against zero
 // can never succeed.

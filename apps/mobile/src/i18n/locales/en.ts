@@ -100,6 +100,12 @@ export const en: Record<TranslationKey, string> = {
   "account.nav.reservationDetail": "Reservation",
 
   "account.profile.language.section": "Language",
+  "account.profile.locationAssistance.section": "Exchange",
+  "account.profile.locationAssistance.title": "Location assistance",
+  "account.profile.locationAssistance.meta":
+    "After On my way, nudge me when I reach the spot (~30 m) to mark Ready",
+  "account.profile.locationAssistance.on": "On",
+  "account.profile.locationAssistance.off": "Off",
   "account.profile.language.es": "Español",
   "account.profile.language.en": "English",
   "account.profile.saved.title": "Saved",
@@ -234,6 +240,7 @@ export const en: Record<TranslationKey, string> = {
   "map.banner.spotCount": "{count} spots",
   "map.banner.exchangeActive": "Exchange · {datetime}",
   "map.banner.openExchange": "Open",
+  "map.banner.enRoute": "On my way",
   "map.banner.peer.ownerIdle": "The owner hasn't left for the meeting point yet",
   "map.banner.peer.ownerEnRoute": "The owner is already on the way",
   "map.banner.peer.ownerReady": "The owner is ready to leave",

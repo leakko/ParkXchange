@@ -320,6 +320,33 @@ paths:
         "401":
           $ref: "#/components/responses/Error"
 
+  /v1/me/push-token:
+    put:
+      tags: [auth]
+      operationId: putPushToken
+      summary: Register Expo push token for this device
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, platform]
+              properties:
+                token:
+                  type: string
+                  description: ExponentPushToken[...]
+                platform:
+                  type: string
+                  enum: [ios, android]
+      responses:
+        "204":
+          description: Token stored
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+
   /v1/me/password:
     post:
       tags: [auth]

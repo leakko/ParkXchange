@@ -173,6 +173,10 @@ func (f *fakeStore) CloseAccount(_ context.Context, userID string) error {
 	return nil
 }
 
+func (f *fakeStore) UpsertPushToken(context.Context, string, string, string) error {
+	return nil
+}
+
 // plainHasher stores the password itself so unit tests stay cheap.
 type plainHasher struct{}
 

@@ -156,6 +156,22 @@ func (a *API) handleMe(w http.ResponseWriter, r *http.Request) error {
 	return web.JSON(w, http.StatusOK, toUserResponse(user))
 }
 
+type putPushTokenRequest struct {
+	Token    string `json:"token"`
+	Platform string `json:"platform"`
+}
+
+func (a *API) handlePutPushToken(w http.ResponseWriter, r *http.Request) error {
+	var req putPushTokenRequest
+	if err := web.DecodeJSON(w, r, &req); err != nil {
+		return err
+	}
+	if err := a.accounts.RegisterPushToken(r.Context(), claimsFrom(r.Context()), req.Token, req.Platform); err != nil {
+		return err
+	}
+	return web.NoContent(w)
+}
+
 type updateMeRequest struct {
 	DisplayName *string `json:"display_name"`
 	Phone       *string `json:"phone"`

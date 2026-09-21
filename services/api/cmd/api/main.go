@@ -26,6 +26,7 @@ import (
 	"github.com/marco/parkxchange/services/api/internal/migrate"
 	"github.com/marco/parkxchange/services/api/internal/offers"
 	"github.com/marco/parkxchange/services/api/internal/postgres"
+	"github.com/marco/parkxchange/services/api/internal/push"
 	"github.com/marco/parkxchange/services/api/internal/realtime"
 	"github.com/marco/parkxchange/services/api/internal/reservations"
 	"github.com/marco/parkxchange/services/api/internal/spots"
@@ -101,7 +102,10 @@ func run() error {
 		return err
 	}
 
-	reservationsService := reservations.New(db)
+	reservationsService := reservations.NewWithNotifier(db, &push.Expo{
+		Tokens: db,
+		Log:    log,
+	}, log)
 	hub := realtime.NewHub(realtime.DefaultSendBuffer, cfg.LocationFuzzSecret)
 
 	events, err := db.ListenSpotEvents(ctx)

@@ -23,6 +23,10 @@ type Store interface {
 	ClearReady(ctx context.Context, id, actorID string) error
 	Cancel(ctx context.Context, id, actorID string, at time.Time) error
 	Sweep(ctx context.Context, now time.Time) (SweepResult, error)
+
+	// CoachingPass sends due pre-departure / wait / back tips and marks them sent.
+	// Returns notifications the use case should deliver via Notifier.
+	CoachingPass(ctx context.Context, now time.Time) ([]Notification, error)
 }
 
 // SweepResult is what one pass of the sweeper did, for logs and tests.
@@ -34,4 +38,6 @@ type SweepResult struct {
 	SafetyNetReleases   int
 	SafetyNetForfeits   int
 	ExpiredReservations int
+	// Notifications are terminal sweep events to push (best-effort after commit).
+	Notifications []Notification
 }

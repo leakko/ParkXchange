@@ -376,7 +376,12 @@ func (db *DB) MarkReady(ctx context.Context, id, actorID string, at time.Time) (
 	case driverID:
 		if driverReady == nil {
 			if _, err := tx.Exec(ctx, `
-				UPDATE reservations SET driver_ready_at = $2 WHERE id = $1
+				UPDATE reservations
+				   SET driver_ready_at = $2,
+				       coaching_lap_at = NULL,
+				       coaching_back_tip_sent_at = NULL,
+				       coaching_wait_tip_sent_at = NULL
+				 WHERE id = $1
 			`, id, at); err != nil {
 				return false, translate(err, "set driver ready")
 			}
@@ -478,7 +483,11 @@ func (db *DB) ClearReady(ctx context.Context, id, actorID string) error {
 			return domain.ErrConflict
 		}
 		t, err := tx.Exec(ctx, `
-			UPDATE reservations SET driver_ready_at = NULL WHERE id = $1 AND driver_ready_at IS NOT NULL
+			UPDATE reservations
+			   SET driver_ready_at = NULL,
+			       coaching_lap_at = now(),
+			       coaching_back_tip_sent_at = NULL
+			 WHERE id = $1 AND driver_ready_at IS NOT NULL
 		`, id)
 		if err != nil {
 			return translate(err, "clear driver ready")
@@ -732,7 +741,9 @@ func (db *DB) Sweep(ctx context.Context, now time.Time) (reservations.SweepResul
 		return reservations.SweepResult{}, err
 	}
 
-	result.DriverNoShows, err = sweepReservations(ctx, tx, `
+	var n int
+	var notes []reservations.Notification
+	n, notes, err = sweepReservations(ctx, tx, `
 		r.owner_ready_at IS NOT NULL
 		AND r.driver_ready_at IS NULL
 		AND s.auto_cancel_no_show = true
@@ -742,7 +753,10 @@ func (db *DB) Sweep(ctx context.Context, now time.Time) (reservations.SweepResul
 	if err != nil {
 		return reservations.SweepResult{}, err
 	}
-	result.OwnerNoShows, err = sweepReservations(ctx, tx, `
+	result.DriverNoShows = n
+	result.Notifications = append(result.Notifications, notes...)
+
+	n, notes, err = sweepReservations(ctx, tx, `
 		r.driver_ready_at IS NOT NULL
 		AND r.owner_ready_at IS NULL
 		AND $1::timestamptz >= r.exchange_at
@@ -751,20 +765,28 @@ func (db *DB) Sweep(ctx context.Context, now time.Time) (reservations.SweepResul
 	if err != nil {
 		return reservations.SweepResult{}, err
 	}
-	result.SafetyNetForfeits, err = sweepReservations(ctx, tx, `
+	result.OwnerNoShows = n
+	result.Notifications = append(result.Notifications, notes...)
+
+	n, notes, err = sweepReservations(ctx, tx, `
 		r.owner_ready_at IS NOT NULL
 		AND $1::timestamptz > r.exchange_at + interval '60 minutes'
 	`, "safety_net_owner_ready", false, now)
 	if err != nil {
 		return reservations.SweepResult{}, err
 	}
-	result.SafetyNetReleases, err = sweepReservations(ctx, tx, `
+	result.SafetyNetForfeits = n
+	result.Notifications = append(result.Notifications, notes...)
+
+	n, notes, err = sweepReservations(ctx, tx, `
 		r.owner_ready_at IS NULL
 		AND $1::timestamptz > r.exchange_at + interval '60 minutes'
 	`, "safety_net", true, now)
 	if err != nil {
 		return reservations.SweepResult{}, err
 	}
+	result.SafetyNetReleases = n
+	result.Notifications = append(result.Notifications, notes...)
 	result.ExpiredReservations =
 		legacyExpired + result.DriverNoShows + result.OwnerNoShows +
 		result.SafetyNetReleases + result.SafetyNetForfeits
@@ -778,6 +800,7 @@ func (db *DB) Sweep(ctx context.Context, now time.Time) (reservations.SweepResul
 type sweptReservation struct {
 	id, spotID, driverID, ownerID string
 	price                         int
+	exchangeAt                    time.Time
 }
 
 func expireLegacyPending(ctx context.Context, tx pgx.Tx) (int, error) {
@@ -834,9 +857,9 @@ func sweepReservations(
 	predicate, reason string,
 	release bool,
 	now time.Time,
-) (int, error) {
+) (int, []reservations.Notification, error) {
 	rows, err := tx.Query(ctx, `
-		SELECT r.id, r.spot_id, r.driver_id, s.owner_id, r.price_cents
+		SELECT r.id, r.spot_id, r.driver_id, s.owner_id, r.price_cents, r.exchange_at
 		  FROM reservations r
 		  JOIN spots s ON s.id = r.spot_id
 		 WHERE r.status IN ('pending', 'confirmed', 'arrived')
@@ -844,52 +867,78 @@ func sweepReservations(
 		   FOR UPDATE OF r, s SKIP LOCKED
 	`, now)
 	if err != nil {
-		return 0, translate(err, "select reservation sweep candidates")
+		return 0, nil, translate(err, "select reservation sweep candidates")
 	}
 	var found []sweptReservation
 	for rows.Next() {
 		var row sweptReservation
 		if err := rows.Scan(
-			&row.id, &row.spotID, &row.driverID, &row.ownerID, &row.price,
+			&row.id, &row.spotID, &row.driverID, &row.ownerID, &row.price, &row.exchangeAt,
 		); err != nil {
 			rows.Close()
-			return 0, translate(err, "scan reservation sweep candidate")
+			return 0, nil, translate(err, "scan reservation sweep candidate")
 		}
 		found = append(found, row)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
-		return 0, translate(err, "stream reservation sweep candidates")
+		return 0, nil, translate(err, "stream reservation sweep candidates")
 	}
 	rows.Close()
 
+	var notes []reservations.Notification
+	eventType := sweepPushType(reason)
 	for _, row := range found {
 		if _, err := tx.Exec(ctx, `
 			UPDATE reservations
 			   SET status = 'cancelled', cancelled_at = now(), cancel_reason = $2
 			 WHERE id = $1
 		`, row.id, reason); err != nil {
-			return 0, translate(err, "cancel swept reservation")
+			return 0, nil, translate(err, "cancel swept reservation")
 		}
 		if _, err := tx.Exec(ctx, `
 			UPDATE spots SET status = 'cancelled'
 			 WHERE id = $1 AND status IN ('reserved', 'handover')
 		`, row.spotID); err != nil {
-			return 0, translate(err, "cancel swept spot")
+			return 0, nil, translate(err, "cancel swept spot")
 		}
-		if row.price == 0 {
-			continue
+		if row.price > 0 {
+			beneficiary, kind, memo := row.ownerID, domain.LedgerCredit, "forfeit: driver no-show"
+			if release {
+				beneficiary, kind, memo = row.driverID, domain.LedgerRelease, "deposit released: "+reason
+			}
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO ledger_entries (user_id, reservation_id, kind, amount_cents, memo)
+				VALUES ($1, $2, $3, $4, $5)
+			`, beneficiary, row.id, string(kind), domain.ReleaseCents(row.price), memo); err != nil {
+				return 0, nil, translate(err, "settle swept reservation")
+			}
 		}
-		beneficiary, kind, memo := row.ownerID, domain.LedgerCredit, "forfeit: driver no-show"
-		if release {
-			beneficiary, kind, memo = row.driverID, domain.LedgerRelease, "deposit released: "+reason
-		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO ledger_entries (user_id, reservation_id, kind, amount_cents, memo)
-			VALUES ($1, $2, $3, $4, $5)
-		`, beneficiary, row.id, string(kind), domain.ReleaseCents(row.price), memo); err != nil {
-			return 0, translate(err, "settle swept reservation")
+		if eventType != "" {
+			base := reservations.Notification{
+				Type: eventType, ReservationID: row.id,
+				ExchangeAt: row.exchangeAt, Actions: []string{"open"}, Urgent: true,
+			}
+			ownerNote, driverNote := base, base
+			ownerNote.RecipientID = row.ownerID
+			driverNote.RecipientID = row.driverID
+			notes = append(notes, ownerNote, driverNote)
 		}
 	}
-	return len(found), nil
+	return len(found), notes, nil
+}
+
+func sweepPushType(reason string) string {
+	switch reason {
+	case "driver_no_show":
+		return reservations.EventDriverNoShow
+	case "owner_no_show":
+		return reservations.EventOwnerNoShow
+	case "safety_net":
+		return reservations.EventSafetyNet
+	case "safety_net_owner_ready":
+		return reservations.EventSafetyNetOwnerReady
+	default:
+		return ""
+	}
 }

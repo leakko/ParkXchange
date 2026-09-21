@@ -21,26 +21,29 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** account deletion (GDPR erase) — implemented on `main`
-  (migration 00013, `DELETE /v1/me`, mobile confirm button, privacy/terms copy).
-  `task api:test` green after migrate.
-- **Also open:** spot-exchange matrix UX on `feature/spot-exchange-handshake`
-  (may need rebase onto main).
-- **Also open:** marketing site on **`park-xchange.com`** — GitHub Pages green;
-  confirm apex DNS + HTTPS + OAuth consent URLs if not done yet.
-- **Last updated:** 2026-09-20
+- **Phase in progress:** exchange push coaching — code on `main` working tree
+  (migration `00014_device_push_tokens`, Expo notifier, coaching sweeper,
+  mobile register/actions/banner/geofence/settings). Needs `task db:up` + migrate
+  + device smoke (Docker was down when verifying).
+- **Also open:** account deletion smoke on device; marketing DNS/OAuth if needed.
+- **Last updated:** 2026-09-21
 - **Phases complete:** 12 of 12 (MVP) + post-MVP handshake + email verify soft-gate
   + account deletion (code complete; mobile smoke optional)
 - **Blockers:** Play Console identity verification still pending for public
-  listing; payments deferred until after email gate.
+  listing; payments deferred until after email gate. Docker Desktop required
+  for `task api:test` integration suite.
 
 ---
 
 ## Next immediate step
 
-Smoke-test account deletion on a device/emulator: Account → Delete account →
-confirm → session cleared; re-login with same email fails. Redeploy API with
-migration 00013 before production.
+1. Start Docker → `task db:up` → migrate (includes `00014`) → `task api:test`.
+2. Redeploy API with migration 00014.
+3. On two devices: sign in, accept notif permission, run an exchange and
+   confirm peer push + action buttons + banner “Voy de camino” + optional
+   location assistance prompt at ~30 m.
+4. Spec:
+   [`docs/superpowers/specs/2026-09-21-exchange-push-coaching-design.md`](docs/superpowers/specs/2026-09-21-exchange-push-coaching-design.md).
 
 Optional: DNS/OAuth for `park-xchange.com` if still incomplete
 (`apps/web/README.md`).

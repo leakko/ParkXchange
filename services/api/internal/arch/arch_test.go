@@ -49,6 +49,7 @@ const (
 	pkgMigrate      = "internal/migrate"
 	pkgMailer       = "internal/mailer"
 	pkgGoogleAuth   = "internal/googleauth"
+	pkgPush         = "internal/push"
 )
 
 // rule is what one package is permitted to depend on.
@@ -129,6 +130,12 @@ var rules = map[string]rule{
 	pkgMailer: {
 		why: "mailer is an email delivery adapter for account use cases",
 		packages: []string{pkgDomain, pkgAccounts},
+	},
+
+	pkgPush: {
+		why: "push is an Expo delivery adapter for reservation notifications",
+		packages:   []string{pkgDomain, pkgReservations},
+		thirdParty: []string{},
 	},
 
 	pkgGoogleAuth: {

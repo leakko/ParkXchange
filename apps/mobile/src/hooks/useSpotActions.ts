@@ -18,6 +18,7 @@ import {
 import { useTranslation } from "@/i18n";
 import { distanceMeters } from "@/map/exchange";
 import { detectExchangeNotif } from "@/map/exchangeNotifs";
+import { armArrivalGeofence, disarmArrivalGeofence } from "@/push/geofence";
 
 function isLiveStatus(status: string | undefined): boolean {
   return status === "pending" || status === "confirmed" || status === "arrived";
@@ -219,6 +220,14 @@ export function useActiveReservation(enabled: boolean) {
           return;
         }
         await reservationEnRoute(current.id);
+        if (spot?.geometry?.coordinates) {
+          const [lon, lat] = spot.geometry.coordinates;
+          await armArrivalGeofence({
+            reservationId: current.id,
+            lon: Number(lon),
+            lat: Number(lat),
+          });
+        }
       }),
     markReady: () =>
       run(async () => {
@@ -227,7 +236,7 @@ export function useActiveReservation(enabled: boolean) {
           return;
         }
         await reservationReady(current.id);
-        // Completed toast comes from refresh → detectExchangeNotif.
+        await disarmArrivalGeofence();
       }),
     clearReady: () =>
       run(async () => {

@@ -93,6 +93,9 @@ type Store interface {
 	// personal data, wipes tokens, and tombstones the user in one transaction.
 	// Reports domain.ErrNoRows when the account is missing or already closed.
 	CloseAccount(ctx context.Context, userID string) error
+
+	// UpsertPushToken registers an Expo push token for the user.
+	UpsertPushToken(ctx context.Context, userID, token, platform string) error
 }
 
 // GoogleIdentity is what a verified ID token asserts about the Google account.

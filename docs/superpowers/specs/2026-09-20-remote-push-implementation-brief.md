@@ -1,6 +1,9 @@
 # Brief: implementar push remoto (Expo)
 
-Status: ready for a future implementation session  
+Status: ready for a future implementation session — **product rules for coaching /
+actions / geofence:** see
+[2026-09-21-exchange-push-coaching-design.md](./2026-09-21-exchange-push-coaching-design.md)
+(this brief remains the Expo/token/adapter checklist).  
 Depends on: handshake + matriz de notifs ya definidas  
 Source of truth (copy / cuándo / a quién):
 [2029-09-20-spot-exchange-refinment.md](./2029-09-20-spot-exchange-refinment.md)  

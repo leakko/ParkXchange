@@ -98,6 +98,12 @@ export const es = {
   "account.nav.reservationDetail": "Reserva",
 
   "account.profile.language.section": "Idioma",
+  "account.profile.locationAssistance.section": "Intercambio",
+  "account.profile.locationAssistance.title": "Asistencia por ubicación",
+  "account.profile.locationAssistance.meta":
+    "Al marcar Voy de camino, avísame al llegar al punto (~30 m) para marcar Listo",
+  "account.profile.locationAssistance.on": "Activada",
+  "account.profile.locationAssistance.off": "Desactivada",
   "account.profile.language.es": "Español",
   "account.profile.language.en": "English",
   "account.profile.saved.title": "Guardado",
@@ -232,6 +238,7 @@ export const es = {
   "map.banner.spotCount": "{count} plazas",
   "map.banner.exchangeActive": "Intercambio · {datetime}",
   "map.banner.openExchange": "Abrir",
+  "map.banner.enRoute": "Voy de camino",
   "map.banner.peer.ownerIdle": "El dueño aún no ha salido al punto de encuentro",
   "map.banner.peer.ownerEnRoute": "El dueño ya va de camino",
   "map.banner.peer.ownerReady": "El dueño está listo para salir",

@@ -562,6 +562,25 @@ func (s *Service) DeleteAccount(ctx context.Context, viewer domain.Claims) error
 	return nil
 }
 
+// RegisterPushToken upserts an Expo push token for the caller.
+func (s *Service) RegisterPushToken(ctx context.Context, viewer domain.Claims, token, platform string) error {
+	if !viewer.Authenticated() {
+		return domain.Unauthenticated("unauthorized", "an access token is required")
+	}
+	token = strings.TrimSpace(token)
+	platform = strings.ToLower(strings.TrimSpace(platform))
+	if token == "" {
+		return domain.Invalid("token_required", "a push token is required")
+	}
+	if platform != "ios" && platform != "android" {
+		return domain.Invalid("platform_invalid", "platform must be ios or android")
+	}
+	if err := s.store.UpsertPushToken(ctx, viewer.UserID, token, platform); err != nil {
+		return domain.Internal(err)
+	}
+	return nil
+}
+
 // UpdateDisplayName changes the signed-in user's public name.
 func (s *Service) UpdateDisplayName(ctx context.Context, viewer domain.Claims, displayName string) (domain.User, error) {
 	if !viewer.Authenticated() {

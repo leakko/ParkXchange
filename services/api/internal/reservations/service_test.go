@@ -51,6 +51,9 @@ func (f *fakeStore) Cancel(_ context.Context, _, _ string, _ time.Time) error {
 func (f *fakeStore) Sweep(context.Context, time.Time) (reservations.SweepResult, error) {
 	return reservations.SweepResult{}, nil
 }
+func (f *fakeStore) CoachingPass(context.Context, time.Time) ([]reservations.Notification, error) {
+	return nil, nil
+}
 
 func TestReadyCompletesWhenStoreSaysSo(t *testing.T) {
 	t.Parallel()

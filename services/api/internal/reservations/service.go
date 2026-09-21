@@ -3,6 +3,7 @@ package reservations
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/marco/parkxchange/services/api/internal/domain"
@@ -10,18 +11,40 @@ import (
 
 // Service carries out the reservation use cases.
 type Service struct {
-	store Store
-	now   func() time.Time
+	store    Store
+	notifier Notifier
+	log      *slog.Logger
+	now      func() time.Time
 }
 
-// New builds the service.
+// New builds the service without push (tests / legacy).
 func New(store Store) *Service {
-	return &Service{store: store, now: time.Now}
+	return NewWithNotifier(store, NopNotifier{}, nil)
 }
 
-// NewWithClock builds the service with an explicit clock.
+// NewWithNotifier builds the service with best-effort push delivery.
+func NewWithNotifier(store Store, notifier Notifier, log *slog.Logger) *Service {
+	if notifier == nil {
+		notifier = NopNotifier{}
+	}
+	return &Service{store: store, notifier: notifier, log: log, now: time.Now}
+}
+
+// NewWithClock builds the service with an explicit clock (tests).
 func NewWithClock(store Store, now func() time.Time) *Service {
-	return &Service{store: store, now: now}
+	s := New(store)
+	s.now = now
+	return s
+}
+
+func (s *Service) push(ctx context.Context, n Notification) {
+	if err := s.notifier.Notify(ctx, n); err != nil && s.log != nil {
+		s.log.Warn("push notify failed",
+			slog.String("type", n.Type),
+			slog.String("reservation_id", n.ReservationID),
+			slog.Any("err", err),
+		)
+	}
 }
 
 // Claim reserves a spot for the caller.
@@ -140,10 +163,33 @@ func (s *Service) EnRoute(ctx context.Context, id string, viewer domain.Claims) 
 	if !res.Status.Live() {
 		return domain.Conflict("reservation_not_live", "that reservation is already resolved")
 	}
+
+	already := false
+	if viewer.UserID == res.OwnerID {
+		already = res.OwnerEnRouteAt != nil
+	} else {
+		already = res.DriverEnRouteAt != nil
+	}
+
 	if err := s.store.MarkEnRoute(ctx, id, viewer.UserID, s.now()); err != nil {
 		return reservationConflict(err, "en_route_not_allowed",
 			"en-route cannot be recorded for that reservation")
 	}
+	if already {
+		return nil
+	}
+
+	peer := res.DriverID
+	typ := EventOwnerEnRoute
+	if viewer.UserID == res.DriverID {
+		peer = res.OwnerID
+		typ = EventDriverEnRoute
+	}
+	s.push(ctx, Notification{
+		Type: typ, ReservationID: res.ID, RecipientID: peer,
+		ExchangeAt: res.ExchangeAt, Actions: []string{"open"},
+		Urgent: !s.now().Before(res.ExchangeAt),
+	})
 	return nil
 }
 
@@ -157,12 +203,45 @@ func (s *Service) Ready(ctx context.Context, id string, viewer domain.Claims) (b
 	if !res.Status.Live() {
 		return false, domain.Conflict("reservation_not_live", "that reservation is already resolved")
 	}
+
+	wasOwnerReady := res.OwnerReadyAt != nil
+	wasDriverReady := res.DriverReadyAt != nil
+	already := (viewer.UserID == res.OwnerID && wasOwnerReady) ||
+		(viewer.UserID == res.DriverID && wasDriverReady)
+
 	completed, err := s.store.MarkReady(ctx, id, viewer.UserID, s.now())
 	if err != nil {
 		return false, reservationConflict(err, "ready_not_allowed",
 			"ready cannot be recorded for that reservation")
 	}
-	return completed, nil
+
+	if completed {
+		s.push(ctx, Notification{
+			Type: EventCompleted, ReservationID: res.ID, RecipientID: res.OwnerID,
+			ExchangeAt: res.ExchangeAt, Actions: []string{"open"}, Urgent: true,
+		})
+		s.push(ctx, Notification{
+			Type: EventCompleted, ReservationID: res.ID, RecipientID: res.DriverID,
+			ExchangeAt: res.ExchangeAt, Actions: []string{"open"}, Urgent: true,
+		})
+		return true, nil
+	}
+	if already {
+		return false, nil
+	}
+
+	peer := res.DriverID
+	typ := EventOwnerReady
+	if viewer.UserID == res.DriverID {
+		peer = res.OwnerID
+		typ = EventDriverReady
+	}
+	urgent := !s.now().Before(res.ExchangeAt)
+	s.push(ctx, Notification{
+		Type: typ, ReservationID: res.ID, RecipientID: peer,
+		ExchangeAt: res.ExchangeAt, Actions: []string{"ready", "open"}, Urgent: urgent,
+	})
+	return false, nil
 }
 
 // Unready retracts the caller's ready signal.
@@ -178,6 +257,17 @@ func (s *Service) Unready(ctx context.Context, id string, viewer domain.Claims) 
 		return reservationConflict(err, "unready_not_allowed",
 			"ready cannot be cleared for that reservation")
 	}
+
+	peer := res.DriverID
+	typ := EventOwnerUnready
+	if viewer.UserID == res.DriverID {
+		peer = res.OwnerID
+		typ = EventDriverUnready
+	}
+	s.push(ctx, Notification{
+		Type: typ, ReservationID: res.ID, RecipientID: peer,
+		ExchangeAt: res.ExchangeAt, Actions: []string{"open"},
+	})
 	return nil
 }
 
@@ -195,6 +285,17 @@ func (s *Service) Cancel(ctx context.Context, id string, viewer domain.Claims) e
 		return reservationConflict(err, "reservation_not_cancellable",
 			"that reservation can no longer be cancelled")
 	}
+
+	peer := res.DriverID
+	typ := EventCancelledByOwner
+	if viewer.UserID == res.DriverID {
+		peer = res.OwnerID
+		typ = EventCancelledByDriver
+	}
+	s.push(ctx, Notification{
+		Type: typ, ReservationID: res.ID, RecipientID: peer,
+		ExchangeAt: res.ExchangeAt, Actions: []string{"open"}, Urgent: true,
+	})
 	return nil
 }
 
@@ -248,11 +349,25 @@ func reservationConflict(err error, code, message string) error {
 	return domain.Internal(err)
 }
 
-// Sweep expires what has run out.
+// Sweep expires what has run out, then delivers due coaching tips.
 func (s *Service) Sweep(ctx context.Context) (SweepResult, error) {
 	result, err := s.store.Sweep(ctx, s.now())
 	if err != nil {
 		return SweepResult{}, domain.Internal(err)
+	}
+	for _, n := range result.Notifications {
+		s.push(ctx, n)
+	}
+
+	tips, tipErr := s.store.CoachingPass(ctx, s.now())
+	if tipErr != nil {
+		if s.log != nil {
+			s.log.Warn("coaching pass failed", slog.Any("err", tipErr))
+		}
+		return result, nil
+	}
+	for _, n := range tips {
+		s.push(ctx, n)
 	}
 	return result, nil
 }

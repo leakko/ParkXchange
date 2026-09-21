@@ -16,6 +16,11 @@ import { PasswordField } from "@/auth/PasswordField";
 import { normalizePhoneInput } from "@/auth/phone";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation, type AppLocale } from "@/i18n";
+import {
+  getLocationAssistanceEnabled,
+  setLocationAssistanceEnabled,
+} from "@/push/settings";
+import { disarmArrivalGeofence } from "@/push/geofence";
 
 export default function ProfileScreen() {
   const { t, locale, setLocale } = useTranslation();
@@ -32,6 +37,7 @@ export default function ProfileScreen() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [locationAssistance, setLocationAssistance] = useState(true);
 
   useEffect(() => {
     if (me.data) {
@@ -39,6 +45,10 @@ export default function ProfileScreen() {
       setPhone(me.data.phone ?? "");
     }
   }, [me.data]);
+
+  useEffect(() => {
+    void getLocationAssistanceEnabled().then(setLocationAssistance);
+  }, []);
 
   const saveName = useMutation({
     mutationFn: () => updateMe({ display_name: displayName.trim() }),
@@ -127,6 +137,35 @@ export default function ProfileScreen() {
           );
         })}
       </View>
+
+      <Text style={[accountStyles.sectionTitle, { marginTop: 24 }]}>
+        {t("account.profile.locationAssistance.section")}
+      </Text>
+      <Pressable
+        style={accountStyles.row}
+        onPress={() => {
+          const next = !locationAssistance;
+          setLocationAssistance(next);
+          void setLocationAssistanceEnabled(next);
+          if (!next) {
+            void disarmArrivalGeofence();
+          }
+        }}
+      >
+        <View style={{ flex: 1, paddingRight: 12 }}>
+          <Text style={accountStyles.rowTitle}>
+            {t("account.profile.locationAssistance.title")}
+          </Text>
+          <Text style={accountStyles.rowMeta}>
+            {t("account.profile.locationAssistance.meta")}
+          </Text>
+        </View>
+        <Text style={accountStyles.link}>
+          {locationAssistance
+            ? t("account.profile.locationAssistance.on")
+            : t("account.profile.locationAssistance.off")}
+        </Text>
+      </Pressable>
 
       <Text style={[accountStyles.sectionTitle, { marginTop: 24 }]}>
         {t("account.profile.displayName.section")}

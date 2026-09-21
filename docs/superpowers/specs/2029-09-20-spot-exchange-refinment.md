@@ -3,7 +3,9 @@
 Status: **approved-v2** — ventanas A–D × 2 roles; S10 locked (cancel dueño en B = release)  
 Supersedes (handshake order): el flujo driver-first del código actual (“I’m here” → “Salir ya”).  
 Aligned with: [2026-09-19-offer-based-exchange-design.md](./2026-09-19-offer-based-exchange-design.md) + S1–S9 de esta sesion.  
-Push remoto (fase aparte): [2026-09-20-remote-push-implementation-brief.md](./2026-09-20-remote-push-implementation-brief.md).
+Push remoto + coaching / acciones / geocerca asistida:
+[2026-09-21-exchange-push-coaching-design.md](./2026-09-21-exchange-push-coaching-design.md)
+(infra Expo: [2026-09-20-remote-push-implementation-brief.md](./2026-09-20-remote-push-implementation-brief.md)).
 
 ---
 

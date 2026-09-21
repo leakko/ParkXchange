@@ -265,6 +265,19 @@ export async function getSpot(id: string): Promise<SpotFeature> {
   return (await res.json()) as SpotFeature;
 }
 
+export async function putPushToken(body: {
+  token: string;
+  platform: "ios" | "android";
+}): Promise<void> {
+  const res = await apiFetch("/v1/me/push-token", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+}
+
 export async function getMe(): Promise<UserResponse> {
   const res = await apiFetch("/v1/me");
   if (!res.ok) {

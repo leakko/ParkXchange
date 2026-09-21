@@ -222,6 +222,24 @@ func (e ViewportMessageType) Valid() bool {
 	}
 }
 
+// Defines values for PutPushTokenJSONBodyPlatform.
+const (
+	Android PutPushTokenJSONBodyPlatform = "android"
+	Ios     PutPushTokenJSONBodyPlatform = "ios"
+)
+
+// Valid indicates whether the value is a known member of the PutPushTokenJSONBodyPlatform enum.
+func (e PutPushTokenJSONBodyPlatform) Valid() bool {
+	switch e {
+	case Android:
+		return true
+	case Ios:
+		return true
+	default:
+		return false
+	}
+}
+
 // ChangePasswordRequest defines model for ChangePasswordRequest.
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"current_password"`
@@ -584,6 +602,17 @@ type OpenEmailVerificationParams struct {
 	Token string `form:"token" json:"token"`
 }
 
+// PutPushTokenJSONBody defines parameters for PutPushToken.
+type PutPushTokenJSONBody struct {
+	Platform PutPushTokenJSONBodyPlatform `json:"platform"`
+
+	// Token ExponentPushToken[...]
+	Token string `json:"token"`
+}
+
+// PutPushTokenJSONBodyPlatform defines parameters for PutPushToken.
+type PutPushTokenJSONBodyPlatform string
+
 // ListSpotsParams defines parameters for ListSpots.
 type ListSpotsParams struct {
 	// Bbox minLon,minLat,maxLon,maxLat
@@ -632,6 +661,9 @@ type UpdateMeJSONRequestBody = UpdateMeRequest
 
 // ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
 type ChangePasswordJSONRequestBody = ChangePasswordRequest
+
+// PutPushTokenJSONRequestBody defines body for PutPushToken for application/json ContentType.
+type PutPushTokenJSONRequestBody PutPushTokenJSONBody
 
 // CreateSpotJSONRequestBody defines body for CreateSpot for application/json ContentType.
 type CreateSpotJSONRequestBody = CreateSpotRequest

@@ -902,6 +902,17 @@ export default function MapScreen() {
           >
             <Text style={styles.link}>{t("map.banner.openExchange")}</Text>
           </Pressable>
+          {!((isOwner && active.owner_en_route_at) ||
+            (isDriver && active.driver_en_route_at)) ? (
+            <Pressable
+              disabled={busy}
+              onPress={() => {
+                void markEnRoute();
+              }}
+            >
+              <Text style={styles.link}>{t("map.banner.enRoute")}</Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
       {announcePickMode ? (
