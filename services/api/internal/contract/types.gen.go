@@ -144,6 +144,24 @@ func (e SpotFeatureCollectionType) Valid() bool {
 	}
 }
 
+// Defines values for UpdateMeRequestLocale.
+const (
+	UpdateMeRequestLocaleEn UpdateMeRequestLocale = "en"
+	UpdateMeRequestLocaleEs UpdateMeRequestLocale = "es"
+)
+
+// Valid indicates whether the value is a known member of the UpdateMeRequestLocale enum.
+func (e UpdateMeRequestLocale) Valid() bool {
+	switch e {
+	case UpdateMeRequestLocaleEn:
+		return true
+	case UpdateMeRequestLocaleEs:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UpdateVehicleRequestSizeClass.
 const (
 	UpdateVehicleRequestSizeClassLarge  UpdateVehicleRequestSizeClass = "large"
@@ -159,6 +177,24 @@ func (e UpdateVehicleRequestSizeClass) Valid() bool {
 	case UpdateVehicleRequestSizeClassMedium:
 		return true
 	case UpdateVehicleRequestSizeClassSmall:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UserResponseLocale.
+const (
+	UserResponseLocaleEn UserResponseLocale = "en"
+	UserResponseLocaleEs UserResponseLocale = "es"
+)
+
+// Valid indicates whether the value is a known member of the UserResponseLocale enum.
+func (e UserResponseLocale) Valid() bool {
+	switch e {
+	case UserResponseLocaleEn:
+		return true
+	case UserResponseLocaleEs:
 		return true
 	default:
 		return false
@@ -483,9 +519,15 @@ type TicketResponse struct {
 type UpdateMeRequest struct {
 	DisplayName *string `json:"display_name,omitempty"`
 
+	// Locale Preferred UI and push notification language
+	Locale *UpdateMeRequestLocale `json:"locale,omitempty"`
+
 	// Phone E.164 phone, or empty string to clear
 	Phone *string `json:"phone,omitempty"`
 }
+
+// UpdateMeRequestLocale Preferred UI and push notification language
+type UpdateMeRequestLocale string
 
 // UpdateSpotRequest Partial edit of an available listing. Location, listing lifetime, and
 // spot size_class are not editable.
@@ -519,11 +561,17 @@ type UserResponse struct {
 	EmailVerified bool               `json:"email_verified"`
 	Id            openapi_types.UUID `json:"id"`
 
+	// Locale Preferred UI and push notification language
+	Locale UserResponseLocale `json:"locale"`
+
 	// Phone E.164 phone number of this account; empty when unset
 	Phone       string   `json:"phone"`
 	Rating      *float64 `json:"rating,omitempty"`
 	RatingCount int      `json:"rating_count"`
 }
+
+// UserResponseLocale Preferred UI and push notification language
+type UserResponseLocale string
 
 // VehicleResponse defines model for VehicleResponse.
 type VehicleResponse struct {

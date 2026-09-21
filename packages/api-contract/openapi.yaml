@@ -1113,7 +1113,7 @@ components:
 
     UserResponse:
       type: object
-      required: [id, email, display_name, phone, email_verified, rating_count, balance_cents]
+      required: [id, email, display_name, phone, locale, email_verified, rating_count, balance_cents]
       properties:
         id:
           type: string
@@ -1126,6 +1126,10 @@ components:
         phone:
           type: string
           description: E.164 phone number of this account; empty when unset
+        locale:
+          type: string
+          enum: [es, en]
+          description: Preferred UI and push notification language
         email_verified:
           type: boolean
           description: Whether the account may announce or reserve
@@ -1157,6 +1161,10 @@ components:
           type: string
           description: E.164 phone, or empty string to clear
           example: "+34600111222"
+        locale:
+          type: string
+          enum: [es, en]
+          description: Preferred UI and push notification language
 
     ChangePasswordRequest:
       type: object

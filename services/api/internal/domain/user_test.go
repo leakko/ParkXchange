@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/marco/parkxchange/services/api/internal/domain"
@@ -91,5 +92,30 @@ func TestNewUserAcceptsPhone(t *testing.T) {
 	}
 	if phone.String() != "+34600111222" {
 		t.Errorf("phone = %q", phone)
+	}
+}
+
+func TestParseLocaleAcceptsEsAndEn(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{"es", "en", " ES ", "EN"} {
+		got, err := domain.ParseLocale(raw)
+		if err != nil {
+			t.Fatalf("ParseLocale(%q): %v", raw, err)
+		}
+		want := strings.ToLower(strings.TrimSpace(raw))
+		if got.String() != want {
+			t.Errorf("ParseLocale(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+func TestParseLocaleRejectsUnsupported(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{"", "fr", "de", "es-ES", "english"} {
+		if _, err := domain.ParseLocale(raw); err == nil {
+			t.Errorf("ParseLocale(%q) succeeded, want error", raw)
+		}
 	}
 }

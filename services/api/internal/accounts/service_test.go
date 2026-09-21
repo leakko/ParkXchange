@@ -16,6 +16,7 @@ type fakeStore struct {
 	users map[string]domain.User
 
 	updatedDisplayName  string
+	updatedLocale       string
 	updatedPasswordHash string
 	revokedAllFor       string
 	closedAccountFor    string
@@ -125,6 +126,17 @@ func (f *fakeStore) UpdatePhone(_ context.Context, userID string, phone domain.P
 	}
 	u.Phone = phone
 	f.users[userID] = u
+	return u, nil
+}
+
+func (f *fakeStore) UpdateLocale(_ context.Context, userID string, locale domain.Locale) (domain.User, error) {
+	u, found := f.users[userID]
+	if !found {
+		return domain.User{}, domain.ErrNoRows
+	}
+	u.Locale = locale
+	f.users[userID] = u
+	f.updatedLocale = locale.String()
 	return u, nil
 }
 
@@ -407,5 +419,42 @@ func TestDeleteAccountMissingUser(t *testing.T) {
 	err := svc.DeleteAccount(context.Background(), domain.Claims{UserID: "missing"})
 	if domain.KindOf(err) != domain.KindUnauthenticated {
 		t.Errorf("kind = %v, want KindUnauthenticated", domain.KindOf(err))
+	}
+}
+
+func TestUpdateLocaleRejectsUnsupported(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	seededUser(store)
+	svc := newService(t, store)
+	viewer := domain.Claims{UserID: "user-1", Email: "marco@parkxchange.invalid"}
+
+	_, err := svc.UpdateLocale(context.Background(), viewer, "fr")
+	if domain.KindOf(err) != domain.KindInvalid {
+		t.Fatalf("kind = %v, want KindInvalid", domain.KindOf(err))
+	}
+	if store.updatedLocale != "" {
+		t.Error("store was updated despite invalid locale")
+	}
+}
+
+func TestUpdateLocalePersistsEnglish(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	seededUser(store)
+	svc := newService(t, store)
+	viewer := domain.Claims{UserID: "user-1", Email: "marco@parkxchange.invalid"}
+
+	got, err := svc.UpdateLocale(context.Background(), viewer, "en")
+	if err != nil {
+		t.Fatalf("UpdateLocale: %v", err)
+	}
+	if got.Locale.String() != "en" {
+		t.Errorf("Locale = %q, want en", got.Locale)
+	}
+	if store.updatedLocale != "en" {
+		t.Errorf("store got %q, want en", store.updatedLocale)
 	}
 }

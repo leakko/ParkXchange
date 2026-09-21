@@ -62,6 +62,10 @@ type Store interface {
 	// account.
 	UpdatePhone(ctx context.Context, userID string, phone domain.Phone) (domain.User, error)
 
+	// UpdateLocale sets the caller's preferred language (es|en) and returns
+	// the updated account.
+	UpdateLocale(ctx context.Context, userID string, locale domain.Locale) (domain.User, error)
+
 	// ChangePassword replaces the password hash and deletes every refresh
 	// token for the account in one transaction, so a crash cannot leave a
 	// new password with old sessions still valid (or the reverse).
