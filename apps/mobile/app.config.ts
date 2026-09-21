@@ -24,6 +24,7 @@ const config: ExpoConfig = {
   },
   android: {
     package: "com.parkxchange.mobile",
+    googleServicesFile: "./google-services.json",
     softwareKeyboardLayoutMode: "resize",
     adaptiveIcon: {
       backgroundColor: "#0B1F33",

@@ -36,6 +36,10 @@ apps/mobile/ios/
 !debug.keystore
 *.orig.*
 web-build/
+# Firebase Admin / FCM V1 private key — upload to EAS only, never commit.
+apps/mobile/google-service-account.json
+**/firebase-adminsdk*.json
+**/*-firebase-adminsdk-*.json
 
 # --- Task -------------------------------------------------------------------
 .task/
