@@ -44,7 +44,7 @@ func (e *Expo) Notify(ctx context.Context, n reservations.Notification) error {
 		return err
 	}
 	if len(tokens) == 0 {
-		return nil
+		return reservations.ErrPushNotDelivered
 	}
 
 	title, body := copyFor(n)
@@ -76,7 +76,7 @@ func (e *Expo) Notify(ctx context.Context, n reservations.Notification) error {
 		msgs = append(msgs, msg)
 	}
 	if len(msgs) == 0 {
-		return nil
+		return reservations.ErrPushNotDelivered
 	}
 	return e.send(ctx, msgs)
 }

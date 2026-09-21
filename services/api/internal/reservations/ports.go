@@ -24,9 +24,10 @@ type Store interface {
 	Cancel(ctx context.Context, id, actorID string, at time.Time) error
 	Sweep(ctx context.Context, now time.Time) (SweepResult, error)
 
-	// CoachingPass sends due pre-departure / wait / back tips and marks them sent.
-	// Returns notifications the use case should deliver via Notifier.
-	CoachingPass(ctx context.Context, now time.Time) ([]Notification, error)
+	// DueCoachingTips lists tips that are due; does not mark them sent.
+	DueCoachingTips(ctx context.Context, now time.Time) ([]Notification, error)
+	// MarkCoachingTipSent records a successful delivery so the tip is not retried.
+	MarkCoachingTipSent(ctx context.Context, n Notification, at time.Time) error
 }
 
 // SweepResult is what one pass of the sweeper did, for logs and tests.

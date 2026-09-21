@@ -38,7 +38,7 @@ func NewWithClock(store Store, now func() time.Time) *Service {
 }
 
 func (s *Service) push(ctx context.Context, n Notification) {
-	if err := s.notifier.Notify(ctx, n); err != nil && s.log != nil {
+	if err := s.notifier.Notify(ctx, n); err != nil && !errors.Is(err, ErrPushNotDelivered) && s.log != nil {
 		s.log.Warn("push notify failed",
 			slog.String("type", n.Type),
 			slog.String("reservation_id", n.ReservationID),
@@ -359,15 +359,30 @@ func (s *Service) Sweep(ctx context.Context) (SweepResult, error) {
 		s.push(ctx, n)
 	}
 
-	tips, tipErr := s.store.CoachingPass(ctx, s.now())
+	tips, tipErr := s.store.DueCoachingTips(ctx, s.now())
 	if tipErr != nil {
 		if s.log != nil {
-			s.log.Warn("coaching pass failed", slog.Any("err", tipErr))
+			s.log.Warn("coaching tips query failed", slog.Any("err", tipErr))
 		}
 		return result, nil
 	}
 	for _, n := range tips {
-		s.push(ctx, n)
+		if err := s.notifier.Notify(ctx, n); err != nil {
+			if s.log != nil {
+				s.log.Warn("coaching push not delivered",
+					slog.String("type", n.Type),
+					slog.String("reservation_id", n.ReservationID),
+					slog.Any("err", err),
+				)
+			}
+			continue
+		}
+		if err := s.store.MarkCoachingTipSent(ctx, n, s.now()); err != nil && s.log != nil {
+			s.log.Warn("coaching mark sent failed",
+				slog.String("reservation_id", n.ReservationID),
+				slog.Any("err", err),
+			)
+		}
 	}
 	return result, nil
 }

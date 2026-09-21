@@ -13,7 +13,11 @@ function projectId(): string | undefined {
   return extra?.eas?.projectId;
 }
 
-/** Ask permission (if needed) and register the Expo token with the API. */
+/**
+ * Ask permission (if needed) and register the Expo token with the API.
+ * Returns null when permission is denied, projectId is missing, or FCM is not
+ * configured for this Android build (getExpoPushTokenAsync throws).
+ */
 export async function registerPushToken(): Promise<string | null> {
   if (Platform.OS === "web") {
     return null;
@@ -26,6 +30,9 @@ export async function registerPushToken(): Promise<string | null> {
     status = asked.status;
   }
   if (status !== "granted") {
+    if (__DEV__) {
+      console.warn("[push] notification permission not granted");
+    }
     return null;
   }
 
@@ -44,12 +51,23 @@ export async function registerPushToken(): Promise<string | null> {
 
   const id = projectId();
   if (!id) {
+    if (__DEV__) {
+      console.warn("[push] missing EAS projectId");
+    }
     return null;
   }
 
-  const token = (
-    await Notifications.getExpoPushTokenAsync({ projectId: id })
-  ).data;
+  let token: string;
+  try {
+    token = (await Notifications.getExpoPushTokenAsync({ projectId: id })).data;
+  } catch (err) {
+    // Typical on Android when google-services.json / FCM V1 is not configured
+    // for the EAS credentials of this package.
+    if (__DEV__) {
+      console.warn("[push] getExpoPushTokenAsync failed", err);
+    }
+    return null;
+  }
 
   await putPushToken({
     token,

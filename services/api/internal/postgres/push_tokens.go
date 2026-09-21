@@ -58,29 +58,28 @@ func (db *DB) PushTokensByUser(ctx context.Context, userID string) ([]string, er
 	return out, translate(rows.Err(), "iterate push tokens")
 }
 
-// CoachingPass marks due coaching tips and returns notifications to send.
-func (db *DB) CoachingPass(ctx context.Context, now time.Time) ([]reservations.Notification, error) {
+// DueCoachingTips lists tips that are due without marking them sent.
+func (db *DB) DueCoachingTips(ctx context.Context, now time.Time) ([]reservations.Notification, error) {
 	var out []reservations.Notification
 
-	// Pre-departure: within [exchange_at - 30m, exchange_at) and party not en-route.
-	ownerDepart, err := db.claimDepartTips(ctx, now, true)
+	ownerDepart, err := db.listDepartTips(ctx, now, true)
 	if err != nil {
 		return nil, err
 	}
 	out = append(out, ownerDepart...)
-	driverDepart, err := db.claimDepartTips(ctx, now, false)
+	driverDepart, err := db.listDepartTips(ctx, now, false)
 	if err != nil {
 		return nil, err
 	}
 	out = append(out, driverDepart...)
 
-	wait, err := db.claimWaitTips(ctx, now)
+	wait, err := db.listWaitTips(ctx, now)
 	if err != nil {
 		return nil, err
 	}
 	out = append(out, wait...)
 
-	back, err := db.claimBackTips(ctx, now)
+	back, err := db.listBackTips(ctx, now)
 	if err != nil {
 		return nil, err
 	}
@@ -88,31 +87,54 @@ func (db *DB) CoachingPass(ctx context.Context, now time.Time) ([]reservations.N
 	return out, nil
 }
 
-func (db *DB) claimDepartTips(ctx context.Context, now time.Time, forOwner bool) ([]reservations.Notification, error) {
+// MarkCoachingTipSent stamps a tip after a successful Expo delivery.
+func (db *DB) MarkCoachingTipSent(ctx context.Context, n reservations.Notification, at time.Time) error {
+	var q string
+	switch n.CoachingMark {
+	case reservations.CoachingOwnerDepart:
+		q = `UPDATE reservations SET coaching_owner_depart_tip_sent_at = $2
+		      WHERE id = $1 AND coaching_owner_depart_tip_sent_at IS NULL`
+	case reservations.CoachingDriverDepart:
+		q = `UPDATE reservations SET coaching_driver_depart_tip_sent_at = $2
+		      WHERE id = $1 AND coaching_driver_depart_tip_sent_at IS NULL`
+	case reservations.CoachingWait:
+		q = `UPDATE reservations SET coaching_wait_tip_sent_at = $2
+		      WHERE id = $1 AND coaching_wait_tip_sent_at IS NULL`
+	case reservations.CoachingBack:
+		q = `UPDATE reservations SET coaching_back_tip_sent_at = $2
+		      WHERE id = $1 AND coaching_back_tip_sent_at IS NULL`
+	default:
+		return nil
+	}
+	_, err := db.Pool.Exec(ctx, q, n.ReservationID, at)
+	return translate(err, "mark coaching tip sent")
+}
+
+func (db *DB) listDepartTips(ctx context.Context, now time.Time, forOwner bool) ([]reservations.Notification, error) {
 	sentCol := "coaching_driver_depart_tip_sent_at"
 	enCol := "driver_en_route_at"
 	recipientExpr := "r.driver_id"
+	mark := reservations.CoachingDriverDepart
 	if forOwner {
 		sentCol = "coaching_owner_depart_tip_sent_at"
 		enCol = "owner_en_route_at"
 		recipientExpr = "s.owner_id"
+		mark = reservations.CoachingOwnerDepart
 	}
 
 	q := `
-		UPDATE reservations r
-		   SET ` + sentCol + ` = $1
-		  FROM spots s
-		 WHERE s.id = r.spot_id
-		   AND r.status IN ('confirmed', 'arrived', 'pending')
+		SELECT r.id, ` + recipientExpr + `, r.exchange_at
+		  FROM reservations r
+		  JOIN spots s ON s.id = r.spot_id
+		 WHERE r.status IN ('confirmed', 'arrived', 'pending')
 		   AND r.` + enCol + ` IS NULL
 		   AND r.` + sentCol + ` IS NULL
 		   AND $1 >= r.exchange_at - interval '30 minutes'
 		   AND $1 < r.exchange_at
-		RETURNING r.id, ` + recipientExpr + `, r.exchange_at
 	`
 	rows, err := db.Pool.Query(ctx, q, now)
 	if err != nil {
-		return nil, translate(err, "claim depart tips")
+		return nil, translate(err, "list depart tips")
 	}
 	defer rows.Close()
 	var out []reservations.Notification
@@ -125,25 +147,24 @@ func (db *DB) claimDepartTips(ctx context.Context, now time.Time, forOwner bool)
 		out = append(out, reservations.Notification{
 			Type: reservations.EventPreDeparture, ReservationID: id,
 			RecipientID: recipient, ExchangeAt: exchangeAt,
-			Actions: []string{"en_route", "open"},
+			Actions: []string{"en_route", "open"}, CoachingMark: mark,
 		})
 	}
 	return out, translate(rows.Err(), "iterate depart tips")
 }
 
-func (db *DB) claimWaitTips(ctx context.Context, now time.Time) ([]reservations.Notification, error) {
+func (db *DB) listWaitTips(ctx context.Context, now time.Time) ([]reservations.Notification, error) {
 	rows, err := db.Pool.Query(ctx, `
-		UPDATE reservations
-		   SET coaching_wait_tip_sent_at = $1
+		SELECT id, driver_id, exchange_at
+		  FROM reservations
 		 WHERE status IN ('confirmed', 'arrived')
 		   AND driver_ready_at IS NOT NULL
 		   AND owner_ready_at IS NULL
 		   AND coaching_wait_tip_sent_at IS NULL
 		   AND $1 >= driver_ready_at + interval '1 minute'
-		RETURNING id, driver_id, exchange_at
 	`, now)
 	if err != nil {
-		return nil, translate(err, "claim wait tips")
+		return nil, translate(err, "list wait tips")
 	}
 	defer rows.Close()
 	var out []reservations.Notification
@@ -156,26 +177,25 @@ func (db *DB) claimWaitTips(ctx context.Context, now time.Time) ([]reservations.
 		out = append(out, reservations.Notification{
 			Type: reservations.EventDriverWaitTip, ReservationID: id,
 			RecipientID: driverID, ExchangeAt: exchangeAt,
-			Actions: []string{"unready", "open"},
+			Actions: []string{"unready", "open"}, CoachingMark: reservations.CoachingWait,
 		})
 	}
 	return out, translate(rows.Err(), "iterate wait tips")
 }
 
-func (db *DB) claimBackTips(ctx context.Context, now time.Time) ([]reservations.Notification, error) {
+func (db *DB) listBackTips(ctx context.Context, now time.Time) ([]reservations.Notification, error) {
 	rows, err := db.Pool.Query(ctx, `
-		UPDATE reservations
-		   SET coaching_back_tip_sent_at = $1
+		SELECT id, driver_id, exchange_at
+		  FROM reservations
 		 WHERE status IN ('confirmed', 'arrived')
 		   AND driver_ready_at IS NULL
 		   AND owner_ready_at IS NULL
 		   AND coaching_lap_at IS NOT NULL
 		   AND coaching_back_tip_sent_at IS NULL
 		   AND $1 >= coaching_lap_at + interval '1 minute'
-		RETURNING id, driver_id, exchange_at
 	`, now)
 	if err != nil {
-		return nil, translate(err, "claim back tips")
+		return nil, translate(err, "list back tips")
 	}
 	defer rows.Close()
 	var out []reservations.Notification
@@ -188,7 +208,7 @@ func (db *DB) claimBackTips(ctx context.Context, now time.Time) ([]reservations.
 		out = append(out, reservations.Notification{
 			Type: reservations.EventDriverBackTip, ReservationID: id,
 			RecipientID: driverID, ExchangeAt: exchangeAt,
-			Actions: []string{"ready", "open"},
+			Actions: []string{"ready", "open"}, CoachingMark: reservations.CoachingBack,
 		})
 	}
 	return out, translate(rows.Err(), "iterate back tips")
