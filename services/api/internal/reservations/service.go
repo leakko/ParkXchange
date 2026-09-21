@@ -306,7 +306,7 @@ func (s *Service) Unready(ctx context.Context, id string, viewer domain.Claims) 
 		peerEnRoute = res.OwnerEnRouteAt != nil
 		peerReady = res.OwnerReadyAt != nil
 	}
-	peerActions := []string{"open"}
+	var peerActions []string
 	switch {
 	case peerReady:
 		peerActions = []string{"ready", "open"}
