@@ -114,7 +114,7 @@ func (e *Expo) send(ctx context.Context, msgs []expoMessage) error {
 	if err != nil {
 		return fmt.Errorf("push: send: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("push: expo status %d: %s", resp.StatusCode, truncate(string(body), 200))
