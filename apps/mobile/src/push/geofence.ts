@@ -75,7 +75,7 @@ export async function fireArrivalPrompt(reservationId: string): Promise<void> {
         type: "reservation.geofence_arrival",
         reservation_id: reservationId,
       },
-      sound: "default",
+      sound: true,
       ...(Platform.OS === "android" ? { channelId: "exchange-urgent" } : null),
     },
     trigger: null,

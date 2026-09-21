@@ -52,10 +52,16 @@ export async function registerPushToken(locale?: AppLocale): Promise<string | nu
   try {
     token = (await Notifications.getExpoPushTokenAsync({ projectId: id })).data;
   } catch (err) {
-    // Typical on Android when google-services.json / FCM V1 is not configured
-    // for the EAS credentials of this package.
-    if (__DEV__) {
-      console.warn("[push] getExpoPushTokenAsync failed", err);
+    // Typical on Android emulators / debug builds when FCM (FIS) is not wired
+    // for this signing key. Remote push needs a Play-services build (EAS APK);
+    // local notifs still work. Log once to avoid AppState spam.
+    if (__DEV__ && !(globalThis as { __pxPushTokenWarned?: boolean }).__pxPushTokenWarned) {
+      (globalThis as { __pxPushTokenWarned?: boolean }).__pxPushTokenWarned = true;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(
+        "[push] Expo push token unavailable (local notifs OK). Use EAS preview APK for remote push.",
+        msg.includes("FIS_AUTH") ? "FIS_AUTH_ERROR" : msg,
+      );
     }
     return null;
   }

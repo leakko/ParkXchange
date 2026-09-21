@@ -47,13 +47,12 @@ export async function ensureNotificationCategories(
     await Notifications.setNotificationChannelAsync("exchange", {
       name: copy.channelExchange,
       importance: Notifications.AndroidImportance.HIGH,
-      sound: "default",
+      // Omit sound — string "default" is treated as a custom asset name and errors.
       vibrationPattern: [0, 250, 250, 250],
     });
     await Notifications.setNotificationChannelAsync("exchange-urgent", {
       name: copy.channelUrgent,
       importance: Notifications.AndroidImportance.MAX,
-      sound: "default",
       vibrationPattern: [0, 250, 250, 250],
     });
   }
