@@ -40,6 +40,9 @@ web-build/
 apps/mobile/google-service-account.json
 **/firebase-adminsdk*.json
 **/*-firebase-adminsdk-*.json
+# Client config embeds a Google API key; keep out of the public git tree.
+# Still uploaded to EAS Build via apps/mobile/.easignore (not ignored there).
+apps/mobile/google-services.json
 
 # --- Task -------------------------------------------------------------------
 .task/

@@ -1,0 +1,15 @@
+# EAS upload ignore list (when this file exists, root .gitignore is not used
+# for the archive). Keep google-services.json included so preview/production
+# builds still get FCM client config without committing it to the public repo.
+node_modules/
+.expo/
+dist/
+web-build/
+android/
+ios/
+*.jks
+*.keystore
+!debug.keystore
+google-service-account.json
+*firebase-adminsdk*
+*-firebase-adminsdk-*
