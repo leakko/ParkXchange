@@ -2,7 +2,9 @@ import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
-import { putPushToken } from "@/api/client";
+import { putPushToken, updateMe } from "@/api/client";
+import { loadStoredLocale } from "@/i18n/storage";
+import type { AppLocale } from "@/i18n/resolveLocale";
 
 function projectId(): string | undefined {
   const eas = Constants.easConfig?.projectId;
@@ -17,8 +19,10 @@ function projectId(): string | undefined {
  * Ask permission (if needed) and register the Expo token with the API.
  * Returns null when permission is denied, projectId is missing, or FCM is not
  * configured for this Android build (getExpoPushTokenAsync throws).
+ *
+ * Also best-effort syncs the current app locale to users.locale.
  */
-export async function registerPushToken(): Promise<string | null> {
+export async function registerPushToken(locale?: AppLocale): Promise<string | null> {
   if (Platform.OS === "web") {
     return null;
   }
@@ -60,5 +64,13 @@ export async function registerPushToken(): Promise<string | null> {
     token,
     platform: Platform.OS === "ios" ? "ios" : "android",
   });
+
+  const loc = locale ?? (await loadStoredLocale()) ?? "es";
+  try {
+    await updateMe({ locale: loc });
+  } catch {
+    // Token register succeeded; locale sync is belt-and-suspenders.
+  }
+
   return token;
 }

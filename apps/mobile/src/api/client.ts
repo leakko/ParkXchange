@@ -289,6 +289,7 @@ export async function getMe(): Promise<UserResponse> {
 export async function updateMe(body: {
   display_name?: string;
   phone?: string;
+  locale?: "es" | "en";
 }): Promise<UserResponse> {
   const res = await apiFetch("/v1/me", {
     method: "PATCH",

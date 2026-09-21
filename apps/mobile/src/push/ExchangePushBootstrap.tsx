@@ -41,7 +41,7 @@ export function ExchangePushBootstrap() {
         return;
       }
       try {
-        await registerPushToken();
+        await registerPushToken(locale);
       } catch {
         /* best-effort */
       }
@@ -67,7 +67,7 @@ export function ExchangePushBootstrap() {
         // Re-register categories on foreground so Android action buttons stay
         // attached after OEM kills / before the next −30m tip arrives.
         void ensureNotificationCategories(locale).then(() =>
-          registerPushToken().catch(() => undefined),
+          registerPushToken(locale).catch(() => undefined),
         );
       }
     });
