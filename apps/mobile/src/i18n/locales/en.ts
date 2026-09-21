@@ -12,11 +12,13 @@ export const en: Record<TranslationKey, string> = {
 
   "map.search.placeholder": "Search places (e.g. Burger King)",
   "map.search.button": "Search",
-  "map.search.empty.title": "No results",
-  "map.search.empty.message": "Try another name or move the map to the area.",
-  "map.search.pickHint": "Tap a blue pin to pick that place",
+  "map.search.empty.title": "No results in this area",
+  "map.search.empty.message":
+    "Nothing nearby matches what you see on the map. Zoom or pan, then search again.",
+  "map.search.pickHint": "Tap a pin or a row in the list",
   "map.search.clear": "Clear search",
   "map.search.failed": "Search failed",
+  "map.search.resultsTitle": "{count} results in this area",
 
   "offline.title": "No connection",
   "offline.body": "You’re offline. Connect to the internet to use ParkXchange.",

@@ -10,11 +10,13 @@ export const es = {
 
   "map.search.placeholder": "Buscar sitio (p. ej. Burger King)",
   "map.search.button": "Buscar",
-  "map.search.empty.title": "Sin resultados",
-  "map.search.empty.message": "Prueba otro nombre o mueve el mapa a la zona.",
-  "map.search.pickHint": "Toca un pin azul para elegir ese sitio",
+  "map.search.empty.title": "Sin resultados en esta zona",
+  "map.search.empty.message":
+    "No hay coincidencias cerca de lo que ves en el mapa. Acerca o mueve el mapa y vuelve a buscar.",
+  "map.search.pickHint": "Toca un pin o una fila de la lista",
   "map.search.clear": "Limpiar búsqueda",
   "map.search.failed": "No se pudo buscar",
+  "map.search.resultsTitle": "{count} resultados en la zona",
 
   "offline.title": "Sin conexión",
   "offline.body": "No tienes internet. Conéctate para usar ParkXchange.",

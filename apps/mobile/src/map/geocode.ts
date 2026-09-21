@@ -41,6 +41,55 @@ const NOMINATIM_HEADERS = {
   "User-Agent": "ParkXchange/0.1 (local-dev)",
 };
 
+/** Grow a viewbox around its center (factor 1 = same, 2 = twice as wide/tall). */
+export function expandViewBox(box: ViewBox, factor: number): ViewBox {
+  const [west, south, east, north] = box;
+  const cx = (west + east) / 2;
+  const cy = (south + north) / 2;
+  const halfW = ((east - west) / 2) * Math.max(factor, 0.01);
+  const halfH = ((north - south) / 2) * Math.max(factor, 0.01);
+  return [cx - halfW, cy - halfH, cx + halfW, cy + halfH];
+}
+
+export function pointInViewBox(
+  lon: number,
+  lat: number,
+  box: ViewBox,
+): boolean {
+  const [west, south, east, north] = box;
+  return lon >= west && lon <= east && lat >= south && lat <= north;
+}
+
+export function filterHitsInViewBox(
+  hits: AddressSuggestion[],
+  box: ViewBox,
+): AddressSuggestion[] {
+  return hits.filter((h) => pointInViewBox(h.lon, h.lat, box));
+}
+
+/** Bounds that contain all hits (or null if empty). */
+export function boundsForHits(
+  hits: AddressSuggestion[],
+): ViewBox | null {
+  if (hits.length === 0) {
+    return null;
+  }
+  let west = Infinity;
+  let south = Infinity;
+  let east = -Infinity;
+  let north = -Infinity;
+  for (const h of hits) {
+    west = Math.min(west, h.lon);
+    south = Math.min(south, h.lat);
+    east = Math.max(east, h.lon);
+    north = Math.max(north, h.lat);
+  }
+  // Tiny pad so a single pin is not edge-clipped.
+  const padLon = Math.max((east - west) * 0.15, 0.002);
+  const padLat = Math.max((north - south) * 0.15, 0.002);
+  return [west - padLon, south - padLat, east + padLon, north + padLat];
+}
+
 function formatStreetLabel(hit: NominatimHit): string | null {
   const a = hit.address;
   if (!a) {
@@ -69,8 +118,9 @@ export function buildNominatimSearchParams(
   const params = new URLSearchParams({
     q: query,
     format: "json",
-    limit: String(opts.limit ?? 12),
+    limit: String(opts.limit ?? 20),
     addressdetails: "1",
+    dedupe: "1",
   });
   if (opts.viewbox) {
     const [west, south, east, north] = opts.viewbox;
@@ -116,8 +166,9 @@ async function fetchNominatim(
 }
 
 /**
- * Forward-geocode with viewport bias: bounded viewbox first, then same viewbox
- * unbounded, then global — so “Burger King” near the camera wins.
+ * Forward-geocode biased to the map viewport.
+ * When a viewbox is given we NEVER return far-away global hits (no Russia jump):
+ * expand the box stepwise and hard-filter coordinates.
  */
 export async function searchPlaces(
   query: string,
@@ -127,34 +178,39 @@ export async function searchPlaces(
   if (trimmed.length < 3) {
     return [];
   }
-  const limit = opts.limit ?? 12;
+  const limit = opts.limit ?? 20;
+  const viewbox = opts.viewbox;
 
-  if (opts.viewbox) {
-    const bounded = await fetchNominatim(
+  if (!viewbox) {
+    return fetchNominatim(buildNominatimSearchParams(trimmed, { limit }));
+  }
+
+  for (const factor of [1, 2, 4, 8]) {
+    const box = expandViewBox(viewbox, factor);
+    const raw = await fetchNominatim(
       buildNominatimSearchParams(trimmed, {
-        viewbox: opts.viewbox,
+        viewbox: box,
         bounded: true,
         limit,
       }),
     );
-    if (bounded.length > 0) {
-      return bounded;
-    }
-    const loose = await fetchNominatim(
-      buildNominatimSearchParams(trimmed, {
-        viewbox: opts.viewbox,
-        bounded: false,
-        limit,
-      }),
-    );
-    if (loose.length > 0) {
-      return loose;
+    const local = filterHitsInViewBox(raw, box);
+    if (local.length > 0) {
+      return local;
     }
   }
 
-  return fetchNominatim(
-    buildNominatimSearchParams(trimmed, { limit }),
+  // Nominatim “preference” (unbounded viewbox) can still leak distant hits —
+  // keep only those inside a generous expansion of the original camera.
+  const wide = expandViewBox(viewbox, 8);
+  const biased = await fetchNominatim(
+    buildNominatimSearchParams(trimmed, {
+      viewbox: wide,
+      bounded: false,
+      limit,
+    }),
   );
+  return filterHitsInViewBox(biased, wide);
 }
 
 /** @deprecated Prefer searchPlaces — kept for call sites during migration. */

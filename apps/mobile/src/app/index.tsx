@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -80,6 +81,7 @@ import {
   type AnnounceValues,
 } from "@/map/AnnounceModal";
 import {
+  boundsForHits,
   searchPlaces,
   type AddressSuggestion,
   type ViewBox,
@@ -664,8 +666,7 @@ export default function MapScreen() {
         setAnnounceLabel(hit.label);
         setAnnouncePickMode(false);
         setAnnounceOpen(true);
-        setSearchHits([]);
-        setSelectedSearchId(null);
+        // Keep hits so the user can re-pick if needed; clear only pick mode.
       }
     },
     [searchHits, announcePickMode],
@@ -678,8 +679,24 @@ export default function MapScreen() {
     }
     setSearchBusy(true);
     try {
+      // Live bounds — stale mapViewbox is why searches jumped continents.
+      let viewbox = mapViewbox;
+      try {
+        const bounds = await mapRef.current?.getBounds();
+        if (
+          bounds &&
+          bounds[2]! > bounds[0]! &&
+          bounds[3]! > bounds[1]!
+        ) {
+          viewbox = bounds as ViewBox;
+          setMapViewbox(viewbox);
+        }
+      } catch {
+        /* keep state */
+      }
+
       const hits = await searchPlaces(q, {
-        viewbox: mapViewbox ?? undefined,
+        viewbox: viewbox ?? undefined,
       });
       setSearchHits(hits);
       setSelectedSearchId(null);
@@ -688,14 +705,16 @@ export default function MapScreen() {
         return;
       }
       dispatchFollow({ type: "user_gesture" });
-      const first = hits[0]!;
-      cameraRef.current?.easeTo({
-        center: [first.lon, first.lat],
-        zoom: Math.max(userZoom, 14),
-        duration: 450,
-      });
+      const fit = boundsForHits(hits);
+      if (fit) {
+        const [west, south, east, north] = fit;
+        cameraRef.current?.fitBounds([west, south, east, north], {
+          padding: { top: 160, right: 48, bottom: 48, left: 48 },
+          duration: 450,
+        });
+      }
       if (hits.length === 1) {
-        setSelectedSearchId(first.id);
+        setSelectedSearchId(hits[0]!.id);
       }
     } catch {
       Alert.alert(t("map.search.failed"), t("common.error"));
@@ -990,27 +1009,101 @@ export default function MapScreen() {
       </MapView>
 
       {!ready ? (
-        <View style={styles.banner} pointerEvents="none">
+        <View
+          style={[styles.banner, { top: insets.top + 8 }]}
+          pointerEvents="none"
+        >
           <ActivityIndicator color="#F4F7FA" />
           <Text style={styles.bannerText}>{t("map.banner.checkingSession")}</Text>
         </View>
       ) : null}
       {ready && isLoading ? (
-        <View style={styles.banner} pointerEvents="none">
+        <View
+          style={[styles.banner, { top: insets.top + 8 }]}
+          pointerEvents="none"
+        >
           <ActivityIndicator color="#F4F7FA" />
           <Text style={styles.bannerText}>{t("map.banner.loadingSpots")}</Text>
         </View>
       ) : null}
-      {ready && !isLoading ? (
-        <View style={styles.banner} pointerEvents="none">
-          <Text style={styles.bannerText}>
-            {t("map.banner.spotCount", { count: collection.features.length })}
-          </Text>
+
+      <View style={[styles.topChrome, { top: insets.top + 8 }]}>
+        {ready && !isLoading ? (
+          <View style={styles.spotCountChip} pointerEvents="none">
+            <Text style={styles.bannerText}>
+              {t("map.banner.spotCount", { count: collection.features.length })}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.spotCountPlaceholder} />
+        )}
+        <View style={styles.searchBar}>
+          <TextInput
+            style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder={t("map.search.placeholder")}
+            placeholderTextColor="#7A93A0"
+            returnKeyType="search"
+            onSubmitEditing={() => void runMapSearch()}
+            editable={!searchBusy}
+          />
+          <Pressable
+            style={styles.searchBtn}
+            disabled={searchBusy}
+            onPress={() => void runMapSearch()}
+          >
+            {searchBusy ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.searchBtnText}>{t("map.search.button")}</Text>
+            )}
+          </Pressable>
+          {searchHits.length > 0 ? (
+            <Pressable
+              onPress={clearSearchHits}
+              accessibilityLabel={t("map.search.clear")}
+            >
+              <Ionicons name="close-circle" size={22} color="#9DB4C0" />
+            </Pressable>
+          ) : null}
         </View>
-      ) : null}
+        {searchHits.length > 0 ? (
+          <ScrollView
+            style={styles.searchResults}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+          >
+            <Text style={styles.searchResultsTitle}>
+              {t("map.search.resultsTitle", { count: searchHits.length })}
+            </Text>
+            {searchHits.map((hit) => {
+              const selected = hit.id === selectedSearchId;
+              return (
+                <Pressable
+                  key={hit.id}
+                  style={[
+                    styles.searchResultRow,
+                    selected ? styles.searchResultRowSelected : null,
+                  ]}
+                  onPress={() => onPressSearchHit(hit.id)}
+                >
+                  <Text
+                    style={styles.searchResultText}
+                    numberOfLines={2}
+                  >
+                    {hit.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        ) : null}
+      </View>
+
       {active ? (
         <Pressable
-          style={[styles.banner, styles.activeBanner]}
+          style={[styles.banner, styles.activeBanner, { top: insets.top + 118 }]}
           onPress={() => {
             if (activeSpot) {
               setSelected(activeSpot);
@@ -1060,7 +1153,13 @@ export default function MapScreen() {
         </Pressable>
       ) : null}
       {announcePickMode ? (
-        <View style={[styles.banner, styles.pickBanner]}>
+        <View
+          style={[
+            styles.banner,
+            styles.pickBanner,
+            { top: insets.top + (searchHits.length > 0 ? 280 : 118) },
+          ]}
+        >
           <Text style={styles.bannerText}>
             {searchHits.length > 0
               ? t("map.search.pickHint")
@@ -1077,48 +1176,15 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      <View
-        style={[
-          styles.searchBar,
-          { top: insets.top + 8 },
-        ]}
-      >
-        <TextInput
-          style={styles.searchInput}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder={t("map.search.placeholder")}
-          placeholderTextColor="#7A93A0"
-          returnKeyType="search"
-          onSubmitEditing={() => void runMapSearch()}
-          editable={!searchBusy}
-        />
-        <Pressable
-          style={styles.searchBtn}
-          disabled={searchBusy}
-          onPress={() => void runMapSearch()}
-        >
-          {searchBusy ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Text style={styles.searchBtnText}>{t("map.search.button")}</Text>
-          )}
-        </Pressable>
-        {searchHits.length > 0 ? (
-          <Pressable onPress={clearSearchHits} accessibilityLabel={t("map.search.clear")}>
-            <Ionicons name="close-circle" size={22} color="#9DB4C0" />
-          </Pressable>
-        ) : null}
-      </View>
       {error ? (
-        <View style={[styles.banner, { top: active ? 188 : 148 }]}>
+        <View style={[styles.banner, { top: insets.top + 118 }]}>
           <Text style={styles.bannerText}>
             {error instanceof Error ? error.message : t("map.banner.loadSpotsFailed")}
           </Text>
         </View>
       ) : null}
       {sessionError ? (
-        <View style={styles.banner}>
+        <View style={[styles.banner, { top: insets.top + 118 }]}>
           <Text style={styles.bannerText}>
             {t("map.banner.sessionError", { message: sessionError })}
           </Text>
@@ -1296,10 +1362,24 @@ export default function MapScreen() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  searchBar: {
+  topChrome: {
     position: "absolute",
     left: 12,
     right: 12,
+    zIndex: 20,
+    gap: 12,
+  },
+  spotCountChip: {
+    alignSelf: "center",
+    backgroundColor: "rgba(11,31,51,0.85)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  spotCountPlaceholder: {
+    height: 32,
+  },
+  searchBar: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -1307,7 +1387,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    zIndex: 20,
   },
   searchInput: {
     flex: 1,
@@ -1325,6 +1404,33 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   searchBtnText: { color: "#fff", fontWeight: "600", fontSize: 13 },
+  searchResults: {
+    maxHeight: 200,
+    backgroundColor: "rgba(11,31,51,0.94)",
+    borderRadius: 12,
+    paddingVertical: 6,
+  },
+  searchResultsTitle: {
+    color: "#9DB4C0",
+    fontSize: 12,
+    fontWeight: "600",
+    paddingHorizontal: 12,
+    paddingBottom: 4,
+  },
+  searchResultRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(157,180,192,0.25)",
+  },
+  searchResultRowSelected: {
+    backgroundColor: "rgba(0,187,249,0.18)",
+  },
+  searchResultText: {
+    color: "#F4F7FA",
+    fontSize: 14,
+    lineHeight: 18,
+  },
   banner: {
     position: "absolute",
     top: 108,
