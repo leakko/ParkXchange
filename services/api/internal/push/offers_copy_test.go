@@ -27,13 +27,9 @@ func TestOfferCopyForESAndEN(t *testing.T) {
 		if body == "" {
 			t.Fatalf("empty body for %s/%s", tc.event, tc.locale)
 		}
-		lower := body
-		if tc.locale == "en" {
-			// case-insensitive contains via simple check
-		}
 		found := false
-		for i := 0; i+len(tc.wantIn) <= len(lower); i++ {
-			if equalFoldASCII(lower[i:i+len(tc.wantIn)], tc.wantIn) {
+		for i := 0; i+len(tc.wantIn) <= len(body); i++ {
+			if equalFoldASCII(body[i:i+len(tc.wantIn)], tc.wantIn) {
 				found = true
 				break
 			}
