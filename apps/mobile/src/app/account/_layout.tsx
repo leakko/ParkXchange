@@ -15,6 +15,9 @@ export default function AccountLayout() {
         headerTitleStyle: { color: accountColors.text, fontWeight: "600" },
         headerShadowVisible: false,
         contentStyle: { backgroundColor: accountColors.bg },
+        animation: "slide_from_right",
+        // Avoid translucent card composites that let the previous screen bleed through.
+        freezeOnBlur: true,
       }}
     >
       <Stack.Screen name="index" options={{ title: t("account.nav.account") }} />

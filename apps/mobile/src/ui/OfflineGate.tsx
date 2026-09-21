@@ -66,7 +66,7 @@ export function OfflineGate({ children }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: "#0B1F33" },
   overlay: {
     ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(11, 31, 51, 0.72)",

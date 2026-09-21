@@ -10,6 +10,8 @@ export default function AuthLayout() {
         headerTintColor: accountColors.text,
         headerTitleStyle: { color: accountColors.text },
         contentStyle: { backgroundColor: accountColors.bg },
+        animation: "slide_from_right",
+        freezeOnBlur: true,
       }}
     >
       <Stack.Screen name="login" options={{ title: "Sign in" }} />
