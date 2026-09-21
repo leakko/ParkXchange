@@ -6,6 +6,18 @@ export const en: Record<TranslationKey, string> = {
   "common.error": "error",
   "common.ok": "OK",
 
+  "location.always.title": "Always-on location",
+  "location.always.message":
+    "To notify you when you arrive at the exchange with the app closed, choose “Allow all the time” on the next screen. That keeps arrival assistance working.",
+
+  "map.search.placeholder": "Search places (e.g. Burger King)",
+  "map.search.button": "Search",
+  "map.search.empty.title": "No results",
+  "map.search.empty.message": "Try another name or move the map to the area.",
+  "map.search.pickHint": "Tap a blue pin to pick that place",
+  "map.search.clear": "Clear search",
+  "map.search.failed": "Search failed",
+
   "offline.title": "No connection",
   "offline.body": "You’re offline. Connect to the internet to use ParkXchange.",
 
@@ -157,7 +169,7 @@ export const en: Record<TranslationKey, string> = {
   "account.spots.edit.saved.message": "Spot updated.",
   "account.spots.edit.saveFailed.title": "Save failed",
   "account.spots.offer.accepted.title": "Offer accepted",
-  "account.spots.offer.accepted.message": "The exchange is now reserved.",
+  "account.spots.offer.accepted.message": "Exchange agreed.",
   "account.spots.offer.updateFailed.title": "Could not update",
   "account.spots.notFound": "Spot not found",
   "account.spots.edit.notAvailable": "Only available spots can be edited (status: {status}).",

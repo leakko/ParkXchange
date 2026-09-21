@@ -17,6 +17,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type NativeSyntheticEvent,
 } from "react-native";
@@ -71,13 +72,20 @@ import {
 import { ExchangeLayers } from "@/map/ExchangeLayers";
 import { MySpotLayers } from "@/map/MySpotLayers";
 import { OfferedSpotLayers } from "@/map/OfferedSpotLayers";
+import { SearchPlaceLayers } from "@/map/SearchPlaceLayers";
 import { UncertaintyCircle } from "@/map/UncertaintyCircle";
 import { partitionMapSpots } from "@/map/partitionMapSpots";
 import {
   AnnounceModal,
   type AnnounceValues,
 } from "@/map/AnnounceModal";
+import {
+  searchPlaces,
+  type AddressSuggestion,
+  type ViewBox,
+} from "@/map/geocode";
 import { bannerNextStep, bannerPeerStatusKey } from "@/map/exchangeCopy";
+import { promptAlwaysLocationOnFirstOpen } from "@/push/locationPermissions";
 import { SpotLayers } from "@/map/SpotLayers";
 import { SpotSheet } from "@/map/SpotSheet";
 
@@ -125,11 +133,25 @@ export default function MapScreen() {
   );
   const [announceLabel, setAnnounceLabel] = useState<string | null>(null);
   const [announcePickMode, setAnnouncePickMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchHits, setSearchHits] = useState<AddressSuggestion[]>([]);
+  const [selectedSearchId, setSelectedSearchId] = useState<string | null>(null);
+  const [searchBusy, setSearchBusy] = useState(false);
+  const [mapViewbox, setMapViewbox] = useState<ViewBox | null>(null);
 
   const puckReady = locationComponentReady(
     follow.locationGranted,
     location.coords,
   );
+
+  useEffect(() => {
+    void (async () => {
+      await promptAlwaysLocationOnFirstOpen((key) => t(key as Parameters<typeof t>[0]));
+      await location.refresh();
+    })();
+    // Once on mount — t/location.refresh are stable enough for first-open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const requireSignIn = useCallback(
     (returnTo: string = "/") => {
@@ -549,6 +571,7 @@ export default function MapScreen() {
       from: timeWindow.from,
       to: timeWindow.to,
     });
+    setMapViewbox(bounds as ViewBox);
   }, [timeWindow.from, timeWindow.to]);
 
   const onRegionDidChange = useCallback(
@@ -616,6 +639,70 @@ export default function MapScreen() {
     },
     [announcePickMode, t],
   );
+
+  const clearSearchHits = useCallback(() => {
+    setSearchHits([]);
+    setSelectedSearchId(null);
+    setSearchQuery("");
+  }, []);
+
+  const onPressSearchHit = useCallback(
+    (id: string) => {
+      const hit = searchHits.find((h) => h.id === id);
+      if (!hit) {
+        return;
+      }
+      setSelectedSearchId(id);
+      dispatchFollow({ type: "user_gesture" });
+      cameraRef.current?.easeTo({
+        center: [hit.lon, hit.lat],
+        zoom: Math.max(userZoom, 15),
+        duration: 450,
+      });
+      if (announcePickMode) {
+        setAnnounceCoords([hit.lon, hit.lat]);
+        setAnnounceLabel(hit.label);
+        setAnnouncePickMode(false);
+        setAnnounceOpen(true);
+        setSearchHits([]);
+        setSelectedSearchId(null);
+      }
+    },
+    [searchHits, announcePickMode],
+  );
+
+  const runMapSearch = useCallback(async () => {
+    const q = searchQuery.trim();
+    if (q.length < 3) {
+      return;
+    }
+    setSearchBusy(true);
+    try {
+      const hits = await searchPlaces(q, {
+        viewbox: mapViewbox ?? undefined,
+      });
+      setSearchHits(hits);
+      setSelectedSearchId(null);
+      if (hits.length === 0) {
+        Alert.alert(t("map.search.empty.title"), t("map.search.empty.message"));
+        return;
+      }
+      dispatchFollow({ type: "user_gesture" });
+      const first = hits[0]!;
+      cameraRef.current?.easeTo({
+        center: [first.lon, first.lat],
+        zoom: Math.max(userZoom, 14),
+        duration: 450,
+      });
+      if (hits.length === 1) {
+        setSelectedSearchId(first.id);
+      }
+    } catch {
+      Alert.alert(t("map.search.failed"), t("common.error"));
+    } finally {
+      setSearchBusy(false);
+    }
+  }, [searchQuery, mapViewbox, t]);
 
   const onRecenter = useCallback(() => {
     dispatchFollow({ type: "recenter" });
@@ -862,7 +949,16 @@ export default function MapScreen() {
             ? { trackUserLocation: "default" as const }
             : {})}
         />
-        {puckReady ? <NativeUserLocation mode="default" /> : null}
+        {puckReady ? (
+          <NativeUserLocation key={location.puckEpoch} mode="default" />
+        ) : null}
+        {searchHits.length > 0 ? (
+          <SearchPlaceLayers
+            hits={searchHits}
+            selectedId={selectedSearchId}
+            onPressHit={onPressSearchHit}
+          />
+        ) : null}
         {spotsArmed ? (
           <SpotLayers data={spotData.others} onPressFeature={onPressFeature} />
         ) : null}
@@ -965,7 +1061,11 @@ export default function MapScreen() {
       ) : null}
       {announcePickMode ? (
         <View style={[styles.banner, styles.pickBanner]}>
-          <Text style={styles.bannerText}>{t("announce.location.pickHint")}</Text>
+          <Text style={styles.bannerText}>
+            {searchHits.length > 0
+              ? t("map.search.pickHint")
+              : t("announce.location.pickHint")}
+          </Text>
           <Pressable
             onPress={() => {
               setAnnouncePickMode(false);
@@ -976,8 +1076,42 @@ export default function MapScreen() {
           </Pressable>
         </View>
       ) : null}
+
+      <View
+        style={[
+          styles.searchBar,
+          { top: insets.top + 8 },
+        ]}
+      >
+        <TextInput
+          style={styles.searchInput}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder={t("map.search.placeholder")}
+          placeholderTextColor="#7A93A0"
+          returnKeyType="search"
+          onSubmitEditing={() => void runMapSearch()}
+          editable={!searchBusy}
+        />
+        <Pressable
+          style={styles.searchBtn}
+          disabled={searchBusy}
+          onPress={() => void runMapSearch()}
+        >
+          {searchBusy ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.searchBtnText}>{t("map.search.button")}</Text>
+          )}
+        </Pressable>
+        {searchHits.length > 0 ? (
+          <Pressable onPress={clearSearchHits} accessibilityLabel={t("map.search.clear")}>
+            <Ionicons name="close-circle" size={22} color="#9DB4C0" />
+          </Pressable>
+        ) : null}
+      </View>
       {error ? (
-        <View style={[styles.banner, { top: active ? 128 : 88 }]}>
+        <View style={[styles.banner, { top: active ? 188 : 148 }]}>
           <Text style={styles.bannerText}>
             {error instanceof Error ? error.message : t("map.banner.loadSpotsFailed")}
           </Text>
@@ -1139,6 +1273,7 @@ export default function MapScreen() {
         vehicles={announceVehicles}
         initialCoordinates={announceCoords}
         initialAddressLabel={announceLabel}
+        viewbox={mapViewbox}
         onCancel={() => {
           setAnnounceOpen(false);
           setAnnouncePickMode(false);
@@ -1149,6 +1284,10 @@ export default function MapScreen() {
           setAnnounceOpen(false);
           setAnnouncePickMode(true);
         }}
+        onSearchHits={(hits) => {
+          setSearchHits(hits);
+          setSelectedSearchId(null);
+        }}
         onSubmit={submitAnnouncement}
       />
     </View>
@@ -1157,9 +1296,38 @@ export default function MapScreen() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  searchBar: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(11,31,51,0.92)",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    zIndex: 20,
+  },
+  searchInput: {
+    flex: 1,
+    color: "#F4F7FA",
+    fontSize: 15,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  searchBtn: {
+    backgroundColor: "#E85D04",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minWidth: 72,
+    alignItems: "center",
+  },
+  searchBtnText: { color: "#fff", fontWeight: "600", fontSize: 13 },
   banner: {
     position: "absolute",
-    top: 48,
+    top: 108,
     alignSelf: "center",
     flexDirection: "row",
     gap: 8,
@@ -1170,7 +1338,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   activeBanner: {
-    top: 88,
+    top: 148,
     backgroundColor: "rgba(232,93,4,0.92)",
     maxWidth: "92%",
     borderRadius: 16,

@@ -11,13 +11,7 @@ import {
   armGeofenceForReservation,
   disarmArrivalGeofence,
 } from "@/push/geofence";
-
-type PushData = {
-  type?: string;
-  reservation_id?: string;
-  offer_id?: string;
-  spot_id?: string;
-};
+import { routeForPushData, type PushData } from "@/push/routePush";
 
 function dataOf(
   response: Notifications.NotificationResponse,
@@ -46,6 +40,13 @@ async function openReservation(id: string): Promise<void> {
   router.push(`/account/reservations/${id}` as Href);
 }
 
+async function openPushRoute(data: PushData): Promise<void> {
+  const href = routeForPushData(data);
+  if (href) {
+    router.push(href);
+  }
+}
+
 async function dismissActed(
   response: Notifications.NotificationResponse,
 ): Promise<void> {
@@ -72,7 +73,6 @@ export async function handleNotificationResponse(
     return;
   }
 
-  // Always clear the acted notification so it stops nagging.
   await dismissActed(response);
 
   const data = dataOf(response);
@@ -82,35 +82,28 @@ export async function handleNotificationResponse(
   const isDefault =
     action === Notifications.DEFAULT_ACTION_IDENTIFIER || action === "open";
 
-  if (!reservationId) {
-    if (data.spot_id) {
-      router.push("/" as Href);
-    }
-    return;
-  }
-
   try {
-    if (action === "en_route") {
+    if (reservationId && action === "en_route") {
       await reservationEnRoute(reservationId);
       await armGeofenceForReservation(reservationId);
       await openReservation(reservationId);
       return;
     }
-    if (action === "ready") {
+    if (reservationId && action === "ready") {
       await reservationReady(reservationId);
       await disarmArrivalGeofence();
       await openReservation(reservationId);
       return;
     }
-    if (action === "unready") {
+    if (reservationId && action === "unready") {
       await reservationUnready(reservationId);
       await openReservation(reservationId);
       return;
     }
     if (isDefault) {
-      await openReservation(reservationId);
+      await openPushRoute(data);
     }
   } catch {
-    await openReservation(reservationId);
+    await openPushRoute(data);
   }
 }

@@ -21,12 +21,11 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** cancel-notif actor fix + product terminology
-  (sin «dueño»/«conductor») + puntos firmados en reservas; push `main` + APK.
+- **Phase in progress:** map place-search pins + push deep links + always-GPS
+  onboarding (spec 2026-09-21-map-search-push-gps); mobile green locally.
 - **Also open:** Play Console identity verification; payments deferred.
 - **Last updated:** 2026-09-21
-- **Phases complete:** 12 of 12 (MVP) + post-MVP handshake + email verify soft-gate
-  + account deletion (code complete; mobile smoke optional) + exchange push coaching
+- **Phases complete:** 12 of 12 (MVP) + handshake + push coaching + cancel-actor fix
 - **Blockers:** Play Console identity verification still pending for public
   listing; payments deferred until after email gate.
 
@@ -34,9 +33,9 @@ If that test fails, fix the code, not the test.
 
 ## Next immediate step
 
-1. Deploy API after push to `main`; install preview APK.
-2. Device smoke: driver late-cancel → only peer gets cancel push/toast; signed points.
-3. Confirm GitHub Actions deploy + `curl …/healthz`.
+1. Push `main` + preview APK; smoke search pins, offer push → spot screen, always prompt.
+2. Confirm GitHub Actions deploy + `curl …/healthz`.
+3. Device check: GPS not stuck after Always grant.
 3. `eas build --profile preview --platform android` (NetInfo is native).
 4. Device smoke: locale EN push, offline overlay, safe area on cancel, push
    open+dismiss, single peer car, stack slides without white flash.

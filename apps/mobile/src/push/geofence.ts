@@ -124,7 +124,32 @@ export async function armArrivalGeofence(opts: {
 
   // Background geofencing needs "always" on Android 10+ / iOS.
   try {
-    await Location.requestBackgroundPermissionsAsync();
+    const { ensureAlwaysLocation, hasAlwaysLocation } = await import(
+      "@/push/locationPermissions"
+    );
+    const { loadStoredLocale } = await import("@/i18n/storage");
+    const locale = (await loadStoredLocale()) ?? "es";
+    // Minimal t: geofence arm may run without React i18n context.
+    const t = (key: string) => {
+      const es: Record<string, string> = {
+        "location.always.title": "Ubicación siempre activa",
+        "location.always.message":
+          "Para avisar cuando llegues al punto de intercambio con la app cerrada, elige «Permitir siempre» (o «Permitir todo el tiempo») en la siguiente pantalla.",
+        "common.ok": "Entendido",
+      };
+      const en: Record<string, string> = {
+        "location.always.title": "Always-on location",
+        "location.always.message":
+          "To ping you when you arrive at the exchange with the app closed, choose “Allow all the time” on the next screen.",
+        "common.ok": "Got it",
+      };
+      return (locale === "en" ? en : es)[key] ?? key;
+    };
+    if (!(await hasAlwaysLocation())) {
+      await ensureAlwaysLocation({ t, forceExplain: true });
+    } else {
+      await Location.requestBackgroundPermissionsAsync();
+    }
   } catch {
     /* foreground watch still helps while the app is open */
   }
@@ -136,7 +161,7 @@ export async function armArrivalGeofence(opts: {
   // Already inside the radius → prompt immediately.
   try {
     const here = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
+      accuracy: Location.Accuracy.High,
     });
     const d = distanceMeters(
       [here.coords.longitude, here.coords.latitude],
@@ -167,7 +192,7 @@ export async function armArrivalGeofence(opts: {
 
   watchSub = await Location.watchPositionAsync(
     {
-      accuracy: Location.Accuracy.Balanced,
+      accuracy: Location.Accuracy.High,
       distanceInterval: 10,
       timeInterval: 5_000,
     },

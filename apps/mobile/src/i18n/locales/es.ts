@@ -4,6 +4,18 @@ export const es = {
   "common.error": "error",
   "common.ok": "OK",
 
+  "location.always.title": "Ubicación siempre activa",
+  "location.always.message":
+    "Para avisar cuando llegues al punto de intercambio con la app cerrada, elige «Permitir siempre» (o «Permitir todo el tiempo») en la siguiente pantalla. Así la ayuda de llegada funciona bien.",
+
+  "map.search.placeholder": "Buscar sitio (p. ej. Burger King)",
+  "map.search.button": "Buscar",
+  "map.search.empty.title": "Sin resultados",
+  "map.search.empty.message": "Prueba otro nombre o mueve el mapa a la zona.",
+  "map.search.pickHint": "Toca un pin azul para elegir ese sitio",
+  "map.search.clear": "Limpiar búsqueda",
+  "map.search.failed": "No se pudo buscar",
+
   "offline.title": "Sin conexión",
   "offline.body": "No tienes internet. Conéctate para usar ParkXchange.",
 
@@ -155,7 +167,7 @@ export const es = {
   "account.spots.edit.saved.message": "Plaza actualizada.",
   "account.spots.edit.saveFailed.title": "Error al guardar",
   "account.spots.offer.accepted.title": "Oferta aceptada",
-  "account.spots.offer.accepted.message": "El intercambio ya está reservado.",
+  "account.spots.offer.accepted.message": "Intercambio acordado.",
   "account.spots.offer.updateFailed.title": "No se pudo actualizar",
   "account.spots.notFound": "Plaza no encontrada",
   "account.spots.edit.notAvailable": "Solo se pueden editar plazas disponibles (estado: {status}).",

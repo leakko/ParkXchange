@@ -1,6 +1,8 @@
 import * as Location from "expo-location";
 import { useCallback, useEffect, useState } from "react";
 
+import { getFreshPosition } from "@/push/locationPermissions";
+
 export type LonLat = [number, number];
 
 type MapLocation = {
@@ -9,7 +11,12 @@ type MapLocation = {
   granted: boolean;
   /** Latest `[lon, lat]` from GPS, if available. */
   coords: LonLat | null;
-  /** Fetch a fresh fix (ignores any cached California/emulator default). */
+  /**
+   * Bump when we want MapLibre's NativeUserLocation to remount (e.g. after
+   * upgrading to always / flushing a stale fused cache).
+   */
+  puckEpoch: number;
+  /** Fetch a fresh high-accuracy fix. */
   refresh: () => Promise<LonLat | null>;
 };
 
@@ -28,40 +35,36 @@ function sleep(ms: number): Promise<void> {
  * Requests foreground location for the map screen and keeps coords updated.
  * The live puck is still owned by MapLibre's NativeUserLocation.
  *
- * Warming Fused Location (last-known + current) before MapLibre mounts avoids
- * "Failed to obtain last location update" when LocationComponent starts cold.
- * Emulators often need a few retries before the first fix lands.
+ * Prefer high-accuracy / fresh timestamps so an upgrade to “always” does not
+ * leave the puck stuck on a stale fused last-known (e.g. home).
  */
 export function useMapLocation(): MapLocation {
   const [ready, setReady] = useState(false);
   const [granted, setGranted] = useState(false);
   const [coords, setCoords] = useState<LonLat | null>(null);
+  const [puckEpoch, setPuckEpoch] = useState(0);
 
-  const readFix = useCallback(
-    async (opts?: { fresh?: boolean }): Promise<LonLat | null> => {
-      try {
-        if (!opts?.fresh) {
-          // Touch last-known so Fused Location has a cache for MapLibre; do not
-          // trust it as the camera target (emulators often cache Mountain View).
-          await Location.getLastKnownPositionAsync();
-        }
-        const position = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        const next = toLonLat(position);
-        setCoords(next);
-        return next;
-      } catch {
+  const readFix = useCallback(async (): Promise<LonLat | null> => {
+    try {
+      const position = await getFreshPosition(Location.Accuracy.High);
+      if (!position) {
         return null;
       }
-    },
-    [],
-  );
+      const next = toLonLat(position);
+      setCoords(next);
+      return next;
+    } catch {
+      return null;
+    }
+  }, []);
 
-  const refresh = useCallback(
-    () => readFix({ fresh: true }),
-    [readFix],
-  );
+  const refresh = useCallback(async () => {
+    const next = await readFix();
+    if (next) {
+      setPuckEpoch((n) => n + 1);
+    }
+    return next;
+  }, [readFix]);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,8 +82,6 @@ export function useMapLocation(): MapLocation {
           return;
         }
         setGranted(true);
-        // Seed Fused Location before MapLibre's LocationComponent mounts; watch
-        // only when the provider is on so we do not throw on cold emulator start.
         if (!(await Location.hasServicesEnabledAsync())) {
           return;
         }
@@ -103,7 +104,7 @@ export function useMapLocation(): MapLocation {
 
         subscription = await Location.watchPositionAsync(
           {
-            accuracy: Location.Accuracy.Balanced,
+            accuracy: Location.Accuracy.High,
             distanceInterval: 5,
             timeInterval: 2000,
           },
@@ -124,5 +125,5 @@ export function useMapLocation(): MapLocation {
     };
   }, [readFix]);
 
-  return { ready, granted, coords, refresh };
+  return { ready, granted, coords, puckEpoch, refresh };
 }

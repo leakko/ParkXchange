@@ -16,7 +16,7 @@ import { AuthScroll } from "@/auth/AuthScroll";
 import { AuthTextInput } from "@/auth/AuthTextInput";
 import { useTranslation } from "@/i18n";
 import { parsePointsInput } from "@/i18n/formatPoints";
-import { reverseGeocode, searchAddresses, type AddressSuggestion } from "@/map/geocode";
+import { reverseGeocode, searchPlaces, type AddressSuggestion, type ViewBox } from "@/map/geocode";
 import { DateTimeField } from "@/ui/DateTimeField";
 
 export type AnnounceValues = {
@@ -35,9 +35,13 @@ type Props = {
   /** Pre-filled when opening from map pick / long-press. */
   initialCoordinates: [number, number] | null;
   initialAddressLabel: string | null;
+  /** Current map viewport for biased place search. */
+  viewbox?: ViewBox | null;
   onCancel: () => void;
   /** Hide the form so the user can tap the map, then reopen with coords. */
   onPickOnMap: () => void;
+  /** Show Nominatim hits as map pins and let the user pick one. */
+  onSearchHits?: (hits: AddressSuggestion[]) => void;
   onSubmit: (values: AnnounceValues) => Promise<void>;
 };
 
@@ -59,8 +63,10 @@ export function AnnounceModal({
   vehicles,
   initialCoordinates,
   initialAddressLabel,
+  viewbox = null,
   onCancel,
   onPickOnMap,
+  onSearchHits,
   onSubmit,
 }: Props) {
   const { t } = useTranslation();
@@ -155,13 +161,21 @@ export function AnnounceModal({
     }
     setSearching(true);
     try {
-      const hits = await searchAddresses(addressQuery);
+      const hits = await searchPlaces(addressQuery, {
+        viewbox: viewbox ?? undefined,
+      });
       setSuggestions(hits);
+      onSearchHits?.(hits);
       if (hits.length === 0) {
         Alert.alert(
           t("announce.location.searchEmpty.title"),
           t("announce.location.searchEmpty.message"),
         );
+      } else if (hits.length > 1 && onSearchHits) {
+        // Let the user compare pins on the map.
+        onPickOnMap();
+      } else if (hits.length === 1) {
+        await applySelection(hits[0]!.lon, hits[0]!.lat, hits[0]!.label);
       }
     } catch {
       Alert.alert(t("announce.location.searchFailed.title"), t("common.error"));
@@ -394,7 +408,7 @@ export function AnnounceModal({
 
                 {suggestions.map((s) => (
                   <Pressable
-                    key={`${s.lon},${s.lat},${s.label}`}
+                    key={s.id}
                     style={styles.option}
                     onPress={() => {
                       void applySelection(s.lon, s.lat, s.label);
