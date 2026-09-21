@@ -17,6 +17,9 @@ const codeToKey: Record<string, TranslationKey> = {
   phone_invalid: "announce.error.phoneInvalid",
   email_unverified: "auth.verify.required",
   resend_too_soon: "auth.verify.resendTooSoon",
+  vehicle_in_use: "account.vehicles.deleteFailed.inUse",
+  vehicle_has_pending_offer: "account.vehicles.deleteFailed.pendingOffer",
+  vehicle_in_live_reservation: "account.vehicles.deleteFailed.liveReservation",
 };
 
 export function apiErrorMessage(

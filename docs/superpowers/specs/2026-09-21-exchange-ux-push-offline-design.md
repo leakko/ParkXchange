@@ -32,26 +32,42 @@ Android preview APK.
 | Push language source | **B:** in-app language preference (`users.locale`); fix persistence to server |
 | Marketplace push events | **B:** new offer → owner; accept/reject → driver; offer withdrawn / spot withdrawn with pending offer → affected driver |
 | Offline UX | **B:** centred semi-blocking overlay (app faintly visible; actions blocked) |
-| Push action buttons | Keep forever (`sticky` / no dismiss-on-action). Always include the next phase CTA when one exists for the recipient |
+| Push action buttons | Categories keep action buttons until the user acts (do not expire after ~1 min). **On any action or tap:** always open the app **and** dismiss that notification. Always include the next phase CTA when one exists for the recipient |
 | Duplicate owner car | When live exchange UI shows `PeerVehiclePanel`, hide the spot’s inline owner `vehicleBlock` |
+| Undeletable test car | Prefer fixing **create/in-use gates** so a car cannot end up “stuck”; still harden delete for terminal FKs. No prod surgery for `6666TTT` |
 
-## 1. Vehicle delete
+## 1. Vehicle delete + create integrity
 
 **Problem:** `vehicles.Delete` only gates on active spots
-(`available`/`reserved`/`handover`). Pending offers (`ON DELETE RESTRICT`) and
-other FKs can still yield opaque 500s; mobile shows raw English API text.
+(`available`/`reserved`/`handover`). Pending offers (`ON DELETE RESTRICT`),
+live `reservations.driver_vehicle_id`, and other FKs can still yield opaque
+500s; mobile shows raw English API text. A car that “won’t delete” may also
+be stuck because it was linked during announce/offer while the listing or
+reservation never cleared — treat as product integrity, not only delete.
 
-**Behaviour:**
+**Delete behaviour:**
 
 1. Refuse delete with `domain.Conflict` when the vehicle is linked to an
-   **active** spot or a **pending** offer (clear codes, e.g. `vehicle_in_use`,
-   `vehicle_has_pending_offer`).
+   **active** spot, a **pending** offer, or a **live** reservation as
+   driver vehicle (clear codes: `vehicle_in_use`, `vehicle_has_pending_offer`,
+   `vehicle_in_live_reservation`).
 2. Allow delete when only terminal spots/offers/reservations remain: nullify
    or otherwise release FKs inside the postgres port so hard `DELETE` succeeds
    without 500.
 3. Mobile: map conflict codes to ES/EN strings (“No puedes borrar este coche
-   porque está en una plaza activa” / pending-offer variant). No technical
-   English leak.
+   porque está en una plaza activa” / pending-offer / live-reservation
+   variants). No technical English leak.
+
+**Create / link integrity (prevent stuck cars):**
+
+1. Audit create + announce + offer paths: a vehicle must only be referenceable
+   after a successful validated `Create`; photo failure must not leave an
+   unusable row that blocks later delete for mysterious reasons (photo is
+   optional — ensure UI/errors make that clear).
+2. When a spot or offer becomes terminal, vehicle FKs must not keep the car
+   undeletable (covered by delete TX + gates above).
+3. If create can succeed with data that later breaks list/delete UX, tighten
+   validation or the mobile submit path so it cannot happen again.
 
 ## 2. Locale persistence (push language)
 
@@ -124,11 +140,15 @@ Rules:
 - On **live exchange** pushes, if the recipient has a clear next handshake
   step, the push **must** include that button (this fixes “owner on the way”
   without “I’m on my way too”).
-- Prefer `sticky` / do not auto-dismiss on action press. Do **not** attempt to
-  strip one button after press (platform-fragile); leaving buttons forever is
-  accepted.
+- Do **not** expire / strip action buttons after ~1 minute while the
+  notification is still unread. Platform TTL / auto-clear that hides buttons
+  without user action must be avoided (sticky channel / no short timeout).
+- **On any notification action or default tap:** (1) bring the app to the
+  foreground (`opensAppToForeground: true` on every category action), and
+  (2) dismiss that notification (`dismissNotificationAsync`) so it stops
+  nagging — including after `en_route` / `ready` / `unready` / `open`.
 - Actionable pushes stay on the high-importance Android channel so OEM shades
-  keep showing actions.
+  keep showing actions until the user acts.
 
 ### Local category / channel titles
 

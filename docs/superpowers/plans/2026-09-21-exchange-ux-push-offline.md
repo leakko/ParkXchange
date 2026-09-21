@@ -13,7 +13,8 @@
 - Hexagonal layering: business rules in use cases; handlers decode/call/serialise only; arch test must stay green.
 - Errors use `domain.Kind` codes; never invent HTTP status in use cases.
 - Push button titles and bodies must be child-readable ES/EN; no jargon like “retiró su listo”.
-- Live-exchange pushes must include the recipient’s next-step action when one exists; sticky / keep buttons forever.
+- Live-exchange pushes must include the recipient’s next-step action when one exists; buttons must not expire unread; **any** action/tap opens the app and dismisses that notification.
+- Investigate vehicle create/link paths so cars cannot get stuck undeletable after a bad create; harden delete gates for live reservation + pending offer + active spot.
 - Marketplace push set **B** only: new offer→owner; accept/reject→driver; offer withdraw / spot withdraw with pending→affected driver.
 - Do not surgically delete production plate `6666TTT`.
 - Commit after each task; work on a feature branch (not directly on `main` unless already branched).

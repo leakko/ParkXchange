@@ -17,7 +17,10 @@ type fakeStore struct {
 	vehicles map[string]domain.Vehicle
 	photos   map[string]photoBlob
 
-	activeSpots map[string]int
+	activeSpots       map[string]int
+	pendingOffers     map[string]int
+	liveReservations  map[string]int
+	deleteCalls       int
 
 	nextID int
 }
@@ -29,10 +32,12 @@ type photoBlob struct {
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		vehicles:    make(map[string]domain.Vehicle),
-		photos:      make(map[string]photoBlob),
-		activeSpots: make(map[string]int),
-		nextID:      1,
+		vehicles:         make(map[string]domain.Vehicle),
+		photos:           make(map[string]photoBlob),
+		activeSpots:      make(map[string]int),
+		pendingOffers:    make(map[string]int),
+		liveReservations: make(map[string]int),
+		nextID:           1,
 	}
 }
 
@@ -97,6 +102,7 @@ func (f *fakeStore) Update(_ context.Context, v domain.Vehicle) (domain.Vehicle,
 }
 
 func (f *fakeStore) Delete(_ context.Context, id, ownerID string) error {
+	f.deleteCalls++
 	v, found := f.vehicles[id]
 	if !found || v.OwnerID != ownerID {
 		return domain.ErrNoRows
@@ -128,6 +134,14 @@ func (f *fakeStore) Photo(_ context.Context, id string) ([]byte, string, error) 
 
 func (f *fakeStore) ActiveSpotCount(_ context.Context, vehicleID string) (int, error) {
 	return f.activeSpots[vehicleID], nil
+}
+
+func (f *fakeStore) PendingOfferCount(_ context.Context, vehicleID string) (int, error) {
+	return f.pendingOffers[vehicleID], nil
+}
+
+func (f *fakeStore) LiveDriverReservationCount(_ context.Context, vehicleID string) (int, error) {
+	return f.liveReservations[vehicleID], nil
 }
 
 func validInput(ownerID string) domain.NewVehicleInput {
@@ -249,8 +263,68 @@ func TestDeleteRejectsWhenVehicleHasActiveSpots(t *testing.T) {
 	if domain.KindOf(err) != domain.KindConflict {
 		t.Errorf("kind = %v, want KindConflict", domain.KindOf(err))
 	}
+	de, ok := domain.AsError(err)
+	if !ok || de.Code != "vehicle_in_use" {
+		t.Errorf("code = %v, want vehicle_in_use", err)
+	}
+	if store.deleteCalls != 0 {
+		t.Errorf("Delete called %d times, want 0", store.deleteCalls)
+	}
 	if _, stillThere := store.vehicles["vehicle-1"]; !stillThere {
 		t.Error("vehicle was deleted despite active spots")
+	}
+}
+
+func TestDeleteRejectsWhenVehicleHasPendingOffer(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	store.vehicles["vehicle-1"] = domain.Vehicle{
+		ID: "vehicle-1", OwnerID: "owner-1",
+		Plate: "B-1", MakeModel: "Car", Size: "medium", Color: "red", Year: 2018,
+	}
+	store.pendingOffers["vehicle-1"] = 1
+
+	service := vehicles.NewService(store)
+
+	err := service.Delete(context.Background(), domain.Claims{UserID: "owner-1"}, "vehicle-1")
+	if domain.KindOf(err) != domain.KindConflict {
+		t.Fatalf("kind = %v, want KindConflict", domain.KindOf(err))
+	}
+	de, ok := domain.AsError(err)
+	if !ok || de.Code != "vehicle_has_pending_offer" {
+		t.Errorf("code = %v, want vehicle_has_pending_offer", err)
+	}
+	if store.deleteCalls != 0 {
+		t.Errorf("Delete called %d times, want 0", store.deleteCalls)
+	}
+	if _, stillThere := store.vehicles["vehicle-1"]; !stillThere {
+		t.Error("vehicle was deleted despite a pending offer")
+	}
+}
+
+func TestDeleteRejectsWhenVehicleInLiveReservation(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	store.vehicles["vehicle-1"] = domain.Vehicle{
+		ID: "vehicle-1", OwnerID: "owner-1",
+		Plate: "B-1", MakeModel: "Car", Size: "medium", Color: "red", Year: 2018,
+	}
+	store.liveReservations["vehicle-1"] = 1
+
+	service := vehicles.NewService(store)
+
+	err := service.Delete(context.Background(), domain.Claims{UserID: "owner-1"}, "vehicle-1")
+	if domain.KindOf(err) != domain.KindConflict {
+		t.Fatalf("kind = %v, want KindConflict", domain.KindOf(err))
+	}
+	de, ok := domain.AsError(err)
+	if !ok || de.Code != "vehicle_in_live_reservation" {
+		t.Errorf("code = %v, want vehicle_in_live_reservation", err)
+	}
+	if store.deleteCalls != 0 {
+		t.Errorf("Delete called %d times, want 0", store.deleteCalls)
 	}
 }
 
