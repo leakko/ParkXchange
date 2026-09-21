@@ -21,32 +21,29 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** exchange push coaching — code on `main` working tree
-  (migration `00014_device_push_tokens`, Expo notifier, coaching sweeper,
-  mobile register/actions/banner/geofence/settings). Needs `task db:up` + migrate
-  + device smoke (Docker was down when verifying).
-- **Also open:** account deletion smoke on device; marketing DNS/OAuth if needed.
+- **Phase in progress:** exchange UX hardening (push i18n, marketplace push,
+  offline gate, safe area, vehicle delete, nav chrome) on branch
+  `feature/exchange-ux-push-offline` — API tests green; awaiting merge → deploy
+  + preview APK.
+- **Also open:** Play Console identity verification; payments deferred.
 - **Last updated:** 2026-09-21
 - **Phases complete:** 12 of 12 (MVP) + post-MVP handshake + email verify soft-gate
   + account deletion (code complete; mobile smoke optional)
 - **Blockers:** Play Console identity verification still pending for public
-  listing; payments deferred until after email gate. Docker Desktop required
-  for `task api:test` integration suite.
+  listing; payments deferred until after email gate.
 
 ---
 
 ## Next immediate step
 
-1. Start Docker → `task db:up` → migrate (includes `00014`) → `task api:test`.
-2. Redeploy API with migration 00014.
-3. On two devices: sign in, accept notif permission, run an exchange and
-   confirm peer push + action buttons + banner “Voy de camino” + optional
-   location assistance prompt at ~30 m.
-4. Spec:
-   [`docs/superpowers/specs/2026-09-21-exchange-push-coaching-design.md`](docs/superpowers/specs/2026-09-21-exchange-push-coaching-design.md).
+1. Merge `feature/exchange-ux-push-offline` → `main` (migration `00016_users_locale`).
+2. Confirm GitHub Actions deploy + `curl …/healthz`.
+3. `eas build --profile preview --platform android` (NetInfo is native).
+4. Device smoke: locale EN push, offline overlay, safe area on cancel, push
+   open+dismiss, single peer car, stack slides without white flash.
 
-Optional: DNS/OAuth for `park-xchange.com` if still incomplete
-(`apps/web/README.md`).
+Spec:
+[`docs/superpowers/specs/2026-09-21-exchange-ux-push-offline-design.md`](docs/superpowers/specs/2026-09-21-exchange-ux-push-offline-design.md).
 
 ---
 
