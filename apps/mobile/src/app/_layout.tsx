@@ -19,6 +19,7 @@ import { I18nProvider } from "@/i18n";
 import { useOwnerOfferAlerts } from "@/hooks/useOwnerOfferAlerts";
 import { ExchangePushBootstrap } from "@/push/ExchangePushBootstrap";
 import { OfflineGate } from "@/ui/OfflineGate";
+import { ToastProvider } from "@/ui/toast";
 
 // Intermittent MapLibre tile/glyph stream errors on emulators are noisy but
 // non-fatal; the map still renders.
@@ -68,20 +69,22 @@ export default function RootLayout() {
         <I18nProvider>
           <QueryClientProvider client={queryClient}>
             <ThemeProvider value={navigationTheme}>
-              <OfflineGate>
-                <BottomSheetModalProvider>
-                  <StatusBar style="light" />
-                  <OwnerOfferAlerts />
-                  <ExchangePushBootstrap />
-                  <Stack
-                    screenOptions={{
-                      headerShown: false,
-                      contentStyle: { backgroundColor: accountColors.bg },
-                      animation: "slide_from_right",
-                    }}
-                  />
-                </BottomSheetModalProvider>
-              </OfflineGate>
+              <ToastProvider>
+                <OfflineGate>
+                  <BottomSheetModalProvider>
+                    <StatusBar style="light" />
+                    <OwnerOfferAlerts />
+                    <ExchangePushBootstrap />
+                    <Stack
+                      screenOptions={{
+                        headerShown: false,
+                        contentStyle: { backgroundColor: accountColors.bg },
+                        animation: "slide_from_right",
+                      }}
+                    />
+                  </BottomSheetModalProvider>
+                </OfflineGate>
+              </ToastProvider>
             </ThemeProvider>
           </QueryClientProvider>
         </I18nProvider>

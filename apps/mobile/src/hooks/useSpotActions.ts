@@ -19,6 +19,7 @@ import { useTranslation } from "@/i18n";
 import { distanceMeters } from "@/map/exchange";
 import { detectExchangeNotif } from "@/map/exchangeNotifs";
 import { armArrivalGeofence, disarmArrivalGeofence } from "@/push/geofence";
+import { useToast } from "@/ui/toast";
 
 function isLiveStatus(status: string | undefined): boolean {
   return status === "pending" || status === "confirmed" || status === "arrived";
@@ -26,6 +27,7 @@ function isLiveStatus(status: string | undefined): boolean {
 
 export function useActiveReservation(enabled: boolean) {
   const { t } = useTranslation();
+  const { show } = useToast();
   const [active, setActive] = useState<ReservationResponse | null>(null);
   const [spot, setSpot] = useState<SpotFeature | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -45,7 +47,12 @@ export function useActiveReservation(enabled: boolean) {
       if (!event) {
         return;
       }
-      const dedupe = `${next.id}:${event.kind}:${event.key}:${next.status}:${next.owner_ready_at}:${next.driver_ready_at}:${next.owner_en_route_at}:${next.driver_en_route_at}`;
+      // Handshake steps (en_route / ready / unready) are already on the map
+      // banner. Only surface terminal outcomes that often clear the banner.
+      if (event.kind !== "completed" && event.kind !== "cancelled") {
+        return;
+      }
+      const dedupe = `${next.id}:${event.kind}:${event.key}:${next.status}`;
       if (lastNotifKeyRef.current === dedupe) {
         return;
       }
@@ -54,9 +61,9 @@ export function useActiveReservation(enabled: boolean) {
         event.kind === "completed"
           ? t("exchange.completed.title")
           : t("exchange.notif.title");
-      Alert.alert(title, t(event.key));
+      show({ title, body: t(event.key), durationMs: 5500 });
     },
-    [t],
+    [show, t],
   );
 
   const refresh = useCallback(async () => {

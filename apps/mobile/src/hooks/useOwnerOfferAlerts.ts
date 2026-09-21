@@ -1,17 +1,18 @@
 import { useEffect, useRef } from "react";
-import { Alert } from "react-native";
 
 import { SpotSocket } from "@/api/ws";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
+import { useToast } from "@/ui/toast";
 
 /**
- * Keeps a lightweight WebSocket while signed in so the owner gets an in-app
- * alert when someone bids on one of their spots — even without a map viewport.
+ * Soft toast when someone bids on one of the owner's spots while the app is open.
+ * Push covers the background case; no blocking Alert.
  */
 export function useOwnerOfferAlerts() {
   const { ready, signedIn } = useSession();
   const { t } = useTranslation();
+  const { show } = useToast();
   const lastAlertRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -32,7 +33,10 @@ export function useOwnerOfferAlerts() {
           return;
         }
         lastAlertRef.current = dedupe;
-        Alert.alert(t("offer.notif.title"), t("offer.notif.body"));
+        show({
+          title: t("offer.notif.title"),
+          body: t("offer.notif.body"),
+        });
       },
     });
     void socket.connect().catch(() => {
@@ -42,5 +46,5 @@ export function useOwnerOfferAlerts() {
     return () => {
       socket.close();
     };
-  }, [ready, signedIn, t]);
+  }, [ready, signedIn, show, t]);
 }
