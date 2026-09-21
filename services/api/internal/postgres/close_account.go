@@ -64,7 +64,7 @@ func (db *DB) CloseAccount(ctx context.Context, userID string) error {
 			return translate(err, "collect spots for close")
 		}
 		for _, id := range spotIDs {
-			if err := scoped.CancelSpot(ctx, id, userID); err != nil {
+			if _, err := scoped.CancelSpot(ctx, id, userID); err != nil {
 				if errors.Is(err, domain.ErrConflict) || errors.Is(err, domain.ErrNoRows) {
 					continue
 				}

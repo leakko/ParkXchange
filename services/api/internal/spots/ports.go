@@ -56,9 +56,10 @@ type Store interface {
 
 	// CancelSpot withdraws an offer owned by ownerID. It must succeed for an
 	// available spot and for a reserved one, settling the live reservation
-	// (release the driver, debit the owner) in the same write. ErrConflict
-	// when the spot has moved past that.
-	CancelSpot(ctx context.Context, spotID, ownerID string) error
+	// (release the driver, debit the owner) in the same write. Pending offers
+	// on the spot are rejected and their driver IDs returned for push.
+	// ErrConflict when the spot has moved past that.
+	CancelSpot(ctx context.Context, spotID, ownerID string) (pendingDriverIDs []string, err error)
 
 	// UpdateAvailableSpot applies a partial edit to an available offer the
 	// owner still holds. ErrConflict when the status is no longer available;

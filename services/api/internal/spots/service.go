@@ -5,6 +5,7 @@ package spots
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -32,17 +33,40 @@ type Service struct {
 	// centre rather than the true coordinates.
 	locationFuzzSecret []byte
 
+	notifier Notifier
+	log      *slog.Logger
+
 	// now is injected so the expiry rules can be tested without sleeping.
 	// Production passes time.Now.
 	now func() time.Time
 }
 
-// New builds the service.
+// New builds the service without push (tests / legacy).
 func New(store Store, locationFuzzSecret []byte) *Service {
+	return NewWithNotifier(store, locationFuzzSecret, NopNotifier{}, nil)
+}
+
+// NewWithNotifier builds the service with best-effort marketplace push.
+func NewWithNotifier(store Store, locationFuzzSecret []byte, notifier Notifier, log *slog.Logger) *Service {
+	if notifier == nil {
+		notifier = NopNotifier{}
+	}
 	return &Service{
 		store:              store,
 		locationFuzzSecret: locationFuzzSecret,
+		notifier:           notifier,
+		log:                log,
 		now:                time.Now,
+	}
+}
+
+func (s *Service) push(ctx context.Context, n Notification) {
+	if err := s.notifier.Notify(ctx, n); err != nil && s.log != nil {
+		s.log.Warn("spot push notify failed",
+			slog.String("type", n.Type),
+			slog.String("spot_id", n.SpotID),
+			slog.Any("err", err),
+		)
 	}
 }
 
@@ -322,12 +346,21 @@ func (s *Service) Withdraw(ctx context.Context, spotID string, viewer domain.Cla
 	// The checks above produce good error messages; this conditional write is
 	// what actually guarantees correctness, because a driver can reserve the
 	// spot in the microseconds between the read and here.
-	if err := s.store.CancelSpot(ctx, spotID, viewer.UserID); err != nil {
+	drivers, err := s.store.CancelSpot(ctx, spotID, viewer.UserID)
+	if err != nil {
 		if errors.Is(err, domain.ErrConflict) {
 			return domain.Conflict("spot_not_available",
 				"that spot can no longer be withdrawn")
 		}
 		return domain.Internal(err)
+	}
+	for _, driverID := range drivers {
+		s.push(ctx, Notification{
+			Type:        EventWithdrawnPendingOffer,
+			SpotID:      spotID,
+			RecipientID: driverID,
+			Actions:     []string{"open"},
+		})
 	}
 	return nil
 }

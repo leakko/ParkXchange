@@ -36,6 +36,9 @@ type fakeStore struct {
 	// cancelErr is returned by CancelSpot, to simulate losing a race.
 	cancelErr error
 
+	// pendingDrivers are returned by CancelSpot as rejected-offer recipients.
+	pendingDrivers []string
+
 	inBBox []domain.Spot
 
 	// ownedVehicles maps ownerID → set of vehicle IDs they own.
@@ -111,23 +114,23 @@ func (f *fakeStore) SpotsByOwner(_ context.Context, ownerID string, _ int) ([]do
 	return out, nil
 }
 
-func (f *fakeStore) CancelSpot(_ context.Context, spotID, ownerID string) error {
+func (f *fakeStore) CancelSpot(_ context.Context, spotID, ownerID string) ([]string, error) {
 	f.cancelCalls++
 	if f.cancelErr != nil {
-		return f.cancelErr
+		return nil, f.cancelErr
 	}
 
 	spot, found := f.spots[spotID]
 	if !found || spot.OwnerID != ownerID {
-		return domain.ErrConflict
+		return nil, domain.ErrConflict
 	}
 	if spot.Status != domain.SpotAvailable && spot.Status != domain.SpotReserved {
-		return domain.ErrConflict
+		return nil, domain.ErrConflict
 	}
 
 	spot.Status = domain.SpotCancelled
 	f.spots[spotID] = spot
-	return nil
+	return f.pendingDrivers, nil
 }
 
 func (f *fakeStore) VehicleOwnedBy(_ context.Context, vehicleID, ownerID string) (bool, error) {
@@ -447,6 +450,39 @@ func TestWithdrawSucceedsForTheOwner(t *testing.T) {
 
 	if store.spots["spot-1"].Status != domain.SpotCancelled {
 		t.Errorf("status = %q, want cancelled", store.spots["spot-1"].Status)
+	}
+}
+
+type recordingSpotNotifier struct {
+	got []spots.Notification
+}
+
+func (r *recordingSpotNotifier) Notify(_ context.Context, n spots.Notification) error {
+	r.got = append(r.got, n)
+	return nil
+}
+
+func TestWithdrawNotifiesPendingOfferDrivers(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	store.spots["spot-1"] = domain.Spot{
+		ID: "spot-1", OwnerID: "owner-1", Status: domain.SpotAvailable,
+	}
+	store.pendingDrivers = []string{"driver-a", "driver-b"}
+	rec := &recordingSpotNotifier{}
+	service := spots.NewWithNotifier(store, []byte("test-location-fuzz-secret-32bytes!!"), rec, nil)
+
+	if err := service.Withdraw(context.Background(), "spot-1", domain.Claims{UserID: "owner-1"}); err != nil {
+		t.Fatalf("Withdraw: %v", err)
+	}
+	if len(rec.got) != 2 {
+		t.Fatalf("notify count = %d, want 2", len(rec.got))
+	}
+	for _, n := range rec.got {
+		if n.Type != spots.EventWithdrawnPendingOffer || n.SpotID != "spot-1" {
+			t.Fatalf("notify = %+v", n)
+		}
 	}
 }
 

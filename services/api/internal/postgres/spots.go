@@ -417,10 +417,13 @@ func (db *DB) SpotVehiclePhoto(ctx context.Context, spotID string) ([]byte, stri
 // has to be settled in the same transaction, the driver's deposit released,
 // and the owner debited. Doing those as separate statements is how a crash
 // leaves a claimed spot with a stranded hold.
-func (db *DB) CancelSpot(ctx context.Context, spotID, ownerID string) error {
+//
+// Pending offers on the spot are rejected in the same write; their driver IDs
+// are returned so the use case can notify them.
+func (db *DB) CancelSpot(ctx context.Context, spotID, ownerID string) ([]string, error) {
 	tx, err := db.begin(ctx)
 	if err != nil {
-		return translate(err, "begin withdraw")
+		return nil, translate(err, "begin withdraw")
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
@@ -436,11 +439,42 @@ func (db *DB) CancelSpot(ctx context.Context, spotID, ownerID string) error {
 		   FOR UPDATE
 	`, spotID, ownerID).Scan(&status, &lon, &lat, &price)
 	if err != nil {
-		return translate(err, "lock spot for withdraw")
+		return nil, translate(err, "lock spot for withdraw")
 	}
 
 	if status != string(domain.SpotAvailable) && status != string(domain.SpotReserved) {
-		return domain.ErrConflict
+		return nil, domain.ErrConflict
+	}
+
+	pendingDrivers := make([]string, 0)
+	rows, err := tx.Query(ctx, `
+		SELECT driver_id FROM offers
+		 WHERE spot_id = $1 AND status = 'pending'
+		   FOR UPDATE
+	`, spotID)
+	if err != nil {
+		return nil, translate(err, "list pending offers for withdraw")
+	}
+	for rows.Next() {
+		var driverID string
+		if err := rows.Scan(&driverID); err != nil {
+			rows.Close()
+			return nil, translate(err, "scan pending offer driver")
+		}
+		pendingDrivers = append(pendingDrivers, driverID)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, translate(err, "iterate pending offers for withdraw")
+	}
+
+	if len(pendingDrivers) > 0 {
+		if _, err := tx.Exec(ctx, `
+			UPDATE offers SET status = 'rejected'
+			 WHERE spot_id = $1 AND status = 'pending'
+		`, spotID); err != nil {
+			return nil, translate(err, "reject pending offers on withdraw")
+		}
 	}
 
 	if status == string(domain.SpotReserved) {
@@ -457,7 +491,7 @@ func (db *DB) CancelSpot(ctx context.Context, spotID, ownerID string) error {
 			   FOR UPDATE
 		`, spotID).Scan(&resID, &driver, &price)
 		if err != nil {
-			return translate(err, "lock reservation for withdraw")
+			return nil, translate(err, "lock reservation for withdraw")
 		}
 
 		if _, err := tx.Exec(ctx, `
@@ -465,7 +499,7 @@ func (db *DB) CancelSpot(ctx context.Context, spotID, ownerID string) error {
 			   SET status = 'cancelled', cancelled_at = now(), cancel_reason = 'owner'
 			 WHERE id = $1
 		`, resID); err != nil {
-			return translate(err, "cancel reservation on withdraw")
+			return nil, translate(err, "cancel reservation on withdraw")
 		}
 
 		if price > 0 {
@@ -474,14 +508,14 @@ func (db *DB) CancelSpot(ctx context.Context, spotID, ownerID string) error {
 				VALUES ($1, $2, $3, $4, $5)
 			`, driver, resID, string(domain.LedgerRelease), domain.ReleaseCents(price),
 				"deposit released: owner withdrew"); err != nil {
-				return translate(err, "release driver on owner withdraw")
+				return nil, translate(err, "release driver on owner withdraw")
 			}
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO ledger_entries (user_id, reservation_id, kind, amount_cents, memo)
 				VALUES ($1, $2, $3, $4, $5)
 			`, ownerID, resID, string(domain.LedgerDebit), domain.HoldCents(price),
 				"penalty: withdrew a claimed spot"); err != nil {
-				return translate(err, "debit owner on withdraw")
+				return nil, translate(err, "debit owner on withdraw")
 			}
 		}
 	}
@@ -489,7 +523,7 @@ func (db *DB) CancelSpot(ctx context.Context, spotID, ownerID string) error {
 	if _, err := tx.Exec(ctx, `
 		UPDATE spots SET status = 'cancelled' WHERE id = $1
 	`, spotID); err != nil {
-		return translate(err, "cancel spot")
+		return nil, translate(err, "cancel spot")
 	}
 
 	if err := notifySpot(ctx, tx, domain.SpotEvent{
@@ -501,8 +535,11 @@ func (db *DB) CancelSpot(ctx context.Context, spotID, ownerID string) error {
 		Status:     domain.SpotCancelled,
 		PriceCents: price,
 	}); err != nil {
-		return translate(err, "notify spot removed")
+		return nil, translate(err, "notify spot removed")
 	}
 
-	return translate(tx.Commit(ctx), "commit withdraw")
+	if err := translate(tx.Commit(ctx), "commit withdraw"); err != nil {
+		return nil, err
+	}
+	return pendingDrivers, nil
 }
