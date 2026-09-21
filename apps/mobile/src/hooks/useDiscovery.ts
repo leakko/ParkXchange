@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { fetchSpots, type SpotFeature } from "@/api/client";
 import { applySpotEvent, SpotSocket, type BBox } from "@/api/ws";
+import { SpotTombstones } from "@/map/spotTombstones";
 import type { components } from "@parkxchange/api-contract";
 
 const EMPTY: SpotFeature[] = [];
@@ -48,6 +49,7 @@ export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) 
   const socketRef = useRef<SpotSocket | null>(null);
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refetchRef = useRef<() => void>(() => {});
+  const tombstonesRef = useRef(new SpotTombstones());
 
   const query = useQuery({
     queryKey: ["spots", viewport],
@@ -76,10 +78,11 @@ export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) 
     }, VEHICLE_REFETCH_MS);
   }, []);
 
-  // REST snapshot wins whenever it refreshes; WS patches apply on top until then.
+  // REST snapshot wins whenever it refreshes, but never resurrect tombstoned ids
+  // (stale in-flight fetch right after accept → spot.removed).
   useEffect(() => {
     if (query.data) {
-      setLiveFeatures(query.data.features);
+      setLiveFeatures(tombstonesRef.current.filter(query.data.features));
     }
   }, [query.data]);
 
@@ -88,16 +91,16 @@ export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) 
       return;
     }
     const socket = new SpotSocket({
-      onSnapshot: (features) => setLiveFeatures(features),
+      onSnapshot: (features) =>
+        setLiveFeatures(tombstonesRef.current.filter(features)),
       onSpotEvent: (event) => {
+        tombstonesRef.current.noteEvent(event);
         setLiveFeatures((prev) => {
           const next = applySpotEvent(prev ?? EMPTY, event);
-          // WS spot events omit the joined vehicle summary; a placeholder would
-          // blank the sheet until the next viewport poll — refetch discovery.
           if (eventNeedsVehicleRefetch(event, next)) {
             scheduleVehicleRefetch();
           }
-          return next;
+          return tombstonesRef.current.filter(next);
         });
       },
     });

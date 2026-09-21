@@ -333,6 +333,11 @@ export default function MapScreen() {
 
     for (const feature of collection.features) {
       const id = String(feature.id ?? "");
+      // Active exchange owns this pin via ExchangeLayers (exact coords). Keeping
+      // the discovery/offered copy fights the exact pin after accept.
+      if (active && String(active.spot_id) === id) {
+        continue;
+      }
       byId.set(id, {
         type: "Feature",
         properties: {
@@ -363,6 +368,9 @@ export default function MapScreen() {
         continue;
       }
       const id = String(feature.id ?? "");
+      if (active && String(active.spot_id) === id && isDriver && !isOwner) {
+        continue;
+      }
       byId.set(id, {
         type: "Feature",
         properties: {
@@ -388,7 +396,27 @@ export default function MapScreen() {
       mine: { type: "FeatureCollection" as const, features: mine },
       offered: { type: "FeatureCollection" as const, features: offered },
     };
-  }, [collection.features, pendingOfferBySpotId, mySpotFeatures]);
+  }, [
+    collection.features,
+    pendingOfferBySpotId,
+    mySpotFeatures,
+    active,
+    isDriver,
+    isOwner,
+  ]);
+
+  // Keep the sheet on the exact holder payload once the exchange is live.
+  useEffect(() => {
+    if (!activeSpot) {
+      return;
+    }
+    setSelected((prev) => {
+      if (!prev || String(prev.id) !== String(activeSpot.id)) {
+        return prev;
+      }
+      return activeSpot;
+    });
+  }, [activeSpot]);
 
   // Driver exchange pin only — owner reserved spots already appear in MySpotLayers.
   const exchangeData = useMemo(() => {
@@ -892,27 +920,31 @@ export default function MapScreen() {
               )}
             </Text>
           </View>
-          <Pressable
-            onPress={() => {
-              if (activeSpot) {
-                setSelected(activeSpot);
-                sheetRef.current?.snapToIndex(1);
-              }
-            }}
-          >
-            <Text style={styles.link}>{t("map.banner.openExchange")}</Text>
-          </Pressable>
-          {!((isOwner && active.owner_en_route_at) ||
-            (isDriver && active.driver_en_route_at)) ? (
+          <View style={styles.activeBannerActions}>
             <Pressable
-              disabled={busy}
+              style={styles.bannerBtn}
               onPress={() => {
-                void markEnRoute();
+                if (activeSpot) {
+                  setSelected(activeSpot);
+                  sheetRef.current?.snapToIndex(1);
+                }
               }}
             >
-              <Text style={styles.link}>{t("map.banner.enRoute")}</Text>
+              <Text style={styles.bannerBtnText}>{t("map.banner.openExchange")}</Text>
             </Pressable>
-          ) : null}
+            {!((isOwner && active.owner_en_route_at) ||
+              (isDriver && active.driver_en_route_at)) ? (
+              <Pressable
+                style={[styles.bannerBtn, busy && styles.bannerBtnDisabled]}
+                disabled={busy}
+                onPress={() => {
+                  void markEnRoute();
+                }}
+              >
+                <Text style={styles.bannerBtnText}>{t("map.banner.enRoute")}</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
       ) : null}
       {announcePickMode ? (
@@ -1126,9 +1158,33 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(232,93,4,0.92)",
     maxWidth: "92%",
     borderRadius: 16,
-    alignItems: "flex-start",
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 10,
+    paddingVertical: 12,
   },
-  activeBannerBody: { flex: 1, gap: 2, paddingRight: 4 },
+  activeBannerBody: { gap: 2, paddingHorizontal: 2 },
+  activeBannerActions: {
+    alignItems: "center",
+    gap: 8,
+    width: "100%",
+  },
+  bannerBtn: {
+    borderWidth: 1.5,
+    borderColor: "#FFE8D6",
+    backgroundColor: "rgba(255,255,255,0.16)",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
+    minWidth: 160,
+    alignItems: "center",
+  },
+  bannerBtnDisabled: { opacity: 0.5 },
+  bannerBtnText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "600",
+  },
   bannerPeer: { color: "#FFE8D6", fontSize: 12, lineHeight: 16 },
   pickBanner: {
     top: 88,

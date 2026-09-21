@@ -85,9 +85,12 @@ export function useActiveReservation(enabled: boolean) {
 
       maybeNotify(prev, next, me.id);
       prevRef.current = next;
-      setActive(next);
       setUserId(me.id);
-      setSpot(next ? await getSpot(next.spot_id) : null);
+      // Resolve spot before publishing active so the exchange pin and sheet never
+      // flash with reservation-but-no-coords (or keep a stale fuzzed pin).
+      const spotFeature = next ? await getSpot(next.spot_id) : null;
+      setActive(next);
+      setSpot(spotFeature);
     } catch {
       /* keep previous */
     }
