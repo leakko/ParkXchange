@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 
 	"github.com/marco/parkxchange/services/api/internal/domain"
 )
@@ -49,15 +50,21 @@ func (db *DB) ListenSpotEvents(ctx context.Context) (<-chan domain.SpotEvent, er
 	out := make(chan domain.SpotEvent, 64)
 	go func() {
 		defer close(out)
-		defer func() { _ = pgConn.Close(context.Background()) }()
 
 		// WaitForNotification parks on a socket read. Cancelling the context
 		// is not enough on every platform; closing the connection is.
-		// AfterFunc's stop does not wait for this closer, so it must only
-		// touch the hijacked *pgx.Conn (Close is idempotent), never the pool wrapper.
-		stop := context.AfterFunc(ctx, func() {
-			_ = pgConn.Close(context.Background())
-		})
+		// pgx.Conn.Close is not safe for concurrent calls — AfterFunc and the
+		// goroutine exit must share a single closer, or CI panics with
+		// "slow write timer already active" / "close of closed channel".
+		var closeOnce sync.Once
+		closeConn := func() {
+			closeOnce.Do(func() {
+				_ = pgConn.Close(context.Background())
+			})
+		}
+		defer closeConn()
+
+		stop := context.AfterFunc(ctx, closeConn)
 		defer stop()
 
 		for {
