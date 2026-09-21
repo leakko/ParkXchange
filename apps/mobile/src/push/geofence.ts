@@ -235,7 +235,8 @@ export async function armArrivalGeofence(opts: {
       return (locale === "en" ? en : es)[key] ?? key;
     };
     if (!(await hasAlwaysLocation())) {
-      await ensureAlwaysLocation({ t, forceExplain: true });
+      // Explain at most once per install; never nag on every «Voy de camino».
+      await ensureAlwaysLocation({ t, forceExplain: false });
     } else {
       await Location.requestBackgroundPermissionsAsync();
     }
