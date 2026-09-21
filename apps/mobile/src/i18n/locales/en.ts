@@ -6,6 +6,9 @@ export const en: Record<TranslationKey, string> = {
   "common.error": "error",
   "common.ok": "OK",
 
+  "offline.title": "No connection",
+  "offline.body": "You’re offline. Connect to the internet to use ParkXchange.",
+
   "auth.email": "Email",
   "auth.password": "Password",
   "auth.password.show": "Show password",

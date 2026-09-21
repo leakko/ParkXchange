@@ -4,6 +4,9 @@ export const es = {
   "common.error": "error",
   "common.ok": "OK",
 
+  "offline.title": "Sin conexión",
+  "offline.body": "No tienes internet. Conéctate para usar ParkXchange.",
+
   "auth.email": "Email",
   "auth.password": "Contraseña",
   "auth.password.show": "Mostrar contraseña",

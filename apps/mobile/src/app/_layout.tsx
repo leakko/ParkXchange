@@ -11,6 +11,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { I18nProvider } from "@/i18n";
 import { useOwnerOfferAlerts } from "@/hooks/useOwnerOfferAlerts";
 import { ExchangePushBootstrap } from "@/push/ExchangePushBootstrap";
+import { OfflineGate } from "@/ui/OfflineGate";
 
 // Intermittent MapLibre tile/glyph stream errors on emulators are noisy but
 // non-fatal; the map still renders.
@@ -40,12 +41,14 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <I18nProvider>
           <QueryClientProvider client={queryClient}>
-            <BottomSheetModalProvider>
-              <StatusBar style="light" />
-              <OwnerOfferAlerts />
-              <ExchangePushBootstrap />
-              <Stack screenOptions={{ headerShown: false }} />
-            </BottomSheetModalProvider>
+            <OfflineGate>
+              <BottomSheetModalProvider>
+                <StatusBar style="light" />
+                <OwnerOfferAlerts />
+                <ExchangePushBootstrap />
+                <Stack screenOptions={{ headerShown: false }} />
+              </BottomSheetModalProvider>
+            </OfflineGate>
           </QueryClientProvider>
         </I18nProvider>
       </SafeAreaProvider>
