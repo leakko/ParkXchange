@@ -102,10 +102,8 @@ func run() error {
 		return err
 	}
 
-	reservationsService := reservations.NewWithNotifier(db, &push.Expo{
-		Tokens: db,
-		Log:    log,
-	}, log)
+	expo := &push.Expo{Tokens: db, Log: log}
+	reservationsService := reservations.NewWithNotifier(db, expo, log)
 	hub := realtime.NewHub(realtime.DefaultSendBuffer, cfg.LocationFuzzSecret)
 
 	events, err := db.ListenSpotEvents(ctx)
@@ -122,8 +120,8 @@ func run() error {
 		Config:       cfg,
 		Logger:       log,
 		Accounts:     accountsService,
-		Spots:        spots.New(db, cfg.LocationFuzzSecret),
-		Offers:       offers.New(db),
+		Spots:        spots.NewWithNotifier(db, cfg.LocationFuzzSecret, push.SpotExpo{Expo: expo}, log),
+		Offers:       offers.NewWithNotifier(db, push.OfferExpo{Expo: expo}, log),
 		Reservations: reservationsService,
 		Vehicles:     vehicles.NewService(db),
 		Health:       db,

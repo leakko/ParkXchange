@@ -403,6 +403,28 @@ func (s *Service) UpdatePhone(ctx context.Context, viewer domain.Claims, rawPhon
 	return user, nil
 }
 
+// UpdateLocale sets the signed-in user's preferred language for UI and push copy.
+func (s *Service) UpdateLocale(ctx context.Context, viewer domain.Claims, rawLocale string) (domain.User, error) {
+	if !viewer.Authenticated() {
+		return domain.User{}, domain.Unauthenticated("unauthorized", "an access token is required")
+	}
+
+	locale, err := domain.ParseLocale(rawLocale)
+	if err != nil {
+		return domain.User{}, err
+	}
+
+	user, err := s.store.UpdateLocale(ctx, viewer.UserID, locale)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			return domain.User{}, domain.Unauthenticated(
+				"unauthorized", "this account no longer exists")
+		}
+		return domain.User{}, domain.Internal(err)
+	}
+	return user, nil
+}
+
 func (s *Service) ensureGoogleVerified(ctx context.Context, user domain.User) (domain.User, error) {
 	if user.EmailVerified() {
 		return user, nil

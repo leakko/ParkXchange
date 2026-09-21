@@ -6,10 +6,15 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { ActivityIndicator, View } from "react-native";
+
+import { getMe, updateMe } from "@/api/client";
+import { getAccessToken } from "@/api/session";
+import { useSession } from "@/hooks/useSession";
 
 import { formatDateTime } from "./formatDateTime.ts";
 import { en } from "./locales/en.ts";
@@ -34,9 +39,24 @@ function deviceLanguageTag(): string | undefined {
   return getLocales()[0]?.languageTag ?? getLocales()[0]?.languageCode ?? undefined;
 }
 
+function isAppLocale(value: unknown): value is AppLocale {
+  return value === "es" || value === "en";
+}
+
+async function patchLocaleBestEffort(locale: AppLocale): Promise<void> {
+  try {
+    if (!(await getAccessToken())) return;
+    await updateMe({ locale });
+  } catch {
+    // Offline / unsigned — local preference still applies.
+  }
+}
+
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<AppLocale>("es");
   const [ready, setReady] = useState(false);
+  const { ready: sessionReady, signedIn } = useSession();
+  const adoptedServerRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,9 +71,34 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // When signed in, server locale wins once per session (Task 1 persistence).
+  useEffect(() => {
+    if (!ready || !sessionReady || !signedIn) {
+      if (!signedIn) adoptedServerRef.current = false;
+      return;
+    }
+    if (adoptedServerRef.current) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const me = await getMe();
+        if (cancelled || !isAppLocale(me.locale)) return;
+        adoptedServerRef.current = true;
+        setLocaleState(me.locale);
+        await saveLocale(me.locale);
+      } catch {
+        // Keep local preference if /me fails.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, sessionReady, signedIn]);
+
   const setLocale = useCallback((next: AppLocale) => {
     setLocaleState(next);
     void saveLocale(next);
+    void patchLocaleBestEffort(next);
   }, []);
 
   const value = useMemo<I18nValue>(() => {

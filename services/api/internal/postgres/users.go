@@ -11,7 +11,7 @@ import (
 
 // userColumns is shared by every user query so the scan order cannot drift
 // between them.
-const userColumns = `id, email, password_hash, display_name, phone, google_sub,
+const userColumns = `id, email, password_hash, display_name, phone, locale, google_sub,
                      email_verified_at, rating_sum, rating_count, balance_cents, created_at`
 
 func scanUser(row pgx.Row) (domain.User, error) {
@@ -20,11 +20,12 @@ func scanUser(row pgx.Row) (domain.User, error) {
 		email           string
 		passwordHash    *string
 		phone           *string
+		locale          string
 		googleSub       *string
 		emailVerifiedAt *time.Time
 	)
 
-	err := row.Scan(&user.ID, &email, &passwordHash, &user.DisplayName, &phone, &googleSub,
+	err := row.Scan(&user.ID, &email, &passwordHash, &user.DisplayName, &phone, &locale, &googleSub,
 		&emailVerifiedAt, &user.RatingSum, &user.RatingCount, &user.BalanceCents, &user.CreatedAt)
 	if err != nil {
 		return domain.User{}, translate(err, "scan user")
@@ -40,6 +41,7 @@ func scanUser(row pgx.Row) (domain.User, error) {
 	if phone != nil {
 		user.Phone = domain.NewPhone(*phone)
 	}
+	user.Locale = domain.NewLocale(locale)
 	if googleSub != nil {
 		user.GoogleSub = *googleSub
 	}
@@ -338,6 +340,20 @@ func (db *DB) UpdatePhone(ctx context.Context, userID string, phone domain.Phone
 	`, userID, phoneArg)
 	if err != nil {
 		return domain.User{}, translate(err, "update phone")
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.User{}, domain.ErrNoRows
+	}
+	return db.UserByID(ctx, userID)
+}
+
+// UpdateLocale sets the caller's preferred language.
+func (db *DB) UpdateLocale(ctx context.Context, userID string, locale domain.Locale) (domain.User, error) {
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE users SET locale = $2 WHERE id = $1 AND deleted_at IS NULL
+	`, userID, locale.String())
+	if err != nil {
+		return domain.User{}, translate(err, "update locale")
 	}
 	if tag.RowsAffected() == 0 {
 		return domain.User{}, domain.ErrNoRows

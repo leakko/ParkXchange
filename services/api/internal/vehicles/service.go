@@ -107,7 +107,7 @@ func fromStore(err error) error {
 }
 
 // Delete removes a vehicle the caller owns, unless it is still tied to an
-// active spot offer.
+// active spot or a pending offer.
 func (s *Service) Delete(ctx context.Context, viewer domain.Claims, id string) error {
 	if !viewer.Authenticated() {
 		return domain.Unauthenticated("unauthorized", "an access token is required")
@@ -126,8 +126,26 @@ func (s *Service) Delete(ctx context.Context, viewer domain.Claims, id string) e
 			"that vehicle is still linked to an active spot")
 	}
 
-	if err := s.store.Delete(ctx, id, viewer.UserID); err != nil {
+	pending, err := s.store.PendingOfferCount(ctx, id)
+	if err != nil {
 		return domain.Internal(err)
+	}
+	if pending > 0 {
+		return domain.Conflict("vehicle_has_pending_offer",
+			"that vehicle is still linked to a pending offer")
+	}
+
+	live, err := s.store.LiveDriverReservationCount(ctx, id)
+	if err != nil {
+		return domain.Internal(err)
+	}
+	if live > 0 {
+		return domain.Conflict("vehicle_in_live_reservation",
+			"that vehicle is still linked to an active reservation")
+	}
+
+	if err := s.store.Delete(ctx, id, viewer.UserID); err != nil {
+		return fromStore(err)
 	}
 	return nil
 }

@@ -21,4 +21,8 @@ type Store interface {
 	Photo(ctx context.Context, id string) (photo []byte, contentType string, err error)
 	// ActiveSpotCount returns spots in available|reserved|handover for this vehicle.
 	ActiveSpotCount(ctx context.Context, vehicleID string) (int, error)
+	// PendingOfferCount returns offers still pending that reference this vehicle.
+	PendingOfferCount(ctx context.Context, vehicleID string) (int, error)
+	// LiveDriverReservationCount returns live reservations using this car as the driver's.
+	LiveDriverReservationCount(ctx context.Context, vehicleID string) (int, error)
 }

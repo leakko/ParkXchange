@@ -183,6 +183,107 @@ func TestCreatePersistsValidatedPendingOffer(t *testing.T) {
 	}
 }
 
+type recordingNotifier struct {
+	got []offers.Notification
+}
+
+func (r *recordingNotifier) Notify(_ context.Context, n offers.Notification) error {
+	r.got = append(r.got, n)
+	return nil
+}
+
+func newFixtureWithNotifier(now time.Time) (*offers.Service, *fakeStore, *recordingNotifier) {
+	store := &fakeStore{
+		spot: domain.Spot{
+			ID: "spot-1", OwnerID: "owner-1", Status: domain.SpotAvailable,
+			ExpiresAt: now.Add(6 * time.Hour),
+		},
+		offers:   make(map[string]domain.Offer),
+		balance:  500,
+		vehicles: map[string]string{"driver-car": "driver-1"},
+	}
+	rec := &recordingNotifier{}
+	service := offers.NewWithClockAndNotifier(store, func() time.Time { return now }, rec)
+	return service, store, rec
+}
+
+func TestCreateNotifiesSpotOwner(t *testing.T) {
+	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+	service, _, rec := newFixtureWithNotifier(now)
+
+	got, err := service.Create(context.Background(), "spot-1", domain.Claims{UserID: "driver-1"}, offers.CreateInput{
+		VehicleID: "driver-car", ExchangeAt: now.Add(time.Hour), AmountCents: 300,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.got) != 1 {
+		t.Fatalf("notify count = %d, want 1", len(rec.got))
+	}
+	n := rec.got[0]
+	if n.Type != offers.EventCreated || n.RecipientID != "owner-1" || n.OfferID != got.ID || n.SpotID != "spot-1" {
+		t.Fatalf("notify = %+v", n)
+	}
+}
+
+func TestAcceptNotifiesDriverAndSiblings(t *testing.T) {
+	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+	service, store, rec := newFixtureWithNotifier(now)
+	store.offers["winner"] = domain.Offer{
+		ID: "winner", SpotID: "spot-1", DriverID: "driver-1",
+		VehicleID: "driver-car", ExchangeAt: now.Add(time.Hour),
+		AmountCents: 300, Status: domain.OfferPending,
+	}
+	store.offers["sibling"] = domain.Offer{
+		ID: "sibling", SpotID: "spot-1", DriverID: "driver-2",
+		VehicleID: "other-car", ExchangeAt: now.Add(2 * time.Hour),
+		AmountCents: 400, Status: domain.OfferPending,
+	}
+
+	res, err := service.Accept(context.Background(), "winner", domain.Claims{UserID: "owner-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ID == "" {
+		t.Fatal("expected reservation")
+	}
+	if len(rec.got) != 2 {
+		t.Fatalf("notify count = %d, want 2 (got %+v)", len(rec.got), rec.got)
+	}
+	byType := map[string]offers.Notification{}
+	for _, n := range rec.got {
+		byType[n.Type+":"+n.RecipientID] = n
+	}
+	accepted := byType[offers.EventAccepted+":driver-1"]
+	if accepted.OfferID != "winner" || accepted.ReservationID != res.ID {
+		t.Fatalf("accepted notify = %+v", accepted)
+	}
+	rejected := byType[offers.EventRejected+":driver-2"]
+	if rejected.OfferID != "sibling" {
+		t.Fatalf("sibling reject notify = %+v", rejected)
+	}
+}
+
+func TestRejectNotifiesDriver(t *testing.T) {
+	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+	service, store, rec := newFixtureWithNotifier(now)
+	store.offers["offer-1"] = domain.Offer{
+		ID: "offer-1", SpotID: "spot-1", DriverID: "driver-1",
+		Status: domain.OfferPending,
+	}
+
+	if err := service.Reject(context.Background(), "offer-1", domain.Claims{UserID: "owner-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.got) != 1 {
+		t.Fatalf("notify count = %d, want 1", len(rec.got))
+	}
+	n := rec.got[0]
+	if n.Type != offers.EventRejected || n.RecipientID != "driver-1" || n.OfferID != "offer-1" {
+		t.Fatalf("notify = %+v", n)
+	}
+}
+
 func TestListSortsPreferredThenAmountThenCreated(t *testing.T) {
 	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
 	service, store := newFixture(now)

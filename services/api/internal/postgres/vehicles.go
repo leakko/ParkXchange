@@ -129,15 +129,64 @@ func (db *DB) Update(ctx context.Context, v domain.Vehicle) (domain.Vehicle, err
 	return updated, plateConflict(err)
 }
 
-// Delete removes a vehicle owned by ownerID.
+// Delete removes a vehicle owned by ownerID. Terminal spots already SET NULL
+// via FK; terminal offers (RESTRICT + NOT NULL vehicle_id) and reservation
+// driver_vehicle_id refs are released inside the same transaction so a hard
+// DELETE does not 500 on historical rows. Pending offers and active spots
+// remain the use-case gates and still fail here if those gates are bypassed.
 func (db *DB) Delete(ctx context.Context, id, ownerID string) error {
-	tag, err := db.q().Exec(ctx, `
+	tx, err := db.begin(ctx)
+	if err != nil {
+		return translate(err, "begin delete vehicle")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE reservations
+		   SET driver_vehicle_id = NULL
+		 WHERE driver_vehicle_id = $1
+		   AND status IN ('completed', 'cancelled', 'expired')
+	`, id); err != nil {
+		return translate(err, "release terminal reservation vehicle")
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE reservations
+		   SET offer_id = NULL
+		 WHERE offer_id IN (
+		         SELECT id FROM offers
+		          WHERE vehicle_id = $1
+		            AND status IN ('rejected', 'withdrawn', 'expired', 'accepted')
+		       )
+		   AND status IN ('completed', 'cancelled', 'expired')
+	`, id); err != nil {
+		return translate(err, "detach terminal reservation offers")
+	}
+
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM offers
+		 WHERE vehicle_id = $1
+		   AND status IN ('rejected', 'withdrawn', 'expired', 'accepted')
+		   AND NOT EXISTS (
+		         SELECT 1 FROM reservations r
+		          WHERE r.offer_id = offers.id
+		            AND r.status IN ('pending', 'confirmed', 'arrived')
+		       )
+	`, id); err != nil {
+		return translate(err, "release terminal offers for vehicle")
+	}
+
+	tag, err := tx.Exec(ctx, `
 		DELETE FROM vehicles WHERE id = $1 AND owner_id = $2`, id, ownerID)
 	if err != nil {
 		return translate(err, "delete vehicle")
 	}
 	if tag.RowsAffected() == 0 {
 		return domain.ErrNoRows
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return translate(err, "commit delete vehicle")
 	}
 	return nil
 }
@@ -187,6 +236,34 @@ func (db *DB) ActiveSpotCount(ctx context.Context, vehicleID string) (int, error
 		   AND status IN ('available', 'reserved', 'handover')`, vehicleID).Scan(&n)
 	if err != nil {
 		return 0, translate(err, "count active spots for vehicle")
+	}
+	return n, nil
+}
+
+// PendingOfferCount counts offers still awaiting an owner decision for this vehicle.
+func (db *DB) PendingOfferCount(ctx context.Context, vehicleID string) (int, error) {
+	var n int
+	err := db.q().QueryRow(ctx, `
+		SELECT COUNT(*)
+		  FROM offers
+		 WHERE vehicle_id = $1
+		   AND status = 'pending'`, vehicleID).Scan(&n)
+	if err != nil {
+		return 0, translate(err, "count pending offers for vehicle")
+	}
+	return n, nil
+}
+
+// LiveDriverReservationCount counts live reservations that still reference this car.
+func (db *DB) LiveDriverReservationCount(ctx context.Context, vehicleID string) (int, error) {
+	var n int
+	err := db.q().QueryRow(ctx, `
+		SELECT COUNT(*)
+		  FROM reservations
+		 WHERE driver_vehicle_id = $1
+		   AND status IN ('pending', 'confirmed', 'arrived')`, vehicleID).Scan(&n)
+	if err != nil {
+		return 0, translate(err, "count live reservations for vehicle")
 	}
 	return n, nil
 }

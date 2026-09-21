@@ -74,17 +74,18 @@ func (e Email) String() string { return string(e) }
 // a user for the wire happens in the HTTP adapter, which builds its own
 // response shape and simply never reads this field.
 type User struct {
-	ID               string
-	Email            Email
-	PasswordHash     string
-	DisplayName      string
-	Phone            Phone
-	GoogleSub        string
-	EmailVerifiedAt  *time.Time
-	RatingSum        int
-	RatingCount      int
-	BalanceCents     int64
-	CreatedAt        time.Time
+	ID              string
+	Email           Email
+	PasswordHash    string
+	DisplayName     string
+	Phone           Phone
+	Locale          Locale
+	GoogleSub       string
+	EmailVerifiedAt *time.Time
+	RatingSum       int
+	RatingCount     int
+	BalanceCents    int64
+	CreatedAt       time.Time
 }
 
 // EmailVerified reports whether the account may perform gated marketplace actions.
@@ -145,6 +146,43 @@ func (p Phone) String() string { return string(p) }
 
 // Present reports whether a phone number has been set.
 func (p Phone) Present() bool { return p != "" }
+
+// Locale is the user's preferred UI / push language: "es" or "en".
+type Locale string
+
+const (
+	LocaleES Locale = "es"
+	LocaleEN Locale = "en"
+)
+
+// DefaultLocale is stored for new accounts and used when a row has no preference.
+const DefaultLocale = LocaleES
+
+// ParseLocale normalises and validates a supported language preference.
+func ParseLocale(raw string) (Locale, error) {
+	normalised := strings.ToLower(strings.TrimSpace(raw))
+	switch Locale(normalised) {
+	case LocaleES, LocaleEN:
+		return Locale(normalised), nil
+	default:
+		return "", Invalid("locale_invalid", "locale must be es or en")
+	}
+}
+
+// NewLocale trusts a value that has already been persisted.
+func NewLocale(stored string) Locale {
+	if stored == "" {
+		return DefaultLocale
+	}
+	return Locale(stored)
+}
+
+func (l Locale) String() string {
+	if l == "" {
+		return string(DefaultLocale)
+	}
+	return string(l)
+}
 
 // Rating returns the average rating and whether the user has been rated.
 //

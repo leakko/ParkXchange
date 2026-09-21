@@ -5,6 +5,7 @@ package offers
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -21,18 +22,47 @@ type CreateInput struct {
 
 // Service carries out offer use cases.
 type Service struct {
-	store Store
-	now   func() time.Time
+	store    Store
+	notifier Notifier
+	log      *slog.Logger
+	now      func() time.Time
 }
 
-// New builds the service.
+// New builds the service without push (tests / legacy).
 func New(store Store) *Service {
-	return &Service{store: store, now: time.Now}
+	return NewWithNotifier(store, NopNotifier{}, nil)
 }
 
-// NewWithClock builds the service with an explicit clock.
+// NewWithNotifier builds the service with best-effort push delivery.
+func NewWithNotifier(store Store, notifier Notifier, log *slog.Logger) *Service {
+	if notifier == nil {
+		notifier = NopNotifier{}
+	}
+	return &Service{store: store, notifier: notifier, log: log, now: time.Now}
+}
+
+// NewWithClock builds the service with an explicit clock (no push).
 func NewWithClock(store Store, now func() time.Time) *Service {
-	return &Service{store: store, now: now}
+	s := New(store)
+	s.now = now
+	return s
+}
+
+// NewWithClockAndNotifier builds the service with clock and push (tests).
+func NewWithClockAndNotifier(store Store, now func() time.Time, notifier Notifier) *Service {
+	s := NewWithNotifier(store, notifier, nil)
+	s.now = now
+	return s
+}
+
+func (s *Service) push(ctx context.Context, n Notification) {
+	if err := s.notifier.Notify(ctx, n); err != nil && s.log != nil {
+		s.log.Warn("offer push notify failed",
+			slog.String("type", n.Type),
+			slog.String("offer_id", n.OfferID),
+			slog.Any("err", err),
+		)
+	}
 }
 
 // Create submits an offer without placing a hold. Funds are checked here for a
@@ -106,6 +136,13 @@ func (s *Service) Create(ctx context.Context, spotID string, viewer domain.Claim
 			return domain.Offer{}, domain.Internal(err)
 		}
 	}
+	s.push(ctx, Notification{
+		Type:        EventCreated,
+		OfferID:     created.ID,
+		SpotID:      created.SpotID,
+		RecipientID: spot.OwnerID,
+		Actions:     []string{"open"},
+	})
 	return created, nil
 }
 
@@ -186,6 +223,20 @@ func (s *Service) Accept(ctx context.Context, offerID string, viewer domain.Clai
 		return domain.Reservation{}, offerNotPending()
 	}
 
+	// Capture sibling pending offers before Accept rejects them atomically.
+	type sibling struct {
+		offerID  string
+		driverID string
+	}
+	var siblings []sibling
+	if pending, err := s.store.OffersForSpot(ctx, spot.ID, viewer.UserID); err == nil {
+		for _, o := range pending {
+			if o.ID != offer.ID && o.Status == domain.OfferPending && o.DriverID != "" {
+				siblings = append(siblings, sibling{offerID: o.ID, driverID: o.DriverID})
+			}
+		}
+	}
+
 	reservation, err := s.store.AcceptOffer(ctx, offer.ID, viewer.UserID)
 	if err != nil {
 		switch {
@@ -202,6 +253,23 @@ func (s *Service) Accept(ctx context.Context, offerID string, viewer domain.Clai
 		default:
 			return domain.Reservation{}, domain.Internal(err)
 		}
+	}
+	s.push(ctx, Notification{
+		Type:          EventAccepted,
+		OfferID:       offer.ID,
+		SpotID:        offer.SpotID,
+		RecipientID:   offer.DriverID,
+		ReservationID: reservation.ID,
+		Actions:       []string{"open"},
+	})
+	for _, sib := range siblings {
+		s.push(ctx, Notification{
+			Type:        EventRejected,
+			OfferID:     sib.offerID,
+			SpotID:      offer.SpotID,
+			RecipientID: sib.driverID,
+			Actions:     []string{"open"},
+		})
 	}
 	return reservation, nil
 }
@@ -225,10 +293,18 @@ func (s *Service) Reject(ctx context.Context, offerID string, viewer domain.Clai
 	if err := s.store.RejectOffer(ctx, offer.ID, viewer.UserID); err != nil {
 		return mapOfferMutation(err)
 	}
+	s.push(ctx, Notification{
+		Type:        EventRejected,
+		OfferID:     offer.ID,
+		SpotID:      offer.SpotID,
+		RecipientID: offer.DriverID,
+		Actions:     []string{"open"},
+	})
 	return nil
 }
 
 // Withdraw retracts one pending offer as its driver.
+// Owner is not pushed: they already see the listing update in-app.
 func (s *Service) Withdraw(ctx context.Context, offerID string, viewer domain.Claims) error {
 	if !viewer.Authenticated() {
 		return unauthenticated()

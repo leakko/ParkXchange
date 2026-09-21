@@ -685,6 +685,11 @@ export interface components {
             display_name: string;
             /** @description E.164 phone number of this account; empty when unset */
             phone: string;
+            /**
+             * @description Preferred UI and push notification language
+             * @enum {string}
+             */
+            locale: "es" | "en";
             /** @description Whether the account may announce or reserve */
             email_verified: boolean;
             /** Format: double */
@@ -703,6 +708,11 @@ export interface components {
              * @example +34600111222
              */
             phone?: string;
+            /**
+             * @description Preferred UI and push notification language
+             * @enum {string}
+             */
+            locale?: "es" | "en";
         };
         ChangePasswordRequest: {
             current_password: string;

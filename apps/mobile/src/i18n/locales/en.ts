@@ -6,6 +6,9 @@ export const en: Record<TranslationKey, string> = {
   "common.error": "error",
   "common.ok": "OK",
 
+  "offline.title": "No connection",
+  "offline.body": "You’re offline. Connect to the internet to use ParkXchange.",
+
   "auth.email": "Email",
   "auth.password": "Password",
   "auth.password.show": "Show password",
@@ -219,11 +222,20 @@ export const en: Record<TranslationKey, string> = {
   "account.vehicles.edit.saved.message": "Vehicle updated.",
   "account.vehicles.edit.saveFailed.title": "Save failed",
   "account.vehicles.deleteFailed.title": "Delete failed",
+  "account.vehicles.deleteFailed.inUse":
+    "You can't delete this car while it's on an active listing. Cancel or finish that listing first.",
+  "account.vehicles.deleteFailed.pendingOffer":
+    "You can't delete this car while a pending offer uses it. Withdraw the offer or wait for a reply.",
+  "account.vehicles.deleteFailed.liveReservation":
+    "You can't delete this car while it's in an active exchange.",
+  "account.vehicles.create.photoFailed.title": "Car saved",
+  "account.vehicles.create.photoFailed.message":
+    "The car was created, but the photo could not be uploaded. You can add it later by editing the car.",
   "account.vehicles.notFound": "Vehicle not found",
   "account.vehicles.edit.submit": "Save vehicle",
   "account.vehicles.delete.confirmTitle": "Delete vehicle?",
   "account.vehicles.delete.confirmMessage":
-    "This fails if an active spot still references it.",
+    "If the car is on an active listing or offer, it cannot be deleted.",
   "account.vehicles.delete.confirm": "Delete",
   "account.vehicles.delete.action": "Delete vehicle",
   "account.vehicles.form.plate": "Plate",

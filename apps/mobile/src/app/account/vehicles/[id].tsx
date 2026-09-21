@@ -14,6 +14,7 @@ import {
   updateVehicle,
   vehiclePhotoUrl,
 } from "@/api/client";
+import { apiErrorMessage } from "@/api/errors";
 import { VehicleForm, type VehicleFormValues } from "@/account/VehicleForm";
 import type { PickedVehiclePhoto } from "@/account/pickVehiclePhoto";
 import { accountStyles } from "@/account/theme";
@@ -86,7 +87,7 @@ export default function EditVehicleScreen() {
     onError: (err) => {
       Alert.alert(
         t("account.vehicles.deleteFailed.title"),
-        err instanceof Error ? err.message : t("common.error"),
+        apiErrorMessage(err, t),
       );
     },
   });

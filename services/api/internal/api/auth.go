@@ -47,6 +47,7 @@ type userResponse struct {
 	Email         string   `json:"email"`
 	DisplayName   string   `json:"display_name"`
 	Phone         string   `json:"phone"`
+	Locale        string   `json:"locale"`
 	EmailVerified bool     `json:"email_verified"`
 	Rating        *float64 `json:"rating"`
 	RatingCount   int      `json:"rating_count"`
@@ -59,6 +60,7 @@ func toUserResponse(u domain.User) userResponse {
 		Email:         u.Email.String(),
 		DisplayName:   u.DisplayName,
 		Phone:         u.Phone.String(),
+		Locale:        u.Locale.String(),
 		EmailVerified: u.EmailVerified(),
 		RatingCount:   u.RatingCount,
 		BalanceCents:  u.BalanceCents,
@@ -175,6 +177,7 @@ func (a *API) handlePutPushToken(w http.ResponseWriter, r *http.Request) error {
 type updateMeRequest struct {
 	DisplayName *string `json:"display_name"`
 	Phone       *string `json:"phone"`
+	Locale      *string `json:"locale"`
 }
 
 type changePasswordRequest struct {
@@ -319,24 +322,30 @@ func (a *API) handleUpdateMe(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	claims := claimsFrom(r.Context())
+	if req.DisplayName == nil && req.Phone == nil && req.Locale == nil {
+		return domain.Invalid("empty_patch", "provide display_name, phone, and/or locale")
+	}
+
 	var user domain.User
 	var err error
 
-	switch {
-	case req.DisplayName != nil && req.Phone != nil:
-		if _, err = a.accounts.UpdateDisplayName(r.Context(), claims, *req.DisplayName); err != nil {
+	if req.DisplayName != nil {
+		user, err = a.accounts.UpdateDisplayName(r.Context(), claims, *req.DisplayName)
+		if err != nil {
 			return err
 		}
-		user, err = a.accounts.UpdatePhone(r.Context(), claims, *req.Phone)
-	case req.DisplayName != nil:
-		user, err = a.accounts.UpdateDisplayName(r.Context(), claims, *req.DisplayName)
-	case req.Phone != nil:
-		user, err = a.accounts.UpdatePhone(r.Context(), claims, *req.Phone)
-	default:
-		return domain.Invalid("empty_patch", "provide display_name and/or phone")
 	}
-	if err != nil {
-		return err
+	if req.Phone != nil {
+		user, err = a.accounts.UpdatePhone(r.Context(), claims, *req.Phone)
+		if err != nil {
+			return err
+		}
+	}
+	if req.Locale != nil {
+		user, err = a.accounts.UpdateLocale(r.Context(), claims, *req.Locale)
+		if err != nil {
+			return err
+		}
 	}
 
 	return web.JSON(w, http.StatusOK, toUserResponse(user))

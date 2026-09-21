@@ -12,6 +12,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type {
   OfferResponse,
@@ -87,6 +88,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
   ref,
 ) {
   const { t, formatDateTime } = useTranslation();
+  const insets = useSafeAreaInsets();
   const snapPoints = useMemo(() => ["36%", "82%"], []);
   const scrollRef = useRef<ComponentRef<typeof BottomSheetScrollView>>(null);
   const [makingOffer, setMakingOffer] = useState(false);
@@ -106,6 +108,11 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
       ? spotVehiclePhotoUrl(String(spot.id))
       : null;
   const { uri: photoUri } = useAuthImage(photoUrl);
+  // During live exchange PeerVehiclePanel is the single peer-car source of truth.
+  const showInlineSpotVehicle =
+    !!vehicle &&
+    !!(vehicle.plate || vehicle.make_model) &&
+    !(isActiveForSpot && active);
 
   useEffect(() => {
     setMakingOffer(false);
@@ -247,7 +254,12 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
     >
       <BottomSheetScrollView
         ref={scrollRef}
-        contentContainerStyle={[styles.body, makingOffer && styles.bodyOffer]}
+        contentContainerStyle={[
+          styles.body,
+          {
+            paddingBottom: (makingOffer ? 120 : 28) + insets.bottom,
+          },
+        ]}
         keyboardShouldPersistTaps="handled"
       >
         {spot ? (
@@ -280,7 +292,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
               <Text style={styles.notes}>{spot.properties.notes}</Text>
             ) : null}
 
-            {vehicle && (vehicle.plate || vehicle.make_model) ? (
+            {showInlineSpotVehicle ? (
               <View style={styles.vehicleBlock}>
                 <Text style={styles.vehicleTitle}>
                   {vehicle.plate}
@@ -686,7 +698,6 @@ const styles = StyleSheet.create({
   sheet: { backgroundColor: "#0B1F33" },
   handle: { backgroundColor: "#5B7A8C" },
   body: { paddingHorizontal: 20, paddingBottom: 28, gap: 6 },
-  bodyOffer: { paddingBottom: 120 },
   title: { color: "#F4F7FA", fontSize: 18, fontWeight: "600" },
   mineBadge: { color: "#1B9AAA", fontSize: 13, fontWeight: "600" },
   meta: { color: "#9DB4C0", fontSize: 14 },

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   cancelReservation,
@@ -33,6 +34,7 @@ function reservationStatusKey(status: string): TranslationKey {
 
 export default function ReservationDetailScreen() {
   const { t, formatDateTime } = useTranslation();
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { signedIn } = useSession();
@@ -159,7 +161,13 @@ export default function ReservationDetailScreen() {
   };
 
   return (
-    <ScrollView style={accountStyles.screen} contentContainerStyle={accountStyles.scroll}>
+    <ScrollView
+      style={accountStyles.screen}
+      contentContainerStyle={[
+        accountStyles.scroll,
+        { paddingBottom: 40 + insets.bottom },
+      ]}
+    >
       <Text style={accountStyles.title}>
         {t("account.reservations.rowTitle", {
           points: formatPoints(res.price_cents),

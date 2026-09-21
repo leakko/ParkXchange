@@ -12,13 +12,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/marco/parkxchange/services/api/internal/domain"
 	"github.com/marco/parkxchange/services/api/internal/reservations"
 )
 
-// TokenStore loads and prunes Expo push tokens.
+// TokenStore loads push tokens and recipient locale for copy selection.
 type TokenStore interface {
 	PushTokensByUser(ctx context.Context, userID string) ([]string, error)
 	DeletePushToken(ctx context.Context, token string) error
+	UserLocale(ctx context.Context, userID string) (domain.Locale, error)
 }
 
 // Expo sends notifications via Expo's push HTTP API.
@@ -47,7 +49,12 @@ func (e *Expo) Notify(ctx context.Context, n reservations.Notification) error {
 		return reservations.ErrPushNotDelivered
 	}
 
-	title, body := copyFor(n)
+	locale := domain.DefaultLocale
+	if loc, err := e.Tokens.UserLocale(ctx, n.RecipientID); err == nil && loc != "" {
+		locale = loc
+	}
+
+	title, body := copyFor(n, locale.String())
 	msgs := make([]expoMessage, 0, len(tokens))
 	for _, to := range tokens {
 		if !strings.HasPrefix(to, "ExponentPushToken[") && !strings.HasPrefix(to, "ExpoPushToken[") {
@@ -174,47 +181,190 @@ func hasActionableButton(actions []string) bool {
 	return false
 }
 
-func copyFor(n reservations.Notification) (title, body string) {
-	switch n.Type {
-	case reservations.EventOwnerEnRoute:
-		return "ParkXchange", "El dueño va de camino al intercambio"
-	case reservations.EventDriverEnRoute:
-		return "ParkXchange", "El conductor va de camino al intercambio"
-	case reservations.EventOwnerReady:
-		if n.Urgent {
-			return "Dueño listo", "Marca Listo antes de que acabe el margen"
-		}
-		return "Dueño listo", "El dueño está listo para salir; no hace falta precipitarse"
-	case reservations.EventDriverReady:
-		if n.Urgent {
-			return "Conductor listo", "Marca Listo antes de que acabe el margen"
-		}
-		return "Conductor listo", "El conductor está en el punto — ven y marca Listo"
-	case reservations.EventOwnerUnready:
-		return "ParkXchange", "El dueño retiró su listo"
-	case reservations.EventDriverUnready:
-		return "ParkXchange", "El conductor ya no está listo en el punto"
-	case reservations.EventCompleted:
-		return "Sal ya", "Intercambio cerrado — aparca o sal del coche"
-	case reservations.EventCancelledByOwner:
-		return "Cancelada", "El dueño canceló — depósito liberado"
-	case reservations.EventCancelledByDriver:
-		return "Cancelada", "El conductor canceló"
-	case reservations.EventDriverNoShow:
-		return "No-show", "El conductor no se presentó — depósito al dueño"
-	case reservations.EventOwnerNoShow:
-		return "No-show", "El dueño no marcó a tiempo — depósito liberado"
-	case reservations.EventSafetyNet, reservations.EventSafetyNetOwnerReady:
-		return "Tiempo agotado", "La reserva se cerró por tiempo"
-	case reservations.EventPreDeparture:
-		return "Intercambio pronto", "Avisa cuando salgas hacia el punto"
-	case reservations.EventDriverWaitTip:
-		return "¿Dar una vuelta?", "Si tienes que ceder paso, marca que das una vuelta"
-	case reservations.EventDriverBackTip:
-		return "¿Ya estás en el sitio?", "Marca Listo cuando vuelvas al punto"
-	default:
-		return "ParkXchange", "Actualización de tu intercambio"
+type pushCopy struct {
+	title string
+	body  string
+}
+
+// copyFor returns child-readable title/body for the recipient's locale (es default).
+func copyFor(n reservations.Notification, locale string) (title, body string) {
+	lang := strings.ToLower(strings.TrimSpace(locale))
+	if lang != "en" {
+		lang = "es"
 	}
+	table := copyES
+	if lang == "en" {
+		table = copyEN
+	}
+	c, ok := table[n.Type]
+	if !ok {
+		c = table["_default"]
+	}
+	if n.Urgent {
+		if urgent, ok := table[n.Type+".urgent"]; ok {
+			c = urgent
+		}
+	}
+	return c.title, c.body
+}
+
+// Plain-language ES: what happened + what to do. No handshake jargon.
+var copyES = map[string]pushCopy{
+	reservations.EventOwnerEnRoute: {
+		"ParkXchange",
+		"El dueño va de camino al intercambio",
+	},
+	reservations.EventDriverEnRoute: {
+		"ParkXchange",
+		"El conductor va de camino al intercambio",
+	},
+	reservations.EventOwnerReady: {
+		"ParkXchange",
+		"El dueño ya está en el sitio — cuando llegues, pulsa que tú también estás listo",
+	},
+	reservations.EventOwnerReady + ".urgent": {
+		"ParkXchange",
+		"El dueño ya está en el sitio — pulsa que estás listo antes de que se acabe el tiempo",
+	},
+	reservations.EventDriverReady: {
+		"ParkXchange",
+		"El conductor ya está en el sitio — ven y pulsa que tú también estás listo",
+	},
+	reservations.EventDriverReady + ".urgent": {
+		"ParkXchange",
+		"El conductor ya está en el sitio — pulsa que estás listo antes de que se acabe el tiempo",
+	},
+	reservations.EventOwnerUnready: {
+		"ParkXchange",
+		"El dueño ya no está en el sitio",
+	},
+	reservations.EventDriverUnready: {
+		"ParkXchange",
+		"El conductor ya no está en el sitio",
+	},
+	reservations.EventCompleted: {
+		"Ya podéis intercambiar",
+		"El intercambio está cerrado — aparca o sal del coche",
+	},
+	reservations.EventCancelledByOwner: {
+		"Intercambio cancelado",
+		"El dueño canceló — tus puntos vuelven a tu cuenta",
+	},
+	reservations.EventCancelledByDriver: {
+		"Intercambio cancelado",
+		"El conductor canceló el intercambio",
+	},
+	reservations.EventDriverNoShow: {
+		"No llegó el conductor",
+		"El conductor no llegó a tiempo — los puntos pasan al dueño",
+	},
+	reservations.EventOwnerNoShow: {
+		"No llegó el dueño",
+		"El dueño no llegó a tiempo — tus puntos vuelven a tu cuenta",
+	},
+	reservations.EventSafetyNet: {
+		"Se acabó el tiempo",
+		"La reserva se cerró porque se acabó el tiempo",
+	},
+	reservations.EventSafetyNetOwnerReady: {
+		"Se acabó el tiempo",
+		"La reserva se cerró porque se acabó el tiempo",
+	},
+	reservations.EventPreDeparture: {
+		"El intercambio es pronto",
+		"Avisa cuando salgas hacia el punto",
+	},
+	reservations.EventDriverWaitTip: {
+		"¿Necesitas dar una vuelta?",
+		"Si tienes que ceder el paso, pulsa que das una vuelta",
+	},
+	reservations.EventDriverBackTip: {
+		"¿Ya estás en el sitio?",
+		"Cuando vuelvas al punto, pulsa que estás listo",
+	},
+	"_default": {
+		"ParkXchange",
+		"Hay una novedad en tu intercambio",
+	},
+}
+
+var copyEN = map[string]pushCopy{
+	reservations.EventOwnerEnRoute: {
+		"ParkXchange",
+		"The owner is on the way to the exchange",
+	},
+	reservations.EventDriverEnRoute: {
+		"ParkXchange",
+		"The driver is on the way to the exchange",
+	},
+	reservations.EventOwnerReady: {
+		"ParkXchange",
+		"The owner is at the spot — when you get there, tap that you're ready too",
+	},
+	reservations.EventOwnerReady + ".urgent": {
+		"ParkXchange",
+		"The owner is at the spot — tap that you're ready before time runs out",
+	},
+	reservations.EventDriverReady: {
+		"ParkXchange",
+		"The driver is at the spot — come over and tap that you're ready too",
+	},
+	reservations.EventDriverReady + ".urgent": {
+		"ParkXchange",
+		"The driver is at the spot — tap that you're ready before time runs out",
+	},
+	reservations.EventOwnerUnready: {
+		"ParkXchange",
+		"The owner is no longer at the spot",
+	},
+	reservations.EventDriverUnready: {
+		"ParkXchange",
+		"The driver is no longer at the spot",
+	},
+	reservations.EventCompleted: {
+		"You can swap now",
+		"The exchange is done — park or leave the car",
+	},
+	reservations.EventCancelledByOwner: {
+		"Exchange cancelled",
+		"The owner cancelled — your points are back",
+	},
+	reservations.EventCancelledByDriver: {
+		"Exchange cancelled",
+		"The driver cancelled the exchange",
+	},
+	reservations.EventDriverNoShow: {
+		"The driver didn't arrive",
+		"The driver didn't show up in time — points go to the owner",
+	},
+	reservations.EventOwnerNoShow: {
+		"The owner didn't arrive",
+		"The owner didn't show up in time — your points are back",
+	},
+	reservations.EventSafetyNet: {
+		"Time's up",
+		"The reservation closed because time ran out",
+	},
+	reservations.EventSafetyNetOwnerReady: {
+		"Time's up",
+		"The reservation closed because time ran out",
+	},
+	reservations.EventPreDeparture: {
+		"Exchange coming up",
+		"Let them know when you head to the spot",
+	},
+	reservations.EventDriverWaitTip: {
+		"Need to drive around the block?",
+		"If you have to yield, tap that you're looping around",
+	},
+	reservations.EventDriverBackTip: {
+		"Back at the spot?",
+		"When you're there again, tap that you're ready",
+	},
+	"_default": {
+		"ParkXchange",
+		"There's an update on your exchange",
+	},
 }
 
 func truncate(s string, n int) string {

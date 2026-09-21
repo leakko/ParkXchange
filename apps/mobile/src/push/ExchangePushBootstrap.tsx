@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { AppState, Platform } from "react-native";
 
 import { useSession } from "@/hooks/useSession";
+import { useTranslation } from "@/i18n";
 import { ensureNotificationCategories } from "@/push/categories";
 import { handleNotificationResponse } from "@/push/handlers";
 import { registerPushToken } from "@/push/register";
@@ -24,6 +25,7 @@ Notifications.setNotificationHandler({
  */
 export function ExchangePushBootstrap() {
   const { ready, signedIn } = useSession();
+  const { locale } = useTranslation();
 
   useEffect(() => {
     if (!ready || !signedIn || Platform.OS === "web") {
@@ -34,12 +36,12 @@ export function ExchangePushBootstrap() {
     let sub: Notifications.Subscription | undefined;
 
     const boot = async () => {
-      await ensureNotificationCategories();
+      await ensureNotificationCategories(locale);
       if (cancelled) {
         return;
       }
       try {
-        await registerPushToken();
+        await registerPushToken(locale);
       } catch {
         /* best-effort */
       }
@@ -64,8 +66,8 @@ export function ExchangePushBootstrap() {
       if (state === "active" && signedIn) {
         // Re-register categories on foreground so Android action buttons stay
         // attached after OEM kills / before the next −30m tip arrives.
-        void ensureNotificationCategories().then(() =>
-          registerPushToken().catch(() => undefined),
+        void ensureNotificationCategories(locale).then(() =>
+          registerPushToken(locale).catch(() => undefined),
         );
       }
     });
@@ -75,7 +77,7 @@ export function ExchangePushBootstrap() {
       sub?.remove();
       appSub.remove();
     };
-  }, [ready, signedIn]);
+  }, [ready, signedIn, locale]);
 
   return null;
 }

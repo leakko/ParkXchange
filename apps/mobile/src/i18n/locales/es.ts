@@ -4,6 +4,9 @@ export const es = {
   "common.error": "error",
   "common.ok": "OK",
 
+  "offline.title": "Sin conexión",
+  "offline.body": "No tienes internet. Conéctate para usar ParkXchange.",
+
   "auth.email": "Email",
   "auth.password": "Contraseña",
   "auth.password.show": "Mostrar contraseña",
@@ -217,11 +220,20 @@ export const es = {
   "account.vehicles.edit.saved.message": "Vehículo actualizado.",
   "account.vehicles.edit.saveFailed.title": "Error al guardar",
   "account.vehicles.deleteFailed.title": "Error al eliminar",
+  "account.vehicles.deleteFailed.inUse":
+    "No puedes borrar este coche porque está en una plaza activa. Cancela o termina esa plaza primero.",
+  "account.vehicles.deleteFailed.pendingOffer":
+    "No puedes borrar este coche porque hay una oferta pendiente que lo usa. Retira la oferta o espera la respuesta.",
+  "account.vehicles.deleteFailed.liveReservation":
+    "No puedes borrar este coche porque está en un intercambio activo.",
+  "account.vehicles.create.photoFailed.title": "Coche guardado",
+  "account.vehicles.create.photoFailed.message":
+    "El coche se creó bien, pero la foto no se pudo subir. Puedes añadirla luego editando el coche.",
   "account.vehicles.notFound": "Vehículo no encontrado",
   "account.vehicles.edit.submit": "Guardar vehículo",
   "account.vehicles.delete.confirmTitle": "¿Eliminar vehículo?",
   "account.vehicles.delete.confirmMessage":
-    "Falla si una plaza activa todavía lo referencia.",
+    "Si el coche está en una plaza u oferta activa, no se podrá eliminar.",
   "account.vehicles.delete.confirm": "Eliminar",
   "account.vehicles.delete.action": "Eliminar vehículo",
   "account.vehicles.form.plate": "Matrícula",

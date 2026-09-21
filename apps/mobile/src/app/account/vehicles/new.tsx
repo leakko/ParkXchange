@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Alert, Text } from "react-native";
 
 import { createVehicle, putVehiclePhoto } from "@/api/client";
+import { apiErrorMessage } from "@/api/errors";
 import { VehicleForm, type VehicleFormValues } from "@/account/VehicleForm";
 import type { PickedVehiclePhoto } from "@/account/pickVehiclePhoto";
 import { accountStyles } from "@/account/theme";
@@ -32,20 +33,35 @@ export default function NewVehicleScreen() {
       values: VehicleFormValues;
       photo: PickedVehiclePhoto | null;
     }) => {
+      // Create first; photo is optional. A failed photo must not leave the user
+      // thinking create failed (orphan car + confusing plate_taken on retry).
       const vehicle = await createVehicle(values);
+      let photoFailed = false;
       if (photo) {
-        await putVehiclePhoto(vehicle.id, photo.bytes, photo.contentType);
+        try {
+          await putVehiclePhoto(vehicle.id, photo.bytes, photo.contentType);
+        } catch {
+          photoFailed = true;
+        }
       }
-      return vehicle;
+      return { vehicle, photoFailed };
     },
-    onSuccess: async () => {
+    onSuccess: async ({ photoFailed }) => {
       await queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+      if (photoFailed) {
+        Alert.alert(
+          t("account.vehicles.create.photoFailed.title"),
+          t("account.vehicles.create.photoFailed.message"),
+          [{ text: t("common.ok"), onPress: () => router.back() }],
+        );
+        return;
+      }
       router.back();
     },
     onError: (err) => {
       Alert.alert(
         t("account.vehicles.createFailed.title"),
-        err instanceof Error ? err.message : t("common.error"),
+        apiErrorMessage(err, t),
       );
     },
   });

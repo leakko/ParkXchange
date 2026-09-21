@@ -58,6 +58,18 @@ func (db *DB) PushTokensByUser(ctx context.Context, userID string) ([]string, er
 	return out, translate(rows.Err(), "iterate push tokens")
 }
 
+// UserLocale returns the recipient's preferred push language (es default).
+func (db *DB) UserLocale(ctx context.Context, userID string) (domain.Locale, error) {
+	var locale string
+	err := db.Pool.QueryRow(ctx, `
+		SELECT locale FROM users WHERE id = $1 AND deleted_at IS NULL
+	`, userID).Scan(&locale)
+	if err != nil {
+		return domain.DefaultLocale, translate(err, "user locale")
+	}
+	return domain.NewLocale(locale), nil
+}
+
 // DueCoachingTips lists tips that are due without marking them sent.
 func (db *DB) DueCoachingTips(ctx context.Context, now time.Time) ([]reservations.Notification, error) {
 	var out []reservations.Notification
