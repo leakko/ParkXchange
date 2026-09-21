@@ -115,3 +115,139 @@ func TestReadyRejectedWhenTerminal(t *testing.T) {
 		t.Fatal("expected conflict")
 	}
 }
+
+type recordingNotifier struct {
+	got []reservations.Notification
+}
+
+func (r *recordingNotifier) Notify(_ context.Context, n reservations.Notification) error {
+	r.got = append(r.got, n)
+	return nil
+}
+
+func hasAction(actions []string, want string) bool {
+	for _, a := range actions {
+		if a == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestEnRoutePushIncludesEnRouteWhenPeerIdle(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{
+		res: domain.Reservation{
+			ID: "r1", OwnerID: "o1", DriverID: "d1", Status: domain.ResConfirmed,
+			ExchangeAt: time.Now().Add(time.Hour),
+		},
+	}
+	n := &recordingNotifier{}
+	svc := reservations.NewWithNotifier(store, n, nil)
+	if err := svc.EnRoute(context.Background(), "r1", domain.Claims{UserID: "o1"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(n.got) != 1 {
+		t.Fatalf("notifications = %d, want 1", len(n.got))
+	}
+	got := n.got[0]
+	if got.RecipientID != "d1" || got.Type != reservations.EventOwnerEnRoute {
+		t.Fatalf("got %+v", got)
+	}
+	if !hasAction(got.Actions, "en_route") || !hasAction(got.Actions, "open") {
+		t.Fatalf("Actions = %v, want en_route and open for idle peer", got.Actions)
+	}
+}
+
+func TestEnRoutePushIncludesReadyWhenPeerAlreadyEnRoute(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	store := &fakeStore{
+		res: domain.Reservation{
+			ID: "r1", OwnerID: "o1", DriverID: "d1", Status: domain.ResConfirmed,
+			ExchangeAt: now.Add(time.Hour), DriverEnRouteAt: &now,
+		},
+	}
+	n := &recordingNotifier{}
+	svc := reservations.NewWithNotifier(store, n, nil)
+	if err := svc.EnRoute(context.Background(), "r1", domain.Claims{UserID: "o1"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(n.got) != 1 {
+		t.Fatalf("notifications = %d, want 1", len(n.got))
+	}
+	got := n.got[0]
+	if !hasAction(got.Actions, "ready") || !hasAction(got.Actions, "open") {
+		t.Fatalf("Actions = %v, want ready and open when peer already en route", got.Actions)
+	}
+	if hasAction(got.Actions, "en_route") {
+		t.Fatalf("Actions = %v, idle en_route CTA should not appear when peer already en route", got.Actions)
+	}
+}
+
+func TestReadyPushIncludesReadyWhenPeerNotReady(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{
+		res: domain.Reservation{
+			ID: "r1", OwnerID: "o1", DriverID: "d1", Status: domain.ResConfirmed,
+			ExchangeAt: time.Now().Add(time.Hour),
+		},
+	}
+	n := &recordingNotifier{}
+	svc := reservations.NewWithNotifier(store, n, nil)
+	if _, err := svc.Ready(context.Background(), "r1", domain.Claims{UserID: "o1"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(n.got) != 1 {
+		t.Fatalf("notifications = %d, want 1", len(n.got))
+	}
+	got := n.got[0]
+	if !hasAction(got.Actions, "ready") || !hasAction(got.Actions, "open") {
+		t.Fatalf("Actions = %v, want ready and open", got.Actions)
+	}
+}
+
+func TestUnreadyPushIncludesReadyWhenPeerWasReady(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	store := &fakeStore{
+		res: domain.Reservation{
+			ID: "r1", OwnerID: "o1", DriverID: "d1", Status: domain.ResConfirmed,
+			ExchangeAt: now.Add(time.Hour), DriverReadyAt: &now, DriverEnRouteAt: &now,
+		},
+	}
+	n := &recordingNotifier{}
+	svc := reservations.NewWithNotifier(store, n, nil)
+	if err := svc.Unready(context.Background(), "r1", domain.Claims{UserID: "o1"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(n.got) != 1 {
+		t.Fatalf("notifications = %d, want 1", len(n.got))
+	}
+	got := n.got[0]
+	if !hasAction(got.Actions, "ready") || !hasAction(got.Actions, "open") {
+		t.Fatalf("Actions = %v, want ready and open when recipient was ready", got.Actions)
+	}
+}
+
+func TestUnreadyPushIncludesEnRouteWhenPeerNotEnRoute(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{
+		res: domain.Reservation{
+			ID: "r1", OwnerID: "o1", DriverID: "d1", Status: domain.ResConfirmed,
+			ExchangeAt: time.Now().Add(time.Hour),
+		},
+	}
+	n := &recordingNotifier{}
+	svc := reservations.NewWithNotifier(store, n, nil)
+	if err := svc.Unready(context.Background(), "r1", domain.Claims{UserID: "o1"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(n.got) != 1 {
+		t.Fatalf("notifications = %d, want 1", len(n.got))
+	}
+	got := n.got[0]
+	if !hasAction(got.Actions, "en_route") || !hasAction(got.Actions, "open") {
+		t.Fatalf("Actions = %v, want en_route and open when recipient has not left yet", got.Actions)
+	}
+}

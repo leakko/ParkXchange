@@ -202,17 +202,21 @@ func (s *Service) EnRoute(ctx context.Context, id string, viewer domain.Claims) 
 
 	peer := res.DriverID
 	typ := EventOwnerEnRoute
+	peerEnRoute := res.DriverEnRouteAt != nil
+	peerReady := res.DriverReadyAt != nil
 	if viewer.UserID == res.DriverID {
 		peer = res.OwnerID
 		typ = EventDriverEnRoute
+		peerEnRoute = res.OwnerEnRouteAt != nil
+		peerReady = res.OwnerReadyAt != nil
 	}
-	// Peer must always hear the phase advance (open + ready prompt so they
-	// can catch up from the shade without unlocking the full UI).
+	// Live-exchange pushes must include the recipient's next handshake step.
 	peerActions := []string{"open"}
-	if viewer.UserID == res.OwnerID && res.DriverEnRouteAt == nil {
+	switch {
+	case !peerEnRoute:
 		peerActions = []string{"en_route", "open"}
-	} else if viewer.UserID == res.DriverID && res.OwnerEnRouteAt == nil {
-		peerActions = []string{"en_route", "open"}
+	case !peerReady:
+		peerActions = []string{"ready", "open"}
 	}
 	s.push(ctx, Notification{
 		Type: typ, ReservationID: res.ID, RecipientID: peer,
@@ -261,13 +265,19 @@ func (s *Service) Ready(ctx context.Context, id string, viewer domain.Claims) (b
 
 	peer := res.DriverID
 	typ := EventOwnerReady
+	peerReady := wasDriverReady
 	if viewer.UserID == res.DriverID {
 		peer = res.OwnerID
 		typ = EventDriverReady
+		peerReady = wasOwnerReady
+	}
+	peerActions := []string{"open"}
+	if !peerReady {
+		peerActions = []string{"ready", "open"}
 	}
 	s.push(ctx, Notification{
 		Type: typ, ReservationID: res.ID, RecipientID: peer,
-		ExchangeAt: res.ExchangeAt, Actions: []string{"ready", "open"}, Urgent: true,
+		ExchangeAt: res.ExchangeAt, Actions: peerActions, Urgent: true,
 	})
 	return false, nil
 }
@@ -288,13 +298,26 @@ func (s *Service) Unready(ctx context.Context, id string, viewer domain.Claims) 
 
 	peer := res.DriverID
 	typ := EventOwnerUnready
+	peerEnRoute := res.DriverEnRouteAt != nil
+	peerReady := res.DriverReadyAt != nil
 	if viewer.UserID == res.DriverID {
 		peer = res.OwnerID
 		typ = EventDriverUnready
+		peerEnRoute = res.OwnerEnRouteAt != nil
+		peerReady = res.OwnerReadyAt != nil
+	}
+	peerActions := []string{"open"}
+	switch {
+	case peerReady:
+		peerActions = []string{"ready", "open"}
+	case !peerEnRoute:
+		peerActions = []string{"en_route", "open"}
+	default:
+		peerActions = []string{"ready", "open"}
 	}
 	s.push(ctx, Notification{
 		Type: typ, ReservationID: res.ID, RecipientID: peer,
-		ExchangeAt: res.ExchangeAt, Actions: []string{"open"},
+		ExchangeAt: res.ExchangeAt, Actions: peerActions,
 	})
 	return nil
 }
