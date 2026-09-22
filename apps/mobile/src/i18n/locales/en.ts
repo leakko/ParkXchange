@@ -3,6 +3,7 @@ import type { TranslationKey } from "./es.ts";
 export const en: Record<TranslationKey, string> = {
   "common.cancel": "Cancel",
   "common.confirm": "Confirm",
+  "common.close": "Close",
   "common.error": "error",
   "common.ok": "OK",
 
@@ -313,6 +314,8 @@ export const en: Record<TranslationKey, string> = {
   "map.alert.offerFailed.title": "Could not send",
 
   "spotSheet.yourListing": "Your listing",
+  "spotSheet.nav.title": "Spot",
+  "spotSheet.nav.missing": "Could not load this spot.",
   "spotSheet.meta": "{sizeClass} · {points} pts · {status}",
   "spotSheet.rating": "{score} ★",
   "spotSheet.ownerPhone": "Owner: {phone}",

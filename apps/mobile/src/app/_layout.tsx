@@ -1,4 +1,3 @@
-import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { LogManager } from "@maplibre/maplibre-react-native";
 import {
   DarkTheme,
@@ -75,18 +74,16 @@ export default function RootLayout() {
               <ToastProvider>
                 <ConfirmProvider>
                 <OfflineGate>
-                  <BottomSheetModalProvider>
-                    <StatusBar style="light" />
-                    <OwnerOfferAlerts />
-                    <ExchangePushBootstrap />
-                    <Stack
-                      screenOptions={{
-                        headerShown: false,
-                        contentStyle: { backgroundColor: accountColors.bg },
-                        animation: "slide_from_right",
-                      }}
-                    />
-                  </BottomSheetModalProvider>
+                  <StatusBar style="light" />
+                  <OwnerOfferAlerts />
+                  <ExchangePushBootstrap />
+                  <Stack
+                    screenOptions={{
+                      headerShown: false,
+                      contentStyle: { backgroundColor: accountColors.bg },
+                      animation: "slide_from_right",
+                    }}
+                  />
                 </OfflineGate>
                 </ConfirmProvider>
               </ToastProvider>

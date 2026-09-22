@@ -1,6 +1,7 @@
 export const es = {
   "common.cancel": "Cancelar",
   "common.confirm": "Confirmar",
+  "common.close": "Cerrar",
   "common.error": "error",
   "common.ok": "OK",
 
@@ -311,6 +312,8 @@ export const es = {
   "map.alert.offerFailed.title": "No se pudo enviar",
 
   "spotSheet.yourListing": "Tu anuncio",
+  "spotSheet.nav.title": "Plaza",
+  "spotSheet.nav.missing": "No se pudo cargar esta plaza.",
   "spotSheet.meta": "{sizeClass} · {points} pts · {status}",
   "spotSheet.rating": "{score} ★",
   "spotSheet.ownerPhone": "Quien deja el hueco: {phone}",

@@ -33,20 +33,42 @@ import {
 } from "@/map/exchangeLeave";
 import { ExchangeStatusPanel } from "@/map/ExchangeStatusPanel";
 import { PeerVehiclePanel } from "@/map/PeerVehiclePanel";
-import type { SpotSheetProps } from "@/map/SpotSheet";
 import { DateTimeField } from "@/ui/DateTimeField";
 import { useConfirm } from "@/ui/ConfirmModal";
 
-type Props = SpotSheetProps & {
+export type SpotSheetBodyProps = {
+  spot: SpotFeature | null;
+  active: ReservationResponse | null;
+  pendingOffer: OfferResponse | null;
+  vehicles: VehicleResponse[];
+  isOwner: boolean;
+  isDriver: boolean;
+  busy?: boolean;
+  onMakeOffer: (
+    spot: SpotFeature,
+    vehicleId: string,
+    exchangeAt: string,
+    amountCents: number,
+  ) => Promise<void>;
+  onWithdrawOffer: (offer: OfferResponse) => Promise<void>;
+  onAddVehicle: () => void;
+  onEnRoute: () => void;
+  onReady: () => void;
+  onUnready: () => void;
+  onCancel: () => void;
+  onEdit: (spot: SpotFeature) => void;
+  onViewOffers: (spot: SpotFeature) => void;
+  onWithdraw: (spot: SpotFeature) => void;
+  onManageExchange?: () => void;
   makingOffer: boolean;
   setMakingOffer: (v: boolean) => void;
   onExpandSheet: () => void;
-  /** Bottom-sheet-aware input when available; falls back to RN TextInput. */
+  /** Optional sheet-aware input; defaults to RN TextInput. */
   TextInput?: ComponentType<TextInputProps>;
 };
 
 /**
- * Presentational body for SpotSheet. Kept free of BottomSheet gesture wiring.
+ * Spot detail body — presentation only; no sheet/gesture wiring.
  */
 export function SpotSheetBody({
   spot,
@@ -70,7 +92,7 @@ export function SpotSheetBody({
   setMakingOffer,
   onExpandSheet,
   TextInput = RNTextInput,
-}: Props) {
+}: SpotSheetBodyProps) {
   const { t, formatDateTime } = useTranslation();
   const { confirm, alert } = useConfirm();
   const [vehicleId, setVehicleId] = useState("");

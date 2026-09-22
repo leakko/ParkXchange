@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import BottomSheet from "@gorhom/bottom-sheet";
 import {
   Camera,
   Map as MapView,
@@ -9,7 +8,7 @@ import {
   type PressEvent,
   type ViewStateChangeEvent,
 } from "@maplibre/maplibre-react-native";
-import { type Href, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -26,14 +25,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { OfferResponse, SpotFeature, VehicleResponse } from "@/api/client";
 import {
   ApiError,
-  createOffer,
-  fetchActiveReservations,
   fetchMySpots,
   getSpot,
   listMyOffers,
   listVehicles,
-  withdrawOffer,
-  withdrawSpot,
 } from "@/api/client";
 import { apiErrorMessage } from "@/api/errors";
 import { getAccessToken } from "@/api/session";
@@ -67,7 +62,7 @@ import {
   shouldInitialCenterCamera,
 } from "@/map/followUser";
 
-/** Fields the open sheet cares about — ignore referential churn from polls/WS. */
+/** Fields the selected pin cares about — ignore referential churn from polls/WS. */
 function sheetSpotDrifted(current: SpotFeature, next: SpotFeature): boolean {
   return (
     current.properties.status !== next.properties.status ||
@@ -102,7 +97,6 @@ import {
 } from "@/map/geocode";
 import { bannerNextStep, bannerPeerStatusKey } from "@/map/exchangeCopy";
 import { SpotLayers } from "@/map/SpotLayers";
-import { SpotSheet } from "@/map/SpotSheet";
 
 const DEBOUNCE_MS = 350;
 /** Longer than map pan debounce — typing must not hammer LocationIQ. */
@@ -126,7 +120,6 @@ export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapRef>(null);
   const cameraRef = useRef<CameraRef>(null);
-  const sheetRef = useRef<BottomSheet>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suggestDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mapViewboxRef = useRef<ViewBox | null>(null);
@@ -161,8 +154,6 @@ export default function MapScreen() {
   const [mineArmed, setMineArmed] = useState(false);
   const [offeredArmed, setOfferedArmed] = useState(false);
   const [announcing, setAnnouncing] = useState(false);
-  const [offerBusy, setOfferBusy] = useState(false);
-  const [vehicles, setVehicles] = useState<VehicleResponse[]>([]);
   const [myOffers, setMyOffers] = useState<OfferResponse[]>([]);
   const [announceOpen, setAnnounceOpen] = useState(false);
   const [announceVehicles, setAnnounceVehicles] = useState<VehicleResponse[]>([]);
@@ -251,7 +242,6 @@ export default function MapScreen() {
     markEnRoute,
     markReady,
     clearReady,
-    cancel,
     refresh: refreshActiveReservation,
   } = useActiveReservation(signedIn);
 
@@ -308,7 +298,6 @@ export default function MapScreen() {
     void refreshMySpotsOverlay();
     if (prev !== "none" && activeExchangeKey === "none") {
       setSelected(null);
-      sheetRef.current?.close();
       void refetch();
     }
   }, [activeExchangeKey, refreshMySpotsOverlay, refetch]);
@@ -323,10 +312,6 @@ export default function MapScreen() {
     return map;
   }, [myOffers]);
 
-  const pendingOfferForSelected = selected
-    ? (pendingOfferBySpotId.get(String(selected.id)) ?? null)
-    : null;
-
   const mySpotsById = useMemo(() => {
     const map = new Map<string, SpotFeature>();
     for (const feature of mySpotFeatures) {
@@ -335,65 +320,9 @@ export default function MapScreen() {
     return map;
   }, [mySpotFeatures]);
 
-  useEffect(() => {
-    if (!signedIn) {
-      setVehicles([]);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const list = await listVehicles();
-        if (!cancelled) {
-          setVehicles(list);
-        }
-      } catch {
-        if (!cancelled) {
-          setVehicles([]);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [signedIn]);
-
-  const refreshVehicles = useCallback(async () => {
-    if (!signedIn) {
-      setVehicles([]);
-      return [] as VehicleResponse[];
-    }
-    try {
-      const list = await listVehicles();
-      setVehicles(list);
-      return list;
-    } catch {
-      setVehicles([]);
-      return [] as VehicleResponse[];
-    }
-  }, [signedIn]);
-
-  useEffect(() => {
-    if (!selected || !signedIn) {
-      return;
-    }
-    void refreshVehicles();
-  }, [selected, signedIn, refreshVehicles]);
-
-  // Returning from /account/vehicles/new must refresh the list — invalidateQueries
-  // alone does not update this screen's local vehicles state.
-  useFocusEffect(
-    useCallback(() => {
-      if (signedIn) {
-        void refreshVehicles();
-      }
-    }, [signedIn, refreshVehicles]),
-  );
-
-  // Discovery/WS must not overwrite the open sheet during a live exchange:
+  // Discovery/WS must not overwrite the selected pin during a live exchange:
   // getSpot (exact, reserved/handover) and the viewport copy (often fuzzed or
-  // a beat behind on status) used to thrash setSelected forever — the sheet
-  // meta line flickering reserved ↔ handover/other until the app is killed.
+  // a beat behind on status) used to thrash setSelected forever.
   useEffect(() => {
     if (!selected?.id) {
       return;
@@ -688,23 +617,17 @@ export default function MapScreen() {
           }
         }
         setSelected(spot);
+        router.navigate(`/spot/${String(spot.id)}` as Href);
         const openExchange =
           !!fromActive ||
           spot.properties.status === "reserved" ||
           spot.properties.status === "handover";
-        // Live exchange sheet has a single snap (index 0). Browse uses peek at 0
-        // and full at 1 — reserved without a matching active still opens full.
-        const live =
-          !!active && String(active.spot_id) === String(spot.id);
-        sheetRef.current?.snapToIndex(
-          openExchange ? (live ? 0 : 1) : 0,
-        );
         if (openExchange) {
           void refreshActiveReservation();
         }
       })();
     },
-    [featureById, mySpotsById, activeSpot, active, refreshActiveReservation],
+    [featureById, mySpotsById, activeSpot, refreshActiveReservation, router],
   );
 
   const clearSearchHits = useCallback(() => {
@@ -774,7 +697,6 @@ export default function MapScreen() {
         return;
       }
       setSelected(null);
-      sheetRef.current?.close();
     },
     [announcePickMode, clearSearchHits, t],
   );
@@ -972,7 +894,7 @@ export default function MapScreen() {
           setSelected(spot);
           setMineArmed(true);
           setSpotsArmed(true);
-          sheetRef.current?.snapToIndex(0);
+          router.navigate(`/spot/${spotId}` as Href);
         } catch {
           /* camera move is enough */
         }
@@ -996,7 +918,7 @@ export default function MapScreen() {
       setSelected(spot);
       setSpotsArmed(true);
       setMineArmed(true);
-      sheetRef.current?.snapToIndex(0);
+      router.navigate(`/spot/${String(spot.id)}` as Href);
       await Promise.all([refetch(), refreshMySpotsOverlay()]);
       await alert({
         title: t("map.alert.announced.title"),
@@ -1004,7 +926,7 @@ export default function MapScreen() {
         confirmLabel: t("common.ok"),
       });
     },
-    [alert, refetch, refreshMySpotsOverlay, t],
+    [alert, refetch, refreshMySpotsOverlay, router, t],
   );
 
   const openAnnounce = useCallback(
@@ -1159,51 +1081,6 @@ export default function MapScreen() {
       })();
     },
     [confirm, openAnnounce, t],
-  );
-
-  const onEditSpot = useCallback(
-    (spot: SpotFeature) => {
-      const id = String(spot.id ?? "");
-      if (!id) {
-        return;
-      }
-      router.push(`/account/spots/${id}` as Href);
-    },
-    [router],
-  );
-
-  const onWithdrawSpot = useCallback(
-    (spot: SpotFeature) => {
-      const id = String(spot.id ?? "");
-      if (!id) {
-        return;
-      }
-      void (async () => {
-        const ok = await confirm({
-          title: t("map.alert.withdrawListing.title"),
-          message: t("map.alert.withdrawListing.message"),
-          cancelLabel: t("common.cancel"),
-          confirmLabel: t("map.alert.withdraw.confirm"),
-          destructive: true,
-        });
-        if (!ok) {
-          return;
-        }
-        try {
-          await withdrawSpot(id);
-          setSelected(null);
-          sheetRef.current?.close();
-          await Promise.all([refetch(), refreshMySpotsOverlay()]);
-        } catch (err) {
-          await alert({
-            title: t("map.alert.withdrawFailed.title"),
-            message: err instanceof Error ? err.message : t("common.error"),
-            confirmLabel: t("common.ok"),
-          });
-        }
-      })();
-    },
-    [alert, confirm, refetch, refreshMySpotsOverlay, t],
   );
 
   return (
@@ -1426,8 +1303,7 @@ export default function MapScreen() {
           onPress={() => {
             if (activeSpot) {
               setSelected(activeSpot);
-              // Live exchange sheet is a single snap at index 0.
-              sheetRef.current?.snapToIndex(0);
+              router.navigate(`/spot/${String(activeSpot.id)}` as Href);
             }
           }}
           accessibilityRole="button"
@@ -1537,107 +1413,6 @@ export default function MapScreen() {
           <Text style={styles.fabText}>{t("map.fab.announce")}</Text>
         )}
       </Pressable>
-
-      <SpotSheet
-        ref={sheetRef}
-        spot={selected}
-        active={active}
-        pendingOffer={pendingOfferForSelected}
-        vehicles={vehicles}
-        isOwner={isOwner}
-        isDriver={isDriver}
-        busy={busy || offerBusy}
-        onMakeOffer={async (spot, vehicleId, exchangeAt, amountCents) => {
-          if (!signedIn) {
-            requireSignIn("/");
-            return;
-          }
-          if (!(await requireEmailVerified())) {
-            return;
-          }
-          const spotId = String(spot.id ?? "");
-          setOfferBusy(true);
-          try {
-            await createOffer(spotId, {
-              vehicle_id: vehicleId,
-              exchange_at: exchangeAt,
-              amount_cents: amountCents,
-            });
-            await alert({
-              title: t("map.alert.offerSent.title"),
-              message: t("map.alert.offerSent.message"),
-              confirmLabel: t("common.ok"),
-            });
-            await Promise.all([
-              refetch(),
-              refreshMyOffers(),
-              refreshMySpotsOverlay(),
-              refreshActiveReservation(),
-            ]);
-          } catch (err) {
-            await alert({
-              title: t("map.alert.offerFailed.title"),
-              message: apiErrorMessage(err, t),
-              confirmLabel: t("common.ok"),
-            });
-          } finally {
-            setOfferBusy(false);
-          }
-        }}
-        onWithdrawOffer={async (offer) => {
-          setOfferBusy(true);
-          try {
-            await withdrawOffer(offer.id);
-            await Promise.all([refreshMyOffers(), refreshMySpotsOverlay()]);
-          } catch (err) {
-            await alert({
-              title: t("spotSheet.offer.withdrawFailed.title"),
-              message: apiErrorMessage(err, t),
-              confirmLabel: t("common.ok"),
-            });
-            throw err;
-          } finally {
-            setOfferBusy(false);
-          }
-        }}
-        onAddVehicle={() => {
-          sheetRef.current?.close();
-          router.push("/account/vehicles/new?from=offer" as Href);
-        }}
-        onEnRoute={() => void markEnRoute()}
-        onReady={() => void markReady()}
-        onUnready={() => void clearReady()}
-        onCancel={() => {
-          void cancel().then(() => {
-            void refreshActiveReservation();
-            void refreshMySpotsOverlay();
-          });
-        }}
-        onEdit={onEditSpot}
-        onViewOffers={onEditSpot}
-        onWithdraw={onWithdrawSpot}
-        onManageExchange={() => {
-          void (async () => {
-            await refreshActiveReservation();
-            const spotId = String(selected?.id ?? "");
-            try {
-              const list = await fetchActiveReservations();
-              const match = spotId
-                ? list.find((r) => String(r.spot_id) === spotId)
-                : list[0];
-              if (match) {
-                sheetRef.current?.close();
-                router.push(`/account/reservations/${match.id}` as Href);
-                return;
-              }
-            } catch {
-              /* fall through */
-            }
-            sheetRef.current?.close();
-            router.push("/account/reservations" as Href);
-          })();
-        }}
-      />
 
       <AnnounceModal
         visible={announceOpen}
