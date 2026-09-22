@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import { useEffect } from "react";
 import { AppState, Platform } from "react-native";
@@ -6,7 +7,13 @@ import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
 import { ensureNotificationCategories } from "@/push/categories";
 import { handleNotificationResponse } from "@/push/handlers";
+import {
+  notificationResponseKey,
+  shouldHandleLastNotificationResponse,
+} from "@/push/lastNotificationResponse";
 import { registerPushToken } from "@/push/register";
+
+const LAST_HANDLED_KEY = "parkxchange.push.lastHandledResponse";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -18,6 +25,22 @@ Notifications.setNotificationHandler({
     shouldShowList: true,
   }),
 });
+
+async function loadHandledResponseKey(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(LAST_HANDLED_KEY);
+  } catch {
+    return null;
+  }
+}
+
+async function saveHandledResponseKey(key: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(LAST_HANDLED_KEY, key);
+  } catch {
+    /* best-effort */
+  }
+}
 
 /**
  * Registers Expo push + notification action handlers while signed in.
@@ -53,11 +76,23 @@ export function ExchangePushBootstrap() {
         return;
       }
       sub = Notifications.addNotificationResponseReceivedListener((response) => {
-        void handleNotificationResponse(response);
+        void (async () => {
+          await saveHandledResponseKey(notificationResponseKey(response));
+          await handleNotificationResponse(response);
+        })();
       });
 
+      // Expo keeps the last tap sticky across process restarts and sign-ins.
+      // Without dedupe, a new account would reopen the previous user's
+      // reservation and hit "not found".
       const last = await Notifications.getLastNotificationResponseAsync();
-      if (last && !cancelled) {
+      const previouslyHandled = await loadHandledResponseKey();
+      if (
+        last &&
+        !cancelled &&
+        shouldHandleLastNotificationResponse(last, previouslyHandled)
+      ) {
+        await saveHandledResponseKey(notificationResponseKey(last));
         void handleNotificationResponse(last);
       }
     })();
