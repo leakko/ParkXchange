@@ -10,6 +10,7 @@ import {
   reservationEnRoute,
   reservationReady,
   reservationUnready,
+  ApiError,
 } from "@/api/client";
 import { accountStyles } from "@/account/theme";
 import { useSession } from "@/hooks/useSession";
@@ -48,7 +49,16 @@ export default function ReservationDetailScreen() {
     queryKey: ["reservations", id],
     queryFn: () => getReservation(id),
     enabled: signedIn && !!id,
-    refetchInterval: 5_000,
+    // Live exchanges need polling; a hard miss (404 / forbidden-as-missing)
+    // must not keep hammering the API every 5s.
+    refetchInterval: (q) =>
+      q.state.error || q.state.status === "error" ? false : 5_000,
+    retry: (count, err) => {
+      if (err instanceof ApiError && (err.status === 404 || err.status === 403)) {
+        return false;
+      }
+      return count < 2;
+    },
   });
 
   const invalidate = async () => {
@@ -119,6 +129,12 @@ export default function ReservationDetailScreen() {
             ? reservation.error.message
             : t("account.reservations.notFound")}
         </Text>
+        <Pressable
+          style={[accountStyles.primary, { marginTop: 16 }]}
+          onPress={() => router.replace("/" as Href)}
+        >
+          <Text style={accountStyles.primaryText}>{t("account.reservations.openMap")}</Text>
+        </Pressable>
       </View>
     );
   }
