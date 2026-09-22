@@ -909,48 +909,6 @@ export default function MapScreen() {
     router,
   ]);
 
-  // Deep-link from reservation history “re-announce” → open form prefilled.
-  useEffect(() => {
-    const lon = Number.parseFloat(String(focusParams.announceLon ?? ""));
-    const lat = Number.parseFloat(String(focusParams.announceLat ?? ""));
-    if (!mapReady || !Number.isFinite(lon) || !Number.isFinite(lat)) {
-      return;
-    }
-    const labelRaw = focusParams.announceLabel
-      ? String(focusParams.announceLabel)
-      : "";
-    const priceRaw = Number.parseInt(String(focusParams.announcePrice ?? ""), 10);
-    const vehicleRaw = focusParams.announceVehicle
-      ? String(focusParams.announceVehicle)
-      : "";
-    dispatchFollow({ type: "user_gesture" });
-    cameraRef.current?.easeTo({
-      center: [lon, lat],
-      zoom: FOCUS_SPOT_ZOOM,
-      duration: 500,
-    });
-    void openAnnounce([lon, lat], labelRaw || null, {
-      priceCents: Number.isFinite(priceRaw) && priceRaw > 0 ? priceRaw : null,
-      vehicleId: vehicleRaw || null,
-    });
-    router.setParams({
-      announceLon: undefined,
-      announceLat: undefined,
-      announceLabel: undefined,
-      announcePrice: undefined,
-      announceVehicle: undefined,
-    });
-  }, [
-    mapReady,
-    focusParams.announceLon,
-    focusParams.announceLat,
-    focusParams.announceLabel,
-    focusParams.announcePrice,
-    focusParams.announceVehicle,
-    openAnnounce,
-    router,
-  ]);
-
   const afterAnnounce = useCallback(
     async (spot: SpotFeature, message: string) => {
       setSelected(spot);
@@ -1017,6 +975,48 @@ export default function MapScreen() {
     },
     [requireEmailVerified, requireSignIn, router, signedIn, t],
   );
+
+  // Deep-link from reservation history “re-announce” → open form prefilled.
+  useEffect(() => {
+    const lon = Number.parseFloat(String(focusParams.announceLon ?? ""));
+    const lat = Number.parseFloat(String(focusParams.announceLat ?? ""));
+    if (!mapReady || !Number.isFinite(lon) || !Number.isFinite(lat)) {
+      return;
+    }
+    const labelRaw = focusParams.announceLabel
+      ? String(focusParams.announceLabel)
+      : "";
+    const priceRaw = Number.parseInt(String(focusParams.announcePrice ?? ""), 10);
+    const vehicleRaw = focusParams.announceVehicle
+      ? String(focusParams.announceVehicle)
+      : "";
+    dispatchFollow({ type: "user_gesture" });
+    cameraRef.current?.easeTo({
+      center: [lon, lat],
+      zoom: FOCUS_SPOT_ZOOM,
+      duration: 500,
+    });
+    void openAnnounce([lon, lat], labelRaw || null, {
+      priceCents: Number.isFinite(priceRaw) && priceRaw > 0 ? priceRaw : null,
+      vehicleId: vehicleRaw || null,
+    });
+    router.setParams({
+      announceLon: undefined,
+      announceLat: undefined,
+      announceLabel: undefined,
+      announcePrice: undefined,
+      announceVehicle: undefined,
+    });
+  }, [
+    mapReady,
+    focusParams.announceLon,
+    focusParams.announceLat,
+    focusParams.announceLabel,
+    focusParams.announcePrice,
+    focusParams.announceVehicle,
+    openAnnounce,
+    router,
+  ]);
 
   const submitAnnouncement = useCallback(
     async (values: AnnounceValues) => {

@@ -312,7 +312,7 @@ export default function MyReservationsScreen() {
           ownerId: res.owner_id,
           userId,
           status: res.status,
-          spotSummary: summary,
+          spotSummary: summary ?? null,
         });
         const address = reservationAddressLabel(
           summary,
