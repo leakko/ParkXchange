@@ -71,6 +71,7 @@ import {
   locationComponentReady,
 } from "@/map/followUser";
 import { ExchangeLayers } from "@/map/ExchangeLayers";
+import { AnnounceDraftLayers } from "@/map/AnnounceDraftLayers";
 import { MySpotLayers } from "@/map/MySpotLayers";
 import { OfferedSpotLayers } from "@/map/OfferedSpotLayers";
 import { SearchPlaceLayers } from "@/map/SearchPlaceLayers";
@@ -567,7 +568,8 @@ export default function MapScreen() {
   }, [location.ready, location.granted]);
 
   useEffect(() => {
-    if (!location.coords || !follow.followUser) {
+    // Never steal the camera while the user is placing/editing an announce pin.
+    if (!location.coords || !follow.followUser || announcePickMode) {
       return;
     }
     const [lon, lat] = location.coords;
@@ -580,7 +582,7 @@ export default function MapScreen() {
     cameraRef.current?.jumpTo({ center: location.coords, zoom: userZoom });
     jumpedToUserRef.current = true;
     lastJumpCoordsRef.current = location.coords;
-  }, [location.coords, follow.followUser]);
+  }, [location.coords, follow.followUser, announcePickMode, userZoom]);
 
   const publishViewport = useCallback(async () => {
     const map = mapRef.current;
@@ -1145,7 +1147,7 @@ export default function MapScreen() {
             center: defaultMapCenter,
             zoom: fallbackZoom,
           }}
-          {...(follow.followUser && puckReady
+          {...(follow.followUser && puckReady && !announcePickMode
             ? { trackUserLocation: "default" as const }
             : {})}
         />
@@ -1158,6 +1160,9 @@ export default function MapScreen() {
             selectedId={selectedSearchId}
             onPressHit={onPressSearchHit}
           />
+        ) : null}
+        {(announceOpen || announcePickMode) && announceCoords ? (
+          <AnnounceDraftLayers coords={announceCoords} />
         ) : null}
         {spotsArmed ? (
           <SpotLayers data={spotData.others} onPressFeature={onPressFeature} />
@@ -1562,6 +1567,14 @@ export default function MapScreen() {
           setAnnounceKeepForm(true);
           setAnnounceOpen(false);
           setAnnouncePickMode(true);
+          dispatchFollow({ type: "user_gesture" });
+          if (announceCoords) {
+            cameraRef.current?.easeTo({
+              center: announceCoords,
+              zoom: Math.max(userZoom, FOCUS_SPOT_ZOOM),
+              duration: 400,
+            });
+          }
         }}
         onSubmit={submitAnnouncement}
       />

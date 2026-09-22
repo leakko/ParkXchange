@@ -31,7 +31,6 @@ import { AuthTextInput } from "@/auth/AuthTextInput";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation, type TranslationKey } from "@/i18n";
 import { formatPoints, formatSignedPoints, parsePointsInput } from "@/i18n/formatPoints";
-import { openNavigation } from "@/lib/navigation";
 import { reservationPointsDelta } from "@/map/reservationPoints";
 import { DateTimeField } from "@/ui/DateTimeField";
 
@@ -329,16 +328,72 @@ export default function MyReservationsScreen() {
               router.push(`/account/reservations/${res.id}` as Href)
             }
           >
-            <Text style={accountStyles.rowTitle}>
-              {t("account.reservations.rowTitle", {
-                points: formatSignedPoints(
-                  userId
-                    ? reservationPointsDelta(res, userId)
-                    : res.price_cents,
-                ),
-                status: t(reservationStatusKey(res.status)),
-              })}
-            </Text>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-start",
+                gap: 8,
+              }}
+            >
+              <Text style={[accountStyles.rowTitle, { flex: 1 }]}>
+                {t("account.reservations.rowTitle", {
+                  points: formatSignedPoints(
+                    userId
+                      ? reservationPointsDelta(res, userId)
+                      : res.price_cents,
+                  ),
+                  status: t(reservationStatusKey(res.status)),
+                })}
+              </Text>
+              {canNav || canReannounce ? (
+                <View style={{ flexDirection: "row", gap: 10, marginTop: 1 }}>
+                  {canNav ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={t("account.reservations.navigateA11y")}
+                      hitSlop={8}
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        const q = new URLSearchParams({
+                          focusLon: String(summary!.lon),
+                          focusLat: String(summary!.lat),
+                          focusSpot: res.spot_id,
+                        });
+                        router.push(`/?${q.toString()}` as Href);
+                      }}
+                    >
+                      <Ionicons name="locate" size={22} color="#00BBF9" />
+                    </Pressable>
+                  ) : null}
+                  {canReannounce ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={t(
+                        "account.reservations.reannounceA11y",
+                      )}
+                      hitSlop={8}
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        const q = new URLSearchParams({
+                          announceLon: String(summary!.lon),
+                          announceLat: String(summary!.lat),
+                          announcePrice: String(summary!.price_cents),
+                        });
+                        if (summary!.address_hint) {
+                          q.set("announceLabel", summary!.address_hint);
+                        }
+                        if (summary!.vehicle_id) {
+                          q.set("announceVehicle", summary!.vehicle_id);
+                        }
+                        router.push(`/?${q.toString()}` as Href);
+                      }}
+                    >
+                      <Ionicons name="add-circle" size={22} color="#1B9AAA" />
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
             <Text style={accountStyles.rowMeta}>
               {isOwner
                 ? t("account.reservations.role.owner")
@@ -354,60 +409,6 @@ export default function MyReservationsScreen() {
                 datetime: formatDateTime(res.exchange_at),
               })}
             </Text>
-            {canNav || canReannounce ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  gap: 12,
-                  marginTop: 8,
-                  justifyContent: "flex-end",
-                }}
-              >
-                {canNav ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={t("account.reservations.navigateA11y")}
-                    hitSlop={8}
-                    onPress={(e) => {
-                      e.stopPropagation?.();
-                      void openNavigation(
-                        { lon: summary!.lon, lat: summary!.lat },
-                        {
-                          failedTitle: t("navigation.failed.title"),
-                          failedMessage: t("navigation.failed.message"),
-                        },
-                      );
-                    }}
-                  >
-                    <Ionicons name="navigate" size={22} color="#00BBF9" />
-                  </Pressable>
-                ) : null}
-                {canReannounce ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={t("account.reservations.reannounceA11y")}
-                    hitSlop={8}
-                    onPress={(e) => {
-                      e.stopPropagation?.();
-                      const q = new URLSearchParams({
-                        announceLon: String(summary!.lon),
-                        announceLat: String(summary!.lat),
-                        announcePrice: String(summary!.price_cents),
-                      });
-                      if (summary!.address_hint) {
-                        q.set("announceLabel", summary!.address_hint);
-                      }
-                      if (summary!.vehicle_id) {
-                        q.set("announceVehicle", summary!.vehicle_id);
-                      }
-                      router.push(`/?${q.toString()}` as Href);
-                    }}
-                  >
-                    <Ionicons name="add-circle" size={24} color="#1B9AAA" />
-                  </Pressable>
-                ) : null}
-              </View>
-            ) : null}
           </Pressable>
         );
       })}

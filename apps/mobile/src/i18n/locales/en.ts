@@ -219,7 +219,7 @@ export const en: Record<TranslationKey, string> = {
   "account.reservations.notFound": "Reservation not found",
   "account.reservations.openMap": "Show on map",
   "account.reservations.addressUnknown": "No saved address",
-  "account.reservations.navigateA11y": "Navigate to location",
+  "account.reservations.navigateA11y": "Show this place on the map",
   "account.reservations.reannounceA11y": "Announce again at this place",
   "account.reservations.editOffer": "Edit",
   "account.reservations.editOffer.save": "Save changes",

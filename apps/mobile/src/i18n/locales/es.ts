@@ -217,7 +217,7 @@ export const es = {
   "account.reservations.notFound": "Reserva no encontrada",
   "account.reservations.openMap": "Ver en el mapa",
   "account.reservations.addressUnknown": "Sin dirección guardada",
-  "account.reservations.navigateA11y": "Ir a la ubicación",
+  "account.reservations.navigateA11y": "Ver este sitio en el mapa",
   "account.reservations.reannounceA11y": "Anunciar de nuevo en este sitio",
   "account.reservations.editOffer": "Modificar",
   "account.reservations.editOffer.save": "Guardar cambios",

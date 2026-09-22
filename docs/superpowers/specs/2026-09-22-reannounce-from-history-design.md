@@ -23,7 +23,7 @@ From **Account → Reservations**:
 | Topic | Choice |
 | --- | --- |
 | Approach | Enrich `ReservationResponse` with a spot summary (no N+1 client fetches) |
-| Navigate button | Always (owner or driver), when `lon`/`lat` present |
+| Navigate button | Always (owner or driver), when `lon`/`lat` present — opens **in-app map** (`focusLon`/`focusLat`), not external Google Maps |
 | Re-announce (+) | Owner only + terminal status only |
 | Prefill | Location (+ label) + guide price + vehicle (**B**) |
 | History statuses | `completed`, `cancelled`, `expired` |

@@ -11,15 +11,15 @@ type Props = {
 };
 
 /**
- * Unclustered markers for the signed-in user's own spots. Kept on a separate
- * source so they are never absorbed into the orange cluster bubbles.
+ * Unclustered markers for the signed-in user's own spots (car icon). Kept on a
+ * separate source so they are never absorbed into the orange cluster bubbles.
  */
 export function MySpotLayers({ data, onPressFeature }: Props) {
   return (
     <>
       <Images
         images={{
-          "spot-mine-person": require("../../assets/images/spot-mine-person.png"),
+          "spot-mine-car": require("../../assets/images/spot-mine-car.png"),
         }}
       />
       <GeoJSONSource
@@ -56,7 +56,7 @@ export function MySpotLayers({ data, onPressFeature }: Props) {
           source="spots-mine"
           layerIndex={905}
           layout={{
-            "icon-image": "spot-mine-person",
+            "icon-image": "spot-mine-car",
             "icon-size": 0.35,
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
