@@ -18,14 +18,8 @@ export type Viewport = {
   zoom: number;
   from: string;
   to: string;
+  includeFlexible: boolean;
 };
-
-/** Default discovery window: now → +2h (matches the advance-booking horizon UX). */
-export function defaultTimeWindow(now = new Date()): { from: string; to: string } {
-  const from = now.toISOString();
-  const to = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString();
-  return { from, to };
-}
 
 function vehicleIncomplete(feature: SpotFeature | undefined): boolean {
   if (!feature?.properties.exact_location) {
@@ -60,6 +54,7 @@ export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) 
         zoom: viewport!.zoom,
         from: viewport!.from,
         to: viewport!.to,
+        includeFlexible: viewport!.includeFlexible,
       }),
     staleTime: 15_000,
   });
@@ -127,6 +122,7 @@ export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) 
       zoom: viewport.zoom,
       from: viewport.from,
       to: viewport.to,
+      include_flexible: viewport.includeFlexible,
     });
   }, [viewport]);
 

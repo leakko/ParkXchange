@@ -45,7 +45,6 @@ import {
   shouldAnimateInitialCenter,
 } from "@/map/mapHomeCenter";
 import {
-  defaultTimeWindow,
   useDiscovery,
   type Viewport,
 } from "@/hooks/useDiscovery";
@@ -98,6 +97,7 @@ import {
 import { bannerNextStep, bannerPeerStatusKey } from "@/map/exchangeCopy";
 import { SpotLayers } from "@/map/SpotLayers";
 import { stageSpotForSheet, beginSpotSheetPresentation } from "@/map/spotSheetHandoff";
+import { defaultMapFilter } from "@/map/mapFilter";
 
 const DEBOUNCE_MS = 350;
 /** Longer than map pan debounce — typing must not hammer LocationIQ. */
@@ -132,7 +132,7 @@ export default function MapScreen() {
   const pendingSearchFocusRef = useRef(false);
   /** Query that produced the current searchHits — editing away clears results. */
   const lastSearchedQueryRef = useRef("");
-  const timeWindow = useMemo(() => defaultTimeWindow(), []);
+  const [mapFilter] = useState(() => defaultMapFilter());
 
   const { ready, signedIn, error: sessionError, retry: retrySession } = useSession();
   const location = useMapLocation();
@@ -646,11 +646,12 @@ export default function MapScreen() {
     setViewport({
       bbox: bounds,
       zoom,
-      from: timeWindow.from,
-      to: timeWindow.to,
+      from: mapFilter.from,
+      to: mapFilter.to,
+      includeFlexible: mapFilter.includeFlexible,
     });
     setMapViewbox(bounds as ViewBox);
-  }, [timeWindow.from, timeWindow.to]);
+  }, [mapFilter]);
 
   const onRegionDidChange = useCallback(
     (event: NativeSyntheticEvent<ViewStateChangeEvent>) => {
