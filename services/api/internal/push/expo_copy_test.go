@@ -123,6 +123,30 @@ func TestCopyForPreDepartureRemindsToTapEnRoute(t *testing.T) {
 	}
 }
 
+func TestCopyForCompletedExplainsPhysicalSwap(t *testing.T) {
+	t.Parallel()
+	n := reservations.Notification{Type: reservations.EventCompleted}
+
+	titleES, bodyES := copyFor(n, "es")
+	if titleES != "Ya podéis intercambiar" {
+		t.Fatalf("ES title = %q", titleES)
+	}
+	if strings.Contains(strings.ToLower(bodyES), "cerrado") {
+		t.Fatalf("ES body should not say cerrado: %q", bodyES)
+	}
+	if !strings.Contains(strings.ToLower(bodyES), "sale") || !strings.Contains(strings.ToLower(bodyES), "entra") {
+		t.Fatalf("ES body should say leave then enter: %q", bodyES)
+	}
+
+	titleEN, bodyEN := copyFor(n, "en")
+	if titleEN != "You can swap now" {
+		t.Fatalf("EN title = %q", titleEN)
+	}
+	if !strings.Contains(strings.ToLower(bodyEN), "leaves") || !strings.Contains(strings.ToLower(bodyEN), "pulls in") {
+		t.Fatalf("EN body should describe the physical swap: %q", bodyEN)
+	}
+}
+
 func TestCopyForExchangeAvoidsDueñoConductor(t *testing.T) {
 	t.Parallel()
 	types := []string{

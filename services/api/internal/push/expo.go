@@ -256,7 +256,7 @@ var copyES = map[string]pushCopy{
 	},
 	reservations.EventCompleted: {
 		"Ya podéis intercambiar",
-		"El intercambio está cerrado — aparca o sal del coche",
+		"Quien ocupa el hueco sale del coche y el otro entra",
 	},
 	reservations.EventCancelledByOwner: {
 		"Intercambio cancelado",
@@ -347,7 +347,7 @@ var copyEN = map[string]pushCopy{
 	},
 	reservations.EventCompleted: {
 		"You can swap now",
-		"The exchange is done — park or leave the car",
+		"Whoever is in the spot leaves the car and the other pulls in",
 	},
 	reservations.EventCancelledByOwner: {
 		"Exchange cancelled",
