@@ -692,13 +692,19 @@ export default function MapScreen() {
           !!fromActive ||
           spot.properties.status === "reserved" ||
           spot.properties.status === "handover";
-        sheetRef.current?.snapToIndex(openExchange ? 1 : 0);
+        // Live exchange sheet has a single snap (index 0). Browse uses peek at 0
+        // and full at 1 — reserved without a matching active still opens full.
+        const live =
+          !!active && String(active.spot_id) === String(spot.id);
+        sheetRef.current?.snapToIndex(
+          openExchange ? (live ? 0 : 1) : 0,
+        );
         if (openExchange) {
           void refreshActiveReservation();
         }
       })();
     },
-    [featureById, mySpotsById, activeSpot, refreshActiveReservation],
+    [featureById, mySpotsById, activeSpot, active, refreshActiveReservation],
   );
 
   const clearSearchHits = useCallback(() => {
@@ -1420,7 +1426,8 @@ export default function MapScreen() {
           onPress={() => {
             if (activeSpot) {
               setSelected(activeSpot);
-              sheetRef.current?.snapToIndex(1);
+              // Live exchange sheet is a single snap at index 0.
+              sheetRef.current?.snapToIndex(0);
             }
           }}
           accessibilityRole="button"

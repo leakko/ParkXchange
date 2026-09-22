@@ -1,6 +1,7 @@
 import BottomSheet, {
+  BottomSheetScrollView,
   BottomSheetTextInput,
-  BottomSheetView,
+  useBottomSheetTimingConfigs,
 } from "@gorhom/bottom-sheet";
 import {
   forwardRef,
@@ -8,10 +9,9 @@ import {
   useCallback,
   useMemo,
   useState,
-  type ReactNode,
 } from "react";
-import { StyleSheet, View } from "react-native";
-import { ScrollView } from "react-native-gesture-handler";
+import { StyleSheet } from "react-native";
+import { Easing } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type {
@@ -49,34 +49,51 @@ export type SpotSheetProps = {
 };
 
 /**
- * Map spot sheet — rewritten thin on purpose.
+ * Spot sheet shell.
  *
- * The old BottomSheetScrollView owned both scrolling and sheet pan. A fast
- * flick-down to dismiss made those two fight (bounce up while closing).
- *
- * Here the sheet only moves from the handle; content is a normal ScrollView
- * that never drives snap/dismiss.
+ * Reserved/live exchange uses a single snap point. With peek (36%) + full
+ * (82%) + pan-down-to-close, a fast flick from full lands between “snap up to
+ * peek” and “close” — that upward trompicon. One detent makes the choice
+ * binary: stay open or close.
  */
 export const SpotSheet = memo(
   forwardRef<BottomSheet, SpotSheetProps>(function SpotSheet(props, ref) {
     const insets = useSafeAreaInsets();
-    const snapPoints = useMemo(() => ["36%", "82%"], []);
     const [makingOffer, setMakingOffer] = useState(false);
 
+    const isLiveExchange =
+      !!props.active &&
+      !!props.spot &&
+      String(props.active.spot_id) === String(props.spot.id);
+
+    // Live exchange: only full height. Browse: peek + full.
+    const snapPoints = useMemo(
+      () => (isLiveExchange ? ["82%"] : ["36%", "82%"]),
+      [isLiveExchange],
+    );
+
+    // Timing (not spring): no overshoot past the snap target.
+    const animationConfigs = useBottomSheetTimingConfigs({
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+    });
+
     const expand = useCallback(() => {
-      if (typeof ref !== "function" && ref?.current) {
-        ref.current.snapToIndex(1);
+      if (typeof ref === "function" || !ref?.current) {
+        return;
       }
-    }, [ref]);
+      // Index 1 only exists for the two-point browse sheet.
+      ref.current.snapToIndex(isLiveExchange ? 0 : 1);
+    }, [ref, isLiveExchange]);
 
     return (
       <BottomSheet
         ref={ref}
         index={-1}
         snapPoints={snapPoints}
+        animationConfigs={animationConfigs}
         enablePanDownToClose
-        // Sheet motion is handle-only — no dual gesture with the scroll body.
-        enableContentPanningGesture={false}
+        enableContentPanningGesture
         enableHandlePanningGesture
         enableOverDrag={false}
         enableDynamicSizing={false}
@@ -87,28 +104,25 @@ export const SpotSheet = memo(
         android_keyboardInputMode="adjustResize"
         containerStyle={styles.sheetContainer}
         backgroundStyle={styles.sheet}
-        handleComponent={SpotSheetHandle}
+        handleIndicatorStyle={styles.handle}
       >
-        <BottomSheetView style={styles.sheetBody}>
-          <ScrollView
-            bounces={false}
-            overScrollMode="never"
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            contentContainerStyle={[
-              styles.scrollContent,
-              makingOffer ? styles.scrollContentOffer : null,
-            ]}
-          >
-            <SpotSheetBody
-              {...props}
-              makingOffer={makingOffer}
-              setMakingOffer={setMakingOffer}
-              onExpandSheet={expand}
-              TextInput={BottomSheetTextInput}
-            />
-          </ScrollView>
-        </BottomSheetView>
+        <BottomSheetScrollView
+          bounces={false}
+          overScrollMode="never"
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[
+            styles.scrollContent,
+            makingOffer ? styles.scrollContentOffer : null,
+          ]}
+        >
+          <SpotSheetBody
+            {...props}
+            makingOffer={makingOffer}
+            setMakingOffer={setMakingOffer}
+            onExpandSheet={expand}
+            TextInput={BottomSheetTextInput}
+          />
+        </BottomSheetScrollView>
       </BottomSheet>
     );
   }),
@@ -122,15 +136,6 @@ export const SpotSheet = memo(
     prev.busy === next.busy,
 );
 
-/** Tall grab area so closing/snapping stays easy without content-pan. */
-function SpotSheetHandle(): ReactNode {
-  return (
-    <View style={styles.handleHit} accessibilityRole="adjustable">
-      <View style={styles.handlePill} />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   sheetContainer: {
     zIndex: 40,
@@ -138,18 +143,7 @@ const styles = StyleSheet.create({
   sheet: {
     backgroundColor: "#0B1F33",
   },
-  sheetBody: {
-    flex: 1,
-  },
-  handleHit: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 14,
-  },
-  handlePill: {
-    width: 40,
-    height: 5,
-    borderRadius: 3,
+  handle: {
     backgroundColor: "#5B7A8C",
   },
   scrollContent: {
