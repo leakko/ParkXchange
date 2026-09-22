@@ -272,7 +272,6 @@ func (db *DB) Reconfirm(ctx context.Context, id, driverID string) error {
 	return nil
 }
 
-
 // MarkEnRoute records that the actor is on the way (idempotent if already set).
 func (db *DB) MarkEnRoute(ctx context.Context, id, actorID string, at time.Time) error {
 	tx, err := db.begin(ctx)
@@ -717,6 +716,10 @@ func (db *DB) Sweep(ctx context.Context, now time.Time) (reservations.SweepResul
 		       preferred_departure_at IS NOT NULL
 		       AND preferred_departure_at + interval '24 hours' <= now()
 		     )
+		     OR (
+		       preferred_departure_at IS NULL
+		       AND created_at + interval '24 hours' <= now()
+		     )
 		   )
 		 RETURNING id, owner_id, ST_X(geom), ST_Y(geom), price_cents
 	`)
@@ -800,7 +803,7 @@ func (db *DB) Sweep(ctx context.Context, now time.Time) (reservations.SweepResul
 	result.Notifications = append(result.Notifications, notes...)
 	result.ExpiredReservations =
 		legacyExpired + result.DriverNoShows + result.OwnerNoShows +
-		result.SafetyNetReleases + result.SafetyNetForfeits
+			result.SafetyNetReleases + result.SafetyNetForfeits
 
 	if err := tx.Commit(ctx); err != nil {
 		return reservations.SweepResult{}, translate(err, "commit sweep")

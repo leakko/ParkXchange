@@ -101,6 +101,9 @@ type ViewportQuery struct {
 	From time.Time
 	To   time.Time
 
+	// IncludeFlexible admits listings without a preferred departure time.
+	IncludeFlexible bool
+
 	Viewer domain.Claims
 }
 
@@ -123,7 +126,7 @@ func (s *Service) InViewport(ctx context.Context, q ViewportQuery) ([]VisibleSpo
 
 	// Splitting here, not in the adapter, keeps the antimeridian rule in one
 	// place and testable without a database.
-	found, err := s.store.SpotsInBBox(ctx, q.BBox.Split(), from, to, MaxResults)
+	found, err := s.store.SpotsInBBox(ctx, q.BBox.Split(), from, to, q.IncludeFlexible, MaxResults)
 	if err != nil {
 		return nil, domain.Internal(err)
 	}
