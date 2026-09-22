@@ -242,6 +242,7 @@ export default function SpotDetailScreen() {
             active={activeForSpot}
             pendingOffer={pendingOffer}
             vehicles={vehicles}
+            signedIn={signedIn}
             isOwner={!!activeForSpot && isOwner}
             isDriver={!!activeForSpot && isDriver}
             busy={exchangeBusy || offerBusy}
@@ -304,6 +305,7 @@ export default function SpotDetailScreen() {
             onAddVehicle={() => {
               router.push("/account/vehicles/new?from=offer" as Href);
             }}
+            onRequireSignIn={requireSignIn}
             onEnRoute={() => void markEnRoute()}
             onReady={() => void markReady()}
             onUnready={() => void clearReady()}

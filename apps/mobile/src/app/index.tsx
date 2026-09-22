@@ -78,6 +78,7 @@ import {
   type ViewBox,
 } from "@/map/geocode";
 import { bannerNextStep, bannerPeerStatusKey } from "@/map/exchangeCopy";
+import { passAuthGate } from "@/map/authGate";
 import { MapFilterSheet } from "@/map/MapFilterSheet";
 import { SpotLayers } from "@/map/SpotLayers";
 import { stageSpotForSheet, beginSpotSheetPresentation } from "@/map/spotSheetHandoff";
@@ -959,8 +960,19 @@ export default function MapScreen() {
       label: string | null,
       extras?: { priceCents?: number | null; vehicleId?: string | null },
     ) => {
-      if (!signedIn || !(await getAccessToken())) {
-        requireSignIn("/");
+      const hasSession = signedIn && !!(await getAccessToken());
+      const allowed = await passAuthGate({
+        signedIn: hasSession,
+        confirmSignIn: () =>
+          confirm({
+            title: t("auth.required.title"),
+            message: t("auth.required.announce"),
+            cancelLabel: t("common.cancel"),
+            confirmLabel: t("auth.required.signIn"),
+          }),
+        onRequireSignIn: () => requireSignIn("/"),
+      });
+      if (!allowed) {
         return;
       }
       if (!(await requireEmailVerified())) {
@@ -991,7 +1003,15 @@ export default function MapScreen() {
         setAnnounceOpen(true);
       } catch (err) {
         if (err instanceof ApiError && err.code === "unauthorized") {
-          requireSignIn("/");
+          const go = await confirm({
+            title: t("auth.required.title"),
+            message: t("auth.required.announce"),
+            cancelLabel: t("common.cancel"),
+            confirmLabel: t("auth.required.signIn"),
+          });
+          if (go) {
+            requireSignIn("/");
+          }
           return;
         }
         await alert({
@@ -1416,10 +1436,6 @@ export default function MapScreen() {
         style={[styles.fab, { bottom: 36 + insets.bottom }]}
         disabled={announcing || !ready}
         onPress={() => {
-          if (!signedIn) {
-            requireSignIn("/");
-            return;
-          }
           void openAnnounce(null, null);
         }}
       >

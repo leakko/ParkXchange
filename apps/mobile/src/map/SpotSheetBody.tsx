@@ -25,6 +25,7 @@ import {
   driverCancelMessageKey,
   ownerCancelMessageKey,
 } from "@/map/exchangeCopy";
+import { passAuthGate } from "@/map/authGate";
 import {
   driverNoShowDeadline,
   ownerNoShowDeadline,
@@ -42,6 +43,7 @@ export type SpotSheetBodyProps = {
   active: ReservationResponse | null;
   pendingOffer: OfferResponse | null;
   vehicles: VehicleResponse[];
+  signedIn: boolean;
   isOwner: boolean;
   isDriver: boolean;
   busy?: boolean;
@@ -53,6 +55,7 @@ export type SpotSheetBodyProps = {
   ) => Promise<void>;
   onWithdrawOffer: (offer: OfferResponse) => Promise<void>;
   onAddVehicle: () => void;
+  onRequireSignIn: () => void;
   onEnRoute: () => void;
   onReady: () => void;
   onUnready: () => void;
@@ -76,11 +79,13 @@ export function SpotSheetBody({
   active,
   pendingOffer,
   vehicles,
+  signedIn,
   isOwner,
   busy,
   onMakeOffer,
   onWithdrawOffer,
   onAddVehicle,
+  onRequireSignIn,
   onEnRoute,
   onReady,
   onUnready,
@@ -194,7 +199,25 @@ export function SpotSheetBody({
     };
   }, [spot?.id, spot?.properties.is_mine, spot?.properties.status]);
 
+  const requireAuth = async (
+    messageKey: "auth.required.offer" | "auth.required.addVehicle",
+  ): Promise<boolean> =>
+    passAuthGate({
+      signedIn,
+      confirmSignIn: () =>
+        confirm({
+          title: t("auth.required.title"),
+          message: t(messageKey),
+          cancelLabel: t("common.cancel"),
+          confirmLabel: t("auth.required.signIn"),
+        }),
+      onRequireSignIn,
+    });
+
   const ensureVehicle = async (): Promise<boolean> => {
+    if (!(await requireAuth("auth.required.offer"))) {
+      return false;
+    }
     if (vehicles.length > 0) {
       return true;
     }
@@ -208,6 +231,12 @@ export function SpotSheetBody({
       onAddVehicle();
     }
     return false;
+  };
+
+  const beginAddVehicle = async () => {
+    if (await requireAuth("auth.required.addVehicle")) {
+      onAddVehicle();
+    }
   };
 
   const beginOffer = async () => {
@@ -406,7 +435,10 @@ export function SpotSheetBody({
                   <Text style={styles.help}>
                     {t("spotSheet.offer.needVehicle.message")}
                   </Text>
-                  <Pressable style={styles.secondary} onPress={onAddVehicle}>
+                  <Pressable
+                    style={styles.secondary}
+                    onPress={() => void beginAddVehicle()}
+                  >
                     <Text style={styles.secondaryText}>
                       {t("spotSheet.offer.needVehicle.add")}
                     </Text>
