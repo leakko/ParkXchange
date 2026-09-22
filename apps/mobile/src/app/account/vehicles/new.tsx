@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { type Href, useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useRef } from "react";
 import { Text } from "react-native";
 
 import { createVehicle, putVehiclePhoto } from "@/api/client";
@@ -8,6 +9,7 @@ import { VehicleForm, type VehicleFormValues } from "@/account/VehicleForm";
 import type { PickedVehiclePhoto } from "@/account/pickVehiclePhoto";
 import { accountStyles } from "@/account/theme";
 import { AuthScroll } from "@/auth/AuthScroll";
+import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
 import { useConfirm } from "@/ui/ConfirmModal";
 
@@ -21,11 +23,40 @@ const empty: VehicleFormValues = {
 
 export default function NewVehicleScreen() {
   const { t } = useTranslation();
-  const { alert } = useConfirm();
+  const { alert, confirm } = useConfirm();
+  const { ready, signedIn } = useSession();
   const router = useRouter();
   const params = useLocalSearchParams<{ from?: string }>();
+  const gateStarted = useRef(false);
   const fromAnnounce = params.from === "announce" || params.from === "offer";
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!ready || signedIn || gateStarted.current) {
+      return;
+    }
+    gateStarted.current = true;
+    const from = Array.isArray(params.from) ? params.from[0] : params.from;
+    const returnTo = from
+      ? `/account/vehicles/new?from=${encodeURIComponent(from)}`
+      : "/account/vehicles/new";
+
+    void (async () => {
+      const proceed = await confirm({
+        title: t("auth.required.title"),
+        message: t("auth.required.addVehicle"),
+        cancelLabel: t("common.cancel"),
+        confirmLabel: t("auth.required.signIn"),
+      });
+      if (proceed) {
+        router.replace(
+          `/auth/login?returnTo=${encodeURIComponent(returnTo)}` as Href,
+        );
+      } else {
+        router.back();
+      }
+    })();
+  }, [confirm, params.from, ready, router, signedIn, t]);
 
   const create = useMutation({
     mutationFn: async ({
@@ -69,6 +100,10 @@ export default function NewVehicleScreen() {
       });
     },
   });
+
+  if (!ready || !signedIn) {
+    return null;
+  }
 
   return (
     <AuthScroll>

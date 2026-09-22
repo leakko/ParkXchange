@@ -70,7 +70,19 @@ func (f *fakeStore) SpotsInBBox(_ context.Context, boxes []geo.BBox, from, to ti
 	f.gotFrom = from
 	f.gotTo = to
 	f.gotIncludeFlexible = includeFlexible
-	return f.inBBox, nil
+	filtered := make([]domain.Spot, 0, len(f.inBBox))
+	for _, spot := range f.inBBox {
+		if spot.PreferredDepartureAt == nil {
+			if includeFlexible {
+				filtered = append(filtered, spot)
+			}
+			continue
+		}
+		if !spot.PreferredDepartureAt.Before(from) && spot.PreferredDepartureAt.Before(to) {
+			filtered = append(filtered, spot)
+		}
+	}
+	return filtered, nil
 }
 
 func (f *fakeStore) CreateSpot(_ context.Context, draft domain.SpotDraft) (domain.Spot, error) {
@@ -310,6 +322,29 @@ func TestInViewportCapsTheResultCount(t *testing.T) {
 	}
 	if !store.gotIncludeFlexible {
 		t.Error("IncludeFlexible = false, want true")
+	}
+}
+
+func TestInViewportDefaultsToTheNextTwoHours(t *testing.T) {
+	t.Parallel()
+
+	preferred := time.Now().Add(3 * time.Hour)
+	store := newFakeStore()
+	store.inBBox = []domain.Spot{{
+		ID:                   "later",
+		Status:               domain.SpotAvailable,
+		PreferredDepartureAt: &preferred,
+	}}
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
+
+	visible, err := service.InViewport(context.Background(), spots.ViewportQuery{
+		BBox: barcelona,
+	})
+	if err != nil {
+		t.Fatalf("InViewport: %v", err)
+	}
+	if len(visible) != 0 {
+		t.Fatalf("got %d spots, want none beyond the default two-hour window", len(visible))
 	}
 }
 
