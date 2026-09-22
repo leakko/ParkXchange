@@ -18,7 +18,6 @@ const LAST_HANDLED_KEY = "parkxchange.push.lastHandledResponse";
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     // In foreground the map/Alert path covers peer signals; still show coaching.
-    shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
     shouldShowBanner: true,

@@ -91,18 +91,43 @@ function sameSheetSpot(a: SpotFeature | null, b: SpotFeature | null): boolean {
   );
 }
 
+/**
+ * Shared across map + spot sheet so a freshly mounted sheet can paint the
+ * active exchange immediately (no “flexible departure” flash before refresh).
+ */
+let cachedActiveReservation: ReservationResponse | null = null;
+let cachedActiveSpot: SpotFeature | null = null;
+let cachedActiveUserId: string | null = null;
+
 export function useActiveReservation(enabled: boolean) {
   const { t } = useTranslation();
   const { show } = useToast();
   const { confirm, alert } = useConfirm();
-  const [active, setActive] = useState<ReservationResponse | null>(null);
-  const [spot, setSpot] = useState<SpotFeature | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [active, setActive] = useState<ReservationResponse | null>(
+    () => cachedActiveReservation,
+  );
+  const [spot, setSpot] = useState<SpotFeature | null>(() => cachedActiveSpot);
+  const [userId, setUserId] = useState<string | null>(() => cachedActiveUserId);
   const [busy, setBusy] = useState(false);
-  const activeRef = useRef<ReservationResponse | null>(null);
-  const prevRef = useRef<ReservationResponse | null>(null);
+  const activeRef = useRef<ReservationResponse | null>(active);
+  const prevRef = useRef<ReservationResponse | null>(cachedActiveReservation);
   const lastNotifKeyRef = useRef<string | null>(null);
   activeRef.current = active;
+
+  const publishActive = useCallback((next: ReservationResponse | null) => {
+    cachedActiveReservation = next;
+    setActive((cur) => (sameActiveReservation(cur, next) ? cur : next));
+  }, []);
+
+  const publishSpot = useCallback((next: SpotFeature | null) => {
+    cachedActiveSpot = next;
+    setSpot((cur) => (sameSheetSpot(cur, next) ? cur : next));
+  }, []);
+
+  const publishUserId = useCallback((next: string | null) => {
+    cachedActiveUserId = next;
+    setUserId(next);
+  }, []);
 
   const maybeNotify = useCallback(
     (prev: ReservationResponse | null, next: ReservationResponse | null, meId: string) => {
@@ -148,9 +173,9 @@ export function useActiveReservation(enabled: boolean) {
           const ended = await getReservation(prev.id);
           maybeNotify(prev, ended, me.id);
           prevRef.current = null;
-          setActive(null);
-          setUserId(me.id);
-          setSpot(null);
+          publishActive(null);
+          publishUserId(me.id);
+          publishSpot(null);
           return;
         } catch {
           /* fall through */
@@ -159,12 +184,12 @@ export function useActiveReservation(enabled: boolean) {
 
       maybeNotify(prev, next, me.id);
       prevRef.current = next;
-      setUserId(me.id);
+      publishUserId(me.id);
       // Resolve spot before publishing active so the exchange pin and sheet never
       // flash with reservation-but-no-coords (or keep a stale fuzzed pin).
       const spotFeature = next ? await getSpot(next.spot_id) : null;
-      setActive((cur) => (sameActiveReservation(cur, next) ? cur : next));
-      setSpot((cur) => (sameSheetSpot(cur, spotFeature) ? cur : spotFeature));
+      publishActive(next);
+      publishSpot(spotFeature);
 
       // Recover geofence only if this exchange never got its one-shot arrival
       // push — otherwise oscillating the fence would keep re-arming and firing.
@@ -193,19 +218,20 @@ export function useActiveReservation(enabled: boolean) {
     } catch {
       /* keep previous */
     }
-  }, [enabled, maybeNotify]);
+  }, [enabled, maybeNotify, publishActive, publishSpot, publishUserId]);
 
   useEffect(() => {
     if (!enabled) {
-      setActive(null);
-      setSpot(null);
+      publishActive(null);
+      publishSpot(null);
+      publishUserId(null);
       prevRef.current = null;
       return;
     }
     void refresh();
     const id = setInterval(() => void refresh(), 5_000);
     return () => clearInterval(id);
-  }, [enabled, refresh]);
+  }, [enabled, refresh, publishActive, publishSpot, publishUserId]);
 
   const confirmLeaveLocation = useCallback(
     async (kind: "far" | "unknown", meters?: number): Promise<boolean> => {

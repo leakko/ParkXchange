@@ -43,6 +43,23 @@ export function sizeClassLabel(t: TFn, size: string): string {
   return capitalizeLabel(size);
 }
 
+/** Spot sheet copy: “Coche mediano” rather than bare “Mediano”. */
+export function carSizeLabel(t: TFn, size: string): string {
+  if (SIZE_CLASSES.has(size)) {
+    return t(`spotSheet.carSize.${size}` as TranslationKey);
+  }
+  return capitalizeLabel(size);
+}
+
+/** First given name only (display names are often “Name Surname”). */
+export function firstGivenName(fullName: string): string {
+  const trimmed = fullName.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+  return trimmed.split(/\s+/)[0] ?? trimmed;
+}
+
 export function spotStatusLabel(t: TFn, status: string): string {
   if (SPOT_STATUSES.has(status)) {
     return t(`account.spots.status.${status}` as TranslationKey);

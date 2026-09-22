@@ -1,10 +1,11 @@
-import { Image, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import type { components } from "@parkxchange/api-contract";
 
 import { useAuthImage } from "@/hooks/useAuthImage";
 import { useTranslation } from "@/i18n";
 import { sizeClassLabel } from "@/i18n/catalogLabels";
+import { FixedBoxImage } from "@/ui/FixedBoxImage";
 
 type VehicleSummary = components["schemas"]["VehicleSummary"];
 
@@ -15,6 +16,8 @@ type Props = {
   /** Authenticated URL for the counterpart photo (reservation peer endpoint). */
   photoUrl?: string | null;
 };
+
+const THUMB = 72;
 
 /**
  * Compact identity card so each party knows which car to look for.
@@ -49,14 +52,14 @@ export function PeerVehiclePanel({
       <View style={styles.row}>
         {showPhotoSlot ? (
           photoUri ? (
-            <Image
-              source={{ uri: photoUri }}
-              style={styles.thumb}
-              resizeMode="cover"
-              accessibilityIgnoresInvertColors
+            <FixedBoxImage
+              uri={photoUri}
+              width={THUMB}
+              height={THUMB}
+              borderRadius={10}
             />
           ) : (
-            <View style={styles.thumb} accessibilityElementsHidden />
+            <View style={styles.thumbPlaceholder} accessibilityElementsHidden />
           )
         ) : null}
         <View style={styles.textCol}>
@@ -94,15 +97,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
   },
-  thumb: {
-    width: 72,
-    height: 72,
+  thumbPlaceholder: {
+    width: THUMB,
+    height: THUMB,
     borderRadius: 10,
     backgroundColor: "#16324F",
+    flexGrow: 0,
+    flexShrink: 0,
   },
   textCol: {
     flex: 1,
     gap: 4,
+    minWidth: 0,
   },
   plate: {
     color: "#F4F7FA",

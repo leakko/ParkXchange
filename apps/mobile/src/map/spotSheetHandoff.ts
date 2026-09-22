@@ -11,6 +11,21 @@ type Listener = (spot: SpotFeature) => void;
 let current: SpotFeature | null = null;
 const listeners = new Set<Listener>();
 
+/**
+ * Bumped on each closed→open presentation so `dangerouslySingular` gets a new
+ * id and the native form sheet remounts at the peek detent (not the last
+ * expanded height). Pin swaps while open do not bump this.
+ */
+let sheetOpenGeneration = 0;
+
+export function beginSpotSheetPresentation(): void {
+  sheetOpenGeneration += 1;
+}
+
+export function spotSheetSingularId(): string {
+  return `spot-detail-${sheetOpenGeneration}`;
+}
+
 export function publishOpenSpot(spot: SpotFeature): void {
   current = spot;
   for (const listener of listeners) {

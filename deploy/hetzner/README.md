@@ -162,6 +162,9 @@ zones, recent spot detail).
 Hetzner Cloud Console → your project → the VPS → **Graphs** (CPU, RAM, disk,
 network). No extra agent in this stack.
 
+Rough concurrent-user / sizing notes for this single-node stack:
+[capacity.md](./capacity.md).
+
 ## Without a domain yet
 
 Caddy needs a hostname for Let's Encrypt. Get any cheap domain first, or

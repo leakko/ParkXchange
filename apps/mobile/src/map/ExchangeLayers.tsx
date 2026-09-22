@@ -1,4 +1,8 @@
-import { GeoJSONSource, Layer } from "@maplibre/maplibre-react-native";
+import {
+  GeoJSONSource,
+  Images,
+  Layer,
+} from "@maplibre/maplibre-react-native";
 import type { FeatureCollection } from "geojson";
 
 type Props = {
@@ -14,47 +18,69 @@ type Props = {
  */
 export function ExchangeLayers({ data, onPressFeature, role }: Props) {
   const color = role === "owner" ? "#1B9AAA" : "#E76F51";
+  const sourceId = `spots-exchange-${role}`;
+  const iconId = role === "owner" ? "spot-mine-car" : "spot-exchange-person";
 
   return (
-    <GeoJSONSource
-      id={`spots-exchange-${role}`}
-      data={data}
-      onPress={(event) => {
-        event.stopPropagation();
-        const feature = event.nativeEvent.features[0];
-        if (!feature) {
-          return;
-        }
-        const properties = feature.properties as Record<string, unknown> | null;
-        const id = String(properties?.id ?? feature.id ?? "");
-        if (id) {
-          onPressFeature(id);
-        }
-      }}
-    >
-      <Layer
-        id={`spots-exchange-${role}-halo`}
-        type="circle"
-        source={`spots-exchange-${role}`}
-        layerIndex={role === "owner" ? 910 : 913}
-        paint={{
-          "circle-color": color,
-          "circle-radius": 18,
-          "circle-opacity": 0.28,
+    <>
+      <Images
+        images={{
+          "spot-mine-car": require("../../assets/images/spot-mine-car.png"),
+          "spot-exchange-person": require("../../assets/images/spot-mine-person.png"),
         }}
       />
-      <Layer
-        id={`spots-exchange-${role}-points`}
-        type="circle"
-        source={`spots-exchange-${role}`}
-        layerIndex={role === "owner" ? 911 : 914}
-        paint={{
-          "circle-color": color,
-          "circle-radius": 12,
-          "circle-stroke-width": 2.5,
-          "circle-stroke-color": "#ffffff",
+      <GeoJSONSource
+        id={sourceId}
+        data={data}
+        onPress={(event) => {
+          event.stopPropagation();
+          const feature = event.nativeEvent.features[0];
+          if (!feature) {
+            return;
+          }
+          const properties = feature.properties as Record<string, unknown> | null;
+          const id = String(properties?.id ?? feature.id ?? "");
+          if (id) {
+            onPressFeature(id);
+          }
         }}
-      />
-    </GeoJSONSource>
+      >
+        <Layer
+          id={`${sourceId}-halo`}
+          type="circle"
+          source={sourceId}
+          layerIndex={role === "owner" ? 910 : 913}
+          paint={{
+            "circle-color": color,
+            "circle-radius": 18,
+            "circle-opacity": 0.28,
+          }}
+        />
+        <Layer
+          id={`${sourceId}-points`}
+          type="circle"
+          source={sourceId}
+          layerIndex={role === "owner" ? 911 : 914}
+          paint={{
+            "circle-color": color,
+            "circle-radius": 12,
+            "circle-stroke-width": 2.5,
+            "circle-stroke-color": "#ffffff",
+          }}
+        />
+        <Layer
+          id={`${sourceId}-icon`}
+          type="symbol"
+          source={sourceId}
+          layerIndex={role === "owner" ? 912 : 915}
+          layout={{
+            "icon-image": iconId,
+            "icon-size": 0.35,
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
+          }}
+        />
+      </GeoJSONSource>
+    </>
   );
 }

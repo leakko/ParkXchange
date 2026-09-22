@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 
 import {
   capitalizeLabel,
+  carSizeLabel,
+  firstGivenName,
   offerStatusLabel,
   reservationStatusLabel,
   sizeClassLabel,
@@ -32,6 +34,18 @@ describe("catalogLabels", () => {
   it("translates size classes with capital first letter in EN", () => {
     const t = tFor(en);
     assert.equal(sizeClassLabel(t, "medium"), "Medium");
+  });
+
+  it("uses car-sized copy on the spot sheet", () => {
+    assert.equal(carSizeLabel(tFor(es), "medium"), "Coche mediano");
+    assert.equal(carSizeLabel(tFor(es), "small"), "Coche pequeño");
+    assert.equal(carSizeLabel(tFor(en), "large"), "Large car");
+  });
+
+  it("keeps only the first given name", () => {
+    assert.equal(firstGivenName("María López García"), "María");
+    assert.equal(firstGivenName("Alex"), "Alex");
+    assert.equal(firstGivenName("  "), "");
   });
 
   it("translates spot statuses", () => {

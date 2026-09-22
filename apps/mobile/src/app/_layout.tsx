@@ -22,6 +22,7 @@ import "@/push/geofence";
 import { OfflineGate } from "@/ui/OfflineGate";
 import { ConfirmProvider } from "@/ui/ConfirmModal";
 import { ToastProvider } from "@/ui/toast";
+import { spotSheetSingularId } from "@/map/spotSheetHandoff";
 
 // Intermittent MapLibre tile/glyph stream errors on emulators are noisy but
 // non-fatal; the map still renders.
@@ -81,21 +82,34 @@ export default function RootLayout() {
                     screenOptions={{
                       headerShown: false,
                       contentStyle: { backgroundColor: accountColors.bg },
+                      // Cover, don't crossfade: fade blends dark account chrome
+                      // with bright map tiles and looks harsh. Slide is what map
+                      // apps typically use (new screen covers the previous).
                       animation: "slide_from_right",
                     }}
                   >
                     <Stack.Screen
+                      name="account"
+                      options={{
+                        animation: "slide_from_right",
+                      }}
+                    />
+                    <Stack.Screen
                       name="spot/[id]"
-                      // One sheet instance — changing id replaces content, no stack of sheets.
-                      getId={() => "spot-detail"}
+                      // New singular id per closed→open so peek detent resets;
+                      // pin swaps while open still reuse the same instance.
+                      dangerouslySingular={() => spotSheetSingularId()}
                       options={{
                         presentation: "formSheet",
                         headerShown: false,
                         contentStyle: { backgroundColor: accountColors.bg },
                         sheetAllowedDetents: [0.36, 0.85],
                         sheetInitialDetentIndex: 0,
-                        sheetGrabberVisible: true,
+                        // Custom fat handle in spot/[id]; avoid a second system pill.
+                        sheetGrabberVisible: false,
                         sheetLargestUndimmedDetentIndex: 0,
+                        // Body ScrollView owns pans; resize only via grabber chrome.
+                        sheetExpandsWhenScrolledToEdge: false,
                       }}
                     />
                   </Stack>

@@ -155,14 +155,6 @@ function ConfirmHost({
             {pending.kind === "confirm" ? (
               <>
                 <Pressable
-                  style={[accountStyles.secondary, { marginTop: 8 }]}
-                  onPress={() => finish(false)}
-                >
-                  <Text style={accountStyles.secondaryText}>
-                    {pending.cancelLabel}
-                  </Text>
-                </Pressable>
-                <Pressable
                   style={[
                     pending.destructive
                       ? accountStyles.danger
@@ -180,6 +172,12 @@ function ConfirmHost({
                   >
                     {pending.confirmLabel}
                   </Text>
+                </Pressable>
+                <Pressable
+                  style={styles.cancelHit}
+                  onPress={() => finish(false)}
+                >
+                  <Text style={styles.cancelText}>{pending.cancelLabel}</Text>
                 </Pressable>
               </>
             ) : (
@@ -272,5 +270,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     marginBottom: 8,
+  },
+  cancelHit: {
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  cancelText: {
+    color: accountColors.muted,
+    fontSize: 15,
+    fontWeight: "600",
+    textAlign: "center",
   },
 });

@@ -97,7 +97,7 @@ import {
 } from "@/map/geocode";
 import { bannerNextStep, bannerPeerStatusKey } from "@/map/exchangeCopy";
 import { SpotLayers } from "@/map/SpotLayers";
-import { stageSpotForSheet } from "@/map/spotSheetHandoff";
+import { stageSpotForSheet, beginSpotSheetPresentation } from "@/map/spotSheetHandoff";
 
 const DEBOUNCE_MS = 350;
 /** Longer than map pan debounce — typing must not hammer LocationIQ. */
@@ -127,6 +127,9 @@ export default function MapScreen() {
   const mapViewboxRef = useRef<ViewBox | null>(null);
   /** Bumped on pan/search so a late locate refresh cannot yank the camera. */
   const locateGenRef = useRef(0);
+  const searchInputRef = useRef<TextInput>(null);
+  /** Set when search is tapped while the spot sheet is open; focus after dismiss. */
+  const pendingSearchFocusRef = useRef(false);
   /** Query that produced the current searchHits — editing away clears results. */
   const lastSearchedQueryRef = useRef("");
   const timeWindow = useMemo(() => defaultTimeWindow(), []);
@@ -244,9 +247,54 @@ export default function MapScreen() {
         // Sheet already open — only swap content (no navigation remount).
         return;
       }
-      router.navigate(`/spot/${id}` as Href);
+      // Fresh presentation: new singular id so the sheet opens at peek, not
+      // the detent left from a previous expanded session.
+      beginSpotSheetPresentation();
+      router.push(`/spot/${id}` as Href);
     },
     [pathname, router],
+  );
+
+  /** Dismiss the spot sheet so map chrome (search) is not fighting detents. */
+  const spotSheetOpen = pathname.startsWith("/spot");
+  const dismissSpotSheet = useCallback(() => {
+    if (!spotSheetOpen) {
+      return;
+    }
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/" as Href);
+    }
+  }, [spotSheetOpen, router]);
+
+  // Focus search only after the sheet has left — focusing while it is mounted
+  // makes Android expand the form sheet violently for the keyboard.
+  useEffect(() => {
+    if (spotSheetOpen || !pendingSearchFocusRef.current) {
+      return;
+    }
+    pendingSearchFocusRef.current = false;
+    const t = setTimeout(() => searchInputRef.current?.focus(), 16);
+    return () => clearTimeout(t);
+  }, [spotSheetOpen]);
+
+  /** Fly the camera to a spot, then open its sheet. */
+  const focusSpotOnMap = useCallback(
+    (spot: SpotFeature) => {
+      const lon = Number(spot.geometry.coordinates[0]);
+      const lat = Number(spot.geometry.coordinates[1]);
+      if (Number.isFinite(lon) && Number.isFinite(lat)) {
+        dispatchFollow({ type: "claim_camera" });
+        cameraRef.current?.easeTo({
+          center: [lon, lat],
+          zoom: FOCUS_SPOT_ZOOM,
+          duration: 500,
+        });
+      }
+      openSpotDetail(spot);
+    },
+    [openSpotDetail],
   );
 
   const { collection, featureById, isLoading, error, refetch } = useDiscovery(
@@ -1204,9 +1252,20 @@ export default function MapScreen() {
         <View style={styles.searchCluster}>
         <View style={styles.searchBar}>
           <TextInput
+            ref={searchInputRef}
             style={styles.searchInput}
             value={searchQuery}
             onChangeText={onChangeSearchQuery}
+            onPressIn={() => {
+              if (!spotSheetOpen) {
+                return;
+              }
+              // Dismiss first; focus after unmount so the keyboard never
+              // fights the form sheet (which expands the sheet violently).
+              pendingSearchFocusRef.current = true;
+              dismissSpotSheet();
+            }}
+            showSoftInputOnFocus={!spotSheetOpen}
             placeholder={t("map.search.placeholder")}
             placeholderTextColor="#7A93A0"
             returnKeyType="search"
@@ -1321,7 +1380,7 @@ export default function MapScreen() {
           style={[styles.banner, styles.activeBanner, { top: insets.top + 118 }]}
           onPress={() => {
             if (activeSpot) {
-              openSpotDetail(activeSpot);
+              focusSpotOnMap(activeSpot);
             }
           }}
           accessibilityRole="button"

@@ -4,11 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { ScrollView } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { accountColors } from "@/account/theme";
@@ -29,6 +29,7 @@ import { ensureEmailVerified } from "@/auth/requireEmailVerified";
 import { useSession } from "@/hooks/useSession";
 import { useActiveReservation } from "@/hooks/useSpotActions";
 import { useTranslation } from "@/i18n";
+import { firstGivenName } from "@/i18n/catalogLabels";
 import { SpotSheetBody } from "@/map/SpotSheetBody";
 import {
   peekOpenSpot,
@@ -37,8 +38,9 @@ import {
 import { useConfirm } from "@/ui/ConfirmModal";
 
 /**
- * Native form-sheet spot detail (peek + expand). Options live in root Stack.
- * Content switches via spotSheetHandoff while the sheet stays mounted.
+ * Spot form sheet: resize only via the top grabber.
+ * Body uses RNGH ScrollView so vertical pans stay with content scroll and never
+ * hand off to the form sheet (RN ScrollView + formSheet still nested-scrolls).
  */
 export default function SpotDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -75,13 +77,24 @@ export default function SpotDetailScreen() {
     active && spotId && String(active.spot_id) === spotId ? active : null;
 
   const title = useMemo(() => {
-    if (spot?.properties.is_mine) {
+    if (!spot) {
+      return t("spotSheet.nav.title");
+    }
+    if (spot.properties.is_mine) {
       return t("spotSheet.yourListing");
     }
-    return spot?.properties.owner_name ?? t("spotSheet.nav.title");
+    return t("spotSheet.publishedBy", {
+      name: firstGivenName(spot.properties.owner_name),
+    });
   }, [spot, t]);
 
-  // Instant in-sheet swaps from the map (no navigation).
+  const ratingLabel =
+    spot?.properties.owner_rating != null
+      ? t("spotSheet.rating", {
+          score: spot.properties.owner_rating.toFixed(1),
+        })
+      : null;
+
   useEffect(() => {
     return subscribeOpenSpot((next) => {
       setSpot(next);
@@ -137,7 +150,6 @@ export default function SpotDetailScreen() {
     }
   }, [signedIn]);
 
-  // Background refresh whenever the visible spot id changes.
   useEffect(() => {
     if (!spotId) {
       setLoading(false);
@@ -171,11 +183,23 @@ export default function SpotDetailScreen() {
   }, [router]);
 
   return (
-    <View style={[styles.fill, { paddingTop: Math.max(insets.top, 8) }]}>
+    <View style={[styles.fill, { paddingTop: 4 }]}>
+      {/* Fat drag chrome — only this strip (plus system grabber) resizes. */}
+      <View style={styles.grabberZone} accessibilityRole="adjustable">
+        <View style={styles.grabber} />
+      </View>
+
       <View style={styles.header}>
-        <Text style={styles.title} numberOfLines={1}>
-          {title}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title} numberOfLines={1}>
+            {title}
+          </Text>
+          {ratingLabel ? (
+            <Text style={styles.rating} numberOfLines={1}>
+              {ratingLabel}
+            </Text>
+          ) : null}
+        </View>
         <Pressable
           onPress={close}
           hitSlop={12}
@@ -210,8 +234,8 @@ export default function SpotDetailScreen() {
           ]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          bounces={false}
-          overScrollMode="never"
+          bounces
+          alwaysBounceVertical={false}
         >
           <SpotSheetBody
             spot={spot}
@@ -224,7 +248,7 @@ export default function SpotDetailScreen() {
             makingOffer={makingOffer}
             setMakingOffer={setMakingOffer}
             onExpandSheet={() => {
-              /* native sheet detents handle expand */
+              /* resize only via grabber */
             }}
             onMakeOffer={async (s, vehicleId, exchangeAt, amountCents) => {
               if (!signedIn) {
@@ -349,21 +373,47 @@ export default function SpotDetailScreen() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: accountColors.bg },
+  grabberZone: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 8,
+    paddingBottom: 12,
+    minHeight: 36,
+  },
+  grabber: {
+    width: 56,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#6B8494",
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingBottom: 10,
-    gap: 12,
+    paddingBottom: 8,
+    gap: 10,
+  },
+  titleRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    minWidth: 0,
   },
   title: {
-    flex: 1,
+    flexShrink: 1,
     color: accountColors.text,
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "700",
   },
-  body: { paddingHorizontal: 20, paddingTop: 4, gap: 6 },
+  rating: {
+    color: accountColors.muted,
+    fontSize: 13,
+    fontWeight: "600",
+    flexShrink: 0,
+  },
+  body: { paddingHorizontal: 20, paddingTop: 2, gap: 8 },
   center: {
     flex: 1,
     alignItems: "center",
