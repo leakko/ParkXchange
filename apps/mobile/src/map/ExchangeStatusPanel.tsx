@@ -83,12 +83,13 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 10,
   },
+  // Fixed width so “Tú” and “Quien reservó” / “Quien deja el hueco” align.
   who: {
     color: "#1B9AAA",
     fontSize: 13,
     fontWeight: "700",
+    width: 128,
     flexShrink: 0,
-    maxWidth: "42%",
   },
   phase: {
     color: "#F4F7FA",

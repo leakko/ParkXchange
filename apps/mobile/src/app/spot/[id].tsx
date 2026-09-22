@@ -30,7 +30,12 @@ import { useSession } from "@/hooks/useSession";
 import { useActiveReservation } from "@/hooks/useSpotActions";
 import { useTranslation } from "@/i18n";
 import { SpotSheetBody } from "@/map/SpotSheetBody";
+import { takeStagedSpot, peekStagedSpot } from "@/map/spotSheetHandoff";
 import { useConfirm } from "@/ui/ConfirmModal";
+
+function initialSpot(spotId: string): SpotFeature | null {
+  return spotId ? peekStagedSpot(spotId) : null;
+}
 
 /**
  * Native form-sheet spot detail (peek + expand). Options live in root Stack;
@@ -46,8 +51,10 @@ export default function SpotDetailScreen() {
   const { confirm, alert } = useConfirm();
   const { signedIn } = useSession();
 
-  const [spot, setSpot] = useState<SpotFeature | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [spot, setSpot] = useState<SpotFeature | null>(() =>
+    initialSpot(spotId),
+  );
+  const [loading, setLoading] = useState(() => !spot);
   const [vehicles, setVehicles] = useState<VehicleResponse[]>([]);
   const [pendingOffer, setPendingOffer] = useState<OfferResponse | null>(null);
   const [offerBusy, setOfferBusy] = useState(false);
@@ -84,7 +91,9 @@ export default function SpotDetailScreen() {
     try {
       setSpot(await getSpot(spotId));
     } catch {
-      setSpot(null);
+      setSpot((prev) =>
+        prev && String(prev.id) === spotId ? prev : null,
+      );
     } finally {
       setLoading(false);
     }
@@ -119,14 +128,32 @@ export default function SpotDetailScreen() {
     }
   }, [signedIn]);
 
+  // Pin switch: paint map feature immediately, refresh in the background.
   useEffect(() => {
+    if (!spotId) {
+      setSpot(null);
+      setLoading(false);
+      return;
+    }
     setMakingOffer(false);
-    setLoading(true);
+    const staged = takeStagedSpot(spotId);
+    if (staged) {
+      setSpot(staged);
+      setLoading(false);
+    } else {
+      setSpot((prev) => {
+        if (prev && String(prev.id) === spotId) {
+          return prev;
+        }
+        setLoading(true);
+        return prev;
+      });
+    }
     void refreshSpot();
     void refreshOffers();
     void refreshVehicles();
     void refreshActive();
-  }, [refreshSpot, refreshOffers, refreshVehicles, refreshActive]);
+  }, [spotId, refreshSpot, refreshOffers, refreshVehicles, refreshActive]);
 
   const requireSignIn = useCallback(() => {
     router.replace(

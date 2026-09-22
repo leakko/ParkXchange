@@ -97,6 +97,7 @@ import {
 } from "@/map/geocode";
 import { bannerNextStep, bannerPeerStatusKey } from "@/map/exchangeCopy";
 import { SpotLayers } from "@/map/SpotLayers";
+import { stageSpotForSheet } from "@/map/spotSheetHandoff";
 
 const DEBOUNCE_MS = 350;
 /** Longer than map pan debounce — typing must not hammer LocationIQ. */
@@ -238,6 +239,7 @@ export default function MapScreen() {
         return;
       }
       setSelected(spot);
+      stageSpotForSheet(spot);
       const href = `/spot/${id}` as Href;
       if (pathname.startsWith("/spot")) {
         router.replace(href);
