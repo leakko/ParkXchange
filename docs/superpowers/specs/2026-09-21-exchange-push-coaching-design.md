@@ -47,7 +47,7 @@ full UI, except when they choose to open the reservation detail.
 | Wait tips windows | **A–D** (ignore matrix window for coaching; simpler; early complete already allowed) |
 | Wait tip audience | **Driver only**, when driver is Listo and owner is not |
 | Wait tip cadence | Not a loop: one delayed tip per **state change**; ignore → no further tips until a new state change |
-| −30 min reminder | Only if that party has **not** set `*_en_route_at` yet |
+| −30 min reminder | Only if that party has **not** set `*_en_route_at` yet, and only if the reservation existed at `exchange_at − 30m` (no tip when accepted with &lt;30 min lead) |
 | Map banner | Add explicit **“Voy de camino” / Yendo** CTA beside existing Abrir |
 | Settings | One toggle: **location assistance for exchange** (geofence local prompts). Peer/time Expo pushes are not in-app disableable (OS notif permission only). |
 | Live location | Deferred — see live-location brief |
@@ -57,7 +57,7 @@ full UI, except when they choose to open the reservation detail.
 
 ## Happy path (reference)
 
-1. **−30 min** before `exchange_at`, party has no Yendo → Expo: “Avisa cuando salgas” + action **Voy de camino** → `en-route`.
+1. **−30 min** before `exchange_at` (only if the reservation already existed then), party has no Yendo → Expo: “Avisa cuando salgas” + action **Voy de camino** → `en-route`. If the deal was accepted with &lt;30 min lead, this tip is never scheduled.
 2. User marks Yendo (push, banner, or in-app) → if location assistance on + permission → arm **one-shot** geofence (~30 m).
 3. First enter radius → **local** notif “¿Estás en el sitio?” + **Listo** → `ready`.
 4. Geofence disarmed after prompt handled / Listo set.
@@ -99,7 +99,7 @@ Same family as the no-show sweeper:
 
 | Job | Condition | Emit |
 | --- | --- | --- |
-| Pre-departure | `now ≈ exchange_at - 30m`, live reservation, party lacks `*_en_route_at` | Expo to that party only |
+| Pre-departure | `now` in `[exchange_at − 30m, exchange_at)`, live reservation, party lacks `*_en_route_at`, and the reservation **existed at the −30m mark** (`created_at ≤ exchange_at − 30m`). Skip entirely when the deal closes with less than 30 min lead (accepted inside window B) — the “media hora” copy must not fire. | Expo to that party only |
 | Driver wait tip | Driver has `driver_ready_at`, owner lacks `owner_ready_at`, ~1 min since ready (or since last coaching-relevant transition) | One Expo to driver |
 | Driver back tip | After driver unreadied via “dar una vuelta” (or clear ready while in wait flow), ~1 min later, still live, still not both ready | One Expo “¿Ya estás?” → Listo action |
 
@@ -158,7 +158,7 @@ On a small VPS (e.g. 2 vCPU / 4 GB): pushes are sparse HTTP to Expo; coaching jo
 ## Acceptance criteria
 
 1. Background device receives peer Yendo/Listo/cancel/complete with correct `reservation_id`; action buttons mutate state without a second confirm sheet.
-2. −30 min Expo only if that party has no en-route yet.
+2. −30 min Expo only if that party has no en-route yet, and only when the reservation was created with ≥30 min lead (`created_at ≤ exchange_at − 30m`). Short-lead accepts must not get this tip.
 3. First Yendo + assistance on → one enter-radius local Listo prompt; further laps do not re-trigger geofence.
 4. Driver Listo + owner not → one “dar una vuelta” tip after ~1 min; ignore → no more coaching until unready/ready/complete/cancel changes state.
 5. “Ya estoy aquí” and Listo hit the same ready endpoint.

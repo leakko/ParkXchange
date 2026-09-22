@@ -16,10 +16,12 @@ describe("reservationPointsDelta", () => {
     assert.equal(reservationPointsDelta(res, "driver"), -150);
   });
 
-  it("shows driver hold and owner zero while live", () => {
-    const res = { ...base, status: "confirmed" };
-    assert.equal(reservationPointsDelta(res, "owner"), 0);
-    assert.equal(reservationPointsDelta(res, "driver"), -150);
+  it("shows expected successful settlement while the exchange is still live", () => {
+    for (const status of ["pending", "confirmed", "arrived"]) {
+      const res = { ...base, status };
+      assert.equal(reservationPointsDelta(res, "owner"), 150);
+      assert.equal(reservationPointsDelta(res, "driver"), -150);
+    }
   });
 
   it("is zero for both when owner cancels with release", () => {

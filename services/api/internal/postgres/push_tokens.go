@@ -19,7 +19,7 @@ func (db *DB) UpsertPushToken(ctx context.Context, userID, token, platform strin
 	if token == "" || userID == "" {
 		return domain.ErrConflict
 	}
-	_, err := db.Pool.Exec(ctx, `
+	_, err := db.q().Exec(ctx, `
 		INSERT INTO device_push_tokens (expo_push_token, user_id, platform, updated_at)
 		VALUES ($1, $2, $3, now())
 		ON CONFLICT (expo_push_token) DO UPDATE
@@ -32,7 +32,7 @@ func (db *DB) UpsertPushToken(ctx context.Context, userID, token, platform strin
 
 // DeletePushToken removes a dead Expo token.
 func (db *DB) DeletePushToken(ctx context.Context, token string) error {
-	_, err := db.Pool.Exec(ctx, `
+	_, err := db.q().Exec(ctx, `
 		DELETE FROM device_push_tokens WHERE expo_push_token = $1
 	`, token)
 	return translate(err, "delete push token")
@@ -40,7 +40,7 @@ func (db *DB) DeletePushToken(ctx context.Context, token string) error {
 
 // PushTokensByUser lists active Expo tokens for a user.
 func (db *DB) PushTokensByUser(ctx context.Context, userID string) ([]string, error) {
-	rows, err := db.Pool.Query(ctx, `
+	rows, err := db.q().Query(ctx, `
 		SELECT expo_push_token FROM device_push_tokens WHERE user_id = $1
 	`, userID)
 	if err != nil {
@@ -61,7 +61,7 @@ func (db *DB) PushTokensByUser(ctx context.Context, userID string) ([]string, er
 // UserLocale returns the recipient's preferred push language (es default).
 func (db *DB) UserLocale(ctx context.Context, userID string) (domain.Locale, error) {
 	var locale string
-	err := db.Pool.QueryRow(ctx, `
+	err := db.q().QueryRow(ctx, `
 		SELECT locale FROM users WHERE id = $1 AND deleted_at IS NULL
 	`, userID).Scan(&locale)
 	if err != nil {
@@ -118,7 +118,7 @@ func (db *DB) MarkCoachingTipSent(ctx context.Context, n reservations.Notificati
 	default:
 		return nil
 	}
-	_, err := db.Pool.Exec(ctx, q, n.ReservationID, at)
+	_, err := db.q().Exec(ctx, q, n.ReservationID, at)
 	return translate(err, "mark coaching tip sent")
 }
 
@@ -141,10 +141,11 @@ func (db *DB) listDepartTips(ctx context.Context, now time.Time, forOwner bool) 
 		 WHERE r.status IN ('confirmed', 'arrived', 'pending')
 		   AND r.` + enCol + ` IS NULL
 		   AND r.` + sentCol + ` IS NULL
+		   AND r.created_at <= r.exchange_at - interval '30 minutes'
 		   AND $1 >= r.exchange_at - interval '30 minutes'
 		   AND $1 < r.exchange_at
 	`
-	rows, err := db.Pool.Query(ctx, q, now)
+	rows, err := db.q().Query(ctx, q, now)
 	if err != nil {
 		return nil, translate(err, "list depart tips")
 	}
@@ -167,7 +168,7 @@ func (db *DB) listDepartTips(ctx context.Context, now time.Time, forOwner bool) 
 }
 
 func (db *DB) listWaitTips(ctx context.Context, now time.Time) ([]reservations.Notification, error) {
-	rows, err := db.Pool.Query(ctx, `
+	rows, err := db.q().Query(ctx, `
 		SELECT id, driver_id, exchange_at
 		  FROM reservations
 		 WHERE status IN ('confirmed', 'arrived')
@@ -197,7 +198,7 @@ func (db *DB) listWaitTips(ctx context.Context, now time.Time) ([]reservations.N
 }
 
 func (db *DB) listBackTips(ctx context.Context, now time.Time) ([]reservations.Notification, error) {
-	rows, err := db.Pool.Query(ctx, `
+	rows, err := db.q().Query(ctx, `
 		SELECT id, driver_id, exchange_at
 		  FROM reservations
 		 WHERE status IN ('confirmed', 'arrived')

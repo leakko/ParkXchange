@@ -1,6 +1,8 @@
 /**
  * Net points for a party on a reservation.
- * Positive = gained; negative = lost / held; zero = released or no movement.
+ * Positive = gained; negative = spent / lost.
+ * Live exchanges show the expected outcome if the swap completes;
+ * terminal states show the actual settlement.
  */
 
 export type ReservationPointsInput = {
@@ -36,16 +38,15 @@ export function reservationPointsDelta(
   }
 
   switch (res.status) {
+    case "pending":
+    case "confirmed":
+    case "arrived":
     case "completed":
+      // Live: expected outcome if the swap succeeds. Completed: actual.
       return iAmOwner ? price : -price;
     case "cancelled":
     case "expired":
       return settleCancelled(res.cancel_reason, iAmOwner, price);
-    case "pending":
-    case "confirmed":
-    case "arrived":
-      // Driver hold is already off their balance; owner has not earned yet.
-      return iAmOwner ? 0 : -price;
     default:
       return 0;
   }

@@ -23,7 +23,9 @@ const DriverFairCancelWindow = 30 * time.Minute
 const CoachingWaitDelay = 1 * time.Minute
 
 // PreDepartureLead is how long before exchange_at the “avisa cuando salgas”
-// push may be sent.
+// push may be sent. Only reservations that already existed at that mark
+// (created_at ≤ exchange_at − PreDepartureLead) are eligible; short-lead
+// accepts inside the window never get this tip.
 const PreDepartureLead = DriverFairCancelWindow
 
 // SignupGrantCents is credited to every new account so a first claim is
