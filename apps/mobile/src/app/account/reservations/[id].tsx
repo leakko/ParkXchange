@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -20,6 +20,7 @@ import { formatSignedPoints } from "@/i18n/formatPoints";
 import { reservationStatusLabel } from "@/i18n/catalogLabels";
 import { ExchangeStatusPanel } from "@/map/ExchangeStatusPanel";
 import { PeerVehiclePanel } from "@/map/PeerVehiclePanel";
+import { useConfirm } from "@/ui/ConfirmModal";
 import {
   completedMessageKey,
   driverCancelMessageKey,
@@ -35,6 +36,7 @@ import { armGeofenceForReservation, disarmArrivalGeofence, clearArrivalPromptFir
 
 export default function ReservationDetailScreen() {
   const { t, formatDateTime } = useTranslation();
+  const { confirm, alert } = useConfirm();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -100,17 +102,19 @@ export default function ReservationDetailScreen() {
       await invalidate();
       if (data?.completed && reservation.data && me.data) {
         const owner = reservation.data.owner_id === me.data.id;
-        Alert.alert(
-          t("exchange.completed.title"),
-          t(completedMessageKey(owner)),
-        );
+        await alert({
+          title: t("exchange.completed.title"),
+          message: t(completedMessageKey(owner)),
+          confirmLabel: t("common.ok"),
+        });
       }
     },
-    onError: (err) => {
-      Alert.alert(
-        t("exchange.actionFailed.title"),
-        err instanceof Error ? err.message : t("common.error"),
-      );
+    onError: async (err) => {
+      await alert({
+        title: t("exchange.actionFailed.title"),
+        message: err instanceof Error ? err.message : t("common.error"),
+        confirmLabel: t("common.ok"),
+      });
     },
   });
 
@@ -151,36 +155,42 @@ export default function ReservationDetailScreen() {
   const deadline = isOwner ? driverNoShowDeadline(res) : ownerNoShowDeadline(res);
 
   const confirmReady = () => {
-    const message = isOwner
-      ? t("exchange.confirm.ownerReady")
-      : t("exchange.confirm.driverReady");
-    Alert.alert(t("exchange.confirm.title"), message, [
-      { text: t("common.cancel"), style: "cancel" },
-      {
-        text: t("common.confirm"),
-        onPress: () => action.mutate("ready"),
-      },
-    ]);
+    void (async () => {
+      const message = isOwner
+        ? t("exchange.confirm.ownerReady")
+        : t("exchange.confirm.driverReady");
+      const ok = await confirm({
+        title: t("exchange.confirm.title"),
+        message,
+        cancelLabel: t("common.cancel"),
+        confirmLabel: t("common.confirm"),
+      });
+      if (ok) action.mutate("ready");
+    })();
   };
 
   const confirmUnready = () => {
-    Alert.alert(t("exchange.confirm.title"), t("exchange.confirm.unready"), [
-      { text: t("common.cancel"), style: "cancel" },
-      {
-        text: t("common.confirm"),
-        onPress: () => action.mutate("unready"),
-      },
-    ]);
+    void (async () => {
+      const ok = await confirm({
+        title: t("exchange.confirm.title"),
+        message: t("exchange.confirm.unready"),
+        cancelLabel: t("common.cancel"),
+        confirmLabel: t("common.confirm"),
+      });
+      if (ok) action.mutate("unready");
+    })();
   };
 
   const confirmEnRoute = () => {
-    Alert.alert(t("exchange.confirm.title"), t("exchange.confirm.enRoute"), [
-      { text: t("common.cancel"), style: "cancel" },
-      {
-        text: t("common.confirm"),
-        onPress: () => action.mutate("en-route"),
-      },
-    ]);
+    void (async () => {
+      const ok = await confirm({
+        title: t("exchange.confirm.title"),
+        message: t("exchange.confirm.enRoute"),
+        cancelLabel: t("common.cancel"),
+        confirmLabel: t("common.confirm"),
+      });
+      if (ok) action.mutate("en-route");
+    })();
   };
 
   return (
@@ -267,17 +277,19 @@ export default function ReservationDetailScreen() {
             style={accountStyles.danger}
             disabled={action.isPending}
             onPress={() => {
-              const message = isOwner
-                ? t(ownerCancelMessageKey(res))
-                : t(driverCancelMessageKey(res));
-              Alert.alert(t("spotSheet.exchange.cancelConfirm.title"), message, [
-                { text: t("common.cancel"), style: "cancel" },
-                {
-                  text: t("spotSheet.exchange.cancelConfirm.confirm"),
-                  style: "destructive",
-                  onPress: () => action.mutate("cancel"),
-                },
-              ]);
+              void (async () => {
+                const message = isOwner
+                  ? t(ownerCancelMessageKey(res))
+                  : t(driverCancelMessageKey(res));
+                const ok = await confirm({
+                  title: t("spotSheet.exchange.cancelConfirm.title"),
+                  message,
+                  cancelLabel: t("common.cancel"),
+                  confirmLabel: t("spotSheet.exchange.cancelConfirm.confirm"),
+                  destructive: true,
+                });
+                if (ok) action.mutate("cancel");
+              })();
             }}
           >
             <Text style={accountStyles.dangerText}>{t("spotSheet.exchange.cancel")}</Text>

@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Alert, Platform } from "react-native";
 
 import { isFreshFix } from "@/push/locationFreshness";
+import { getConfirmBridge } from "@/ui/ConfirmModal";
 
 const ALWAYS_PROMPTED_KEY = "parkxchange.location.alwaysPrompted.v1";
 
@@ -37,6 +38,22 @@ export async function hasAlwaysLocation(): Promise<boolean> {
   }
 }
 
+async function explainAlways(opts: { t: TFn }): Promise<void> {
+  const title = opts.t("location.always.title");
+  const message = opts.t("location.always.message");
+  const ok = opts.t("common.ok");
+  const bridge = getConfirmBridge();
+  if (bridge) {
+    await bridge.alert({ title, message, confirmLabel: ok });
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    Alert.alert(title, message, [{ text: ok, onPress: () => resolve() }], {
+      cancelable: false,
+    });
+  });
+}
+
 /**
  * Explain why we need “Allow all the time”, then request FG → BG.
  * Call only after «Voy de camino» (arrival geofence). Never on cold start.
@@ -57,14 +74,7 @@ export async function ensureAlwaysLocation(opts: {
 
   const prompted = (await AsyncStorage.getItem(ALWAYS_PROMPTED_KEY)) === "1";
   if (!prompted || opts.forceExplain) {
-    await new Promise<void>((resolve) => {
-      Alert.alert(
-        opts.t("location.always.title"),
-        opts.t("location.always.message"),
-        [{ text: opts.t("common.ok"), onPress: () => resolve() }],
-        { cancelable: false },
-      );
-    });
+    await explainAlways(opts);
     await AsyncStorage.setItem(ALWAYS_PROMPTED_KEY, "1");
   }
 

@@ -1,6 +1,5 @@
 import * as Location from "expo-location";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert } from "react-native";
 
 import {
   cancelReservation,
@@ -19,6 +18,7 @@ import { useTranslation } from "@/i18n";
 import { distanceMeters } from "@/map/exchange";
 import { detectExchangeNotif } from "@/map/exchangeNotifs";
 import { armGeofenceForReservation, disarmArrivalGeofence, clearArrivalPromptFired, hasArrivalPromptFired, isArrivalGeofenceArmed } from "@/push/geofence";
+import { useConfirm } from "@/ui/ConfirmModal";
 import { useToast } from "@/ui/toast";
 
 function isLiveStatus(status: string | undefined): boolean {
@@ -48,6 +48,7 @@ function myReadyAt(res: ReservationResponse, meId: string): string | null {
 export function useActiveReservation(enabled: boolean) {
   const { t } = useTranslation();
   const { show } = useToast();
+  const { confirm, alert } = useConfirm();
   const [active, setActive] = useState<ReservationResponse | null>(null);
   const [spot, setSpot] = useState<SpotFeature | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -161,26 +162,18 @@ export function useActiveReservation(enabled: boolean) {
   }, [enabled, refresh]);
 
   const confirmLeaveLocation = useCallback(
-    (kind: "far" | "unknown", meters?: number): Promise<boolean> => {
-      return new Promise((resolve) => {
-        Alert.alert(
-          t("exchange.farAway.title"),
+    async (kind: "far" | "unknown", meters?: number): Promise<boolean> => {
+      return confirm({
+        title: t("exchange.farAway.title"),
+        message:
           kind === "far"
             ? t("exchange.farAway.message", { meters: Math.round(meters ?? 0) })
             : t("exchange.farAway.unknownMessage"),
-          [
-            {
-              text: t("exchange.farAway.back"),
-              style: "cancel",
-              onPress: () => resolve(false),
-            },
-            { text: t("exchange.farAway.continue"), onPress: () => resolve(true) },
-          ],
-          { cancelable: true, onDismiss: () => resolve(false) },
-        );
+        cancelLabel: t("exchange.farAway.back"),
+        confirmLabel: t("exchange.farAway.continue"),
       });
     },
-    [t],
+    [confirm, t],
   );
 
   const run = useCallback(
@@ -191,15 +184,16 @@ export function useActiveReservation(enabled: boolean) {
         await refresh();
       } catch (err) {
         await refresh();
-        Alert.alert(
-          t("exchange.actionFailed.title"),
-          err instanceof Error ? err.message : t("common.error"),
-        );
+        await alert({
+          title: t("exchange.actionFailed.title"),
+          message: err instanceof Error ? err.message : t("common.error"),
+          confirmLabel: t("common.ok"),
+        });
       } finally {
         setBusy(false);
       }
     },
-    [refresh, t],
+    [alert, refresh, t],
   );
 
   const warnIfFar = useCallback(async () => {

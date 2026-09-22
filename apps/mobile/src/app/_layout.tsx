@@ -21,6 +21,7 @@ import { ExchangePushBootstrap } from "@/push/ExchangePushBootstrap";
 // Side-effect: register background geofence TaskManager handler at startup.
 import "@/push/geofence";
 import { OfflineGate } from "@/ui/OfflineGate";
+import { ConfirmProvider } from "@/ui/ConfirmModal";
 import { ToastProvider } from "@/ui/toast";
 
 // Intermittent MapLibre tile/glyph stream errors on emulators are noisy but
@@ -72,6 +73,7 @@ export default function RootLayout() {
           <QueryClientProvider client={queryClient}>
             <ThemeProvider value={navigationTheme}>
               <ToastProvider>
+                <ConfirmProvider>
                 <OfflineGate>
                   <BottomSheetModalProvider>
                     <StatusBar style="light" />
@@ -86,6 +88,7 @@ export default function RootLayout() {
                     />
                   </BottomSheetModalProvider>
                 </OfflineGate>
+                </ConfirmProvider>
               </ToastProvider>
             </ThemeProvider>
           </QueryClientProvider>

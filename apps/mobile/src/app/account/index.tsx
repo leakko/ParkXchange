@@ -3,27 +3,26 @@ import { type Href, useRouter } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
-  Modal,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   View,
 } from "react-native";
 
 import { deleteAccount, getMe } from "@/api/client";
-import { accountColors, accountStyles } from "@/account/theme";
+import { accountStyles } from "@/account/theme";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
 import { formatPoints } from "@/i18n/formatPoints";
+import { useConfirm } from "@/ui/ConfirmModal";
 
 export default function AccountHubScreen() {
   const { t } = useTranslation();
+  const { confirm, alert } = useConfirm();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { ready, signedIn, signedOut, signOut } = useSession();
-  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const me = useQuery({
     queryKey: ["me"],
     queryFn: getMe,
@@ -33,17 +32,36 @@ export default function AccountHubScreen() {
   const closeAccount = useMutation({
     mutationFn: deleteAccount,
     onSuccess: async () => {
-      setDeleteOpen(false);
       queryClient.clear();
       await signOut();
     },
-    onError: (err) => {
-      Alert.alert(
-        t("account.delete.failed.title"),
-        err instanceof Error ? err.message : t("common.error"),
-      );
+    onError: async (err) => {
+      await alert({
+        title: t("account.delete.failed.title"),
+        message: err instanceof Error ? err.message : t("common.error"),
+        confirmLabel: t("common.ok"),
+      });
     },
   });
+
+  const onDeletePress = async () => {
+    const ok = await confirm({
+      title: t("account.delete.confirmTitle"),
+      message: t("account.delete.confirmMessage"),
+      cancelLabel: t("common.cancel"),
+      confirmLabel: t("account.delete.action"),
+      destructive: true,
+    });
+    if (!ok) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await closeAccount.mutateAsync();
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   if (!ready) {
     return (
@@ -169,79 +187,15 @@ export default function AccountHubScreen() {
 
       <Pressable
         style={[accountStyles.danger, { marginTop: 12 }]}
-        disabled={closeAccount.isPending}
-        onPress={() => setDeleteOpen(true)}
+        disabled={deleting || closeAccount.isPending}
+        onPress={() => void onDeletePress()}
       >
-        <Text style={accountStyles.dangerText}>{t("account.delete.title")}</Text>
+        {deleting || closeAccount.isPending ? (
+          <ActivityIndicator color="#FF8FAB" />
+        ) : (
+          <Text style={accountStyles.dangerText}>{t("account.delete.title")}</Text>
+        )}
       </Pressable>
-
-      {/*
-        In-app modal instead of Alert.alert: on some Android builds the system
-        dialog is easy to miss (or confused with sign-out). Destructive delete
-        must be an explicit second tap in our own UI.
-      */}
-      <Modal
-        visible={deleteOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          if (!closeAccount.isPending) setDeleteOpen(false);
-        }}
-      >
-        <View style={deleteModalStyles.backdrop}>
-          <View style={deleteModalStyles.card} accessibilityViewIsModal>
-            <Text style={deleteModalStyles.title}>{t("account.delete.confirmTitle")}</Text>
-            <Text style={deleteModalStyles.body}>{t("account.delete.confirmMessage")}</Text>
-            <Pressable
-              style={[accountStyles.secondary, { marginTop: 8 }]}
-              disabled={closeAccount.isPending}
-              onPress={() => setDeleteOpen(false)}
-            >
-              <Text style={accountStyles.secondaryText}>{t("common.cancel")}</Text>
-            </Pressable>
-            <Pressable
-              style={[accountStyles.danger, { marginTop: 8 }]}
-              disabled={closeAccount.isPending}
-              onPress={() => closeAccount.mutate()}
-            >
-              {closeAccount.isPending ? (
-                <ActivityIndicator color={accountColors.dangerText} />
-              ) : (
-                <Text style={accountStyles.dangerText}>{t("account.delete.action")}</Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
     </ScrollView>
   );
 }
-
-const deleteModalStyles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    justifyContent: "center",
-    padding: 24,
-  },
-  card: {
-    backgroundColor: accountColors.card,
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: accountColors.border,
-    gap: 8,
-  },
-  title: {
-    color: accountColors.text,
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  body: {
-    color: accountColors.muted,
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 8,
-  },
-});
-

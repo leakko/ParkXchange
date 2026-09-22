@@ -27,6 +27,7 @@ import { sizeClassLabel, spotStatusLabel } from "@/i18n/catalogLabels";
 import { formatPoints, parsePointsInput } from "@/i18n/formatPoints";
 import { openNavigation } from "@/lib/navigation";
 import { DateTimeField } from "@/ui/DateTimeField";
+import { useConfirm } from "@/ui/ConfirmModal";
 import {
   driverNoShowDeadline,
   ownerNoShowDeadline,
@@ -89,6 +90,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
   ref,
 ) {
   const { t, formatDateTime } = useTranslation();
+  const { confirm } = useConfirm();
   const insets = useSafeAreaInsets();
   const snapPoints = useMemo(() => ["36%", "82%"], []);
   const scrollRef = useRef<ComponentRef<typeof BottomSheetScrollView>>(null);
@@ -575,17 +577,15 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                             style={[styles.secondary, busy && styles.primaryDisabled]}
                             disabled={busy}
                             onPress={() => {
-                              Alert.alert(
-                                t("exchange.confirm.title"),
-                                t("exchange.confirm.enRoute"),
-                                [
-                                  { text: t("common.cancel"), style: "cancel" },
-                                  {
-                                    text: t("common.confirm"),
-                                    onPress: onEnRoute,
-                                  },
-                                ],
-                              );
+                              void (async () => {
+                                const ok = await confirm({
+                                  title: t("exchange.confirm.title"),
+                                  message: t("exchange.confirm.enRoute"),
+                                  cancelLabel: t("common.cancel"),
+                                  confirmLabel: t("common.confirm"),
+                                });
+                                if (ok) onEnRoute();
+                              })();
                             }}
                           >
                             <Text style={styles.secondaryText}>
@@ -598,19 +598,17 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                             style={[styles.primary, busy && styles.primaryDisabled]}
                             disabled={busy}
                             onPress={() => {
-                              Alert.alert(
-                                t("exchange.confirm.title"),
-                                isOwner
-                                  ? t("exchange.confirm.ownerReady")
-                                  : t("exchange.confirm.driverReady"),
-                                [
-                                  { text: t("common.cancel"), style: "cancel" },
-                                  {
-                                    text: t("common.confirm"),
-                                    onPress: onReady,
-                                  },
-                                ],
-                              );
+                              void (async () => {
+                                const ok = await confirm({
+                                  title: t("exchange.confirm.title"),
+                                  message: isOwner
+                                    ? t("exchange.confirm.ownerReady")
+                                    : t("exchange.confirm.driverReady"),
+                                  cancelLabel: t("common.cancel"),
+                                  confirmLabel: t("common.confirm"),
+                                });
+                                if (ok) onReady();
+                              })();
                             }}
                           >
                             {busy ? (
@@ -628,17 +626,15 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                             style={[styles.secondary, busy && styles.primaryDisabled]}
                             disabled={busy}
                             onPress={() => {
-                              Alert.alert(
-                                t("exchange.confirm.title"),
-                                t("exchange.confirm.unready"),
-                                [
-                                  { text: t("common.cancel"), style: "cancel" },
-                                  {
-                                    text: t("common.confirm"),
-                                    onPress: onUnready,
-                                  },
-                                ],
-                              );
+                              void (async () => {
+                                const ok = await confirm({
+                                  title: t("exchange.confirm.title"),
+                                  message: t("exchange.confirm.unready"),
+                                  cancelLabel: t("common.cancel"),
+                                  confirmLabel: t("common.confirm"),
+                                });
+                                if (ok) onUnready();
+                              })();
                             }}
                           >
                             <Text style={styles.secondaryText}>
@@ -653,21 +649,19 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                     style={styles.danger}
                     disabled={busy}
                     onPress={() => {
-                      const message = isOwner
-                        ? t(ownerCancelMessageKey(active))
-                        : t(driverCancelMessageKey(active));
-                      Alert.alert(
-                        t("spotSheet.exchange.cancelConfirm.title"),
-                        message,
-                        [
-                          { text: t("common.cancel"), style: "cancel" },
-                          {
-                            text: t("spotSheet.exchange.cancelConfirm.confirm"),
-                            style: "destructive",
-                            onPress: onCancel,
-                          },
-                        ],
-                      );
+                      void (async () => {
+                        const message = isOwner
+                          ? t(ownerCancelMessageKey(active))
+                          : t(driverCancelMessageKey(active));
+                        const ok = await confirm({
+                          title: t("spotSheet.exchange.cancelConfirm.title"),
+                          message,
+                          cancelLabel: t("common.cancel"),
+                          confirmLabel: t("spotSheet.exchange.cancelConfirm.confirm"),
+                          destructive: true,
+                        });
+                        if (ok) onCancel();
+                      })();
                     }}
                   >
                     <Text style={styles.dangerText}>{t("spotSheet.exchange.cancel")}</Text>

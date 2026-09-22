@@ -36,8 +36,8 @@ type Queued = ToastPayload & { id: number };
 
 /**
  * Soft in-app notice: does not block the UI. Auto-dismisses unless tapped away.
- * Use for exchange/offer updates while the app is foregrounded; keep Alert for
- * confirmations the user starts.
+ * Use for exchange/offer updates while the app is foregrounded; use
+ * ConfirmModal for blocking confirms the user starts.
  */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [current, setCurrent] = useState<Queued | null>(null);
