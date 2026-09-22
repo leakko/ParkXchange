@@ -231,7 +231,7 @@ export default function MapScreen() {
     });
   }, [requireSignIn, t]);
 
-  /** Open or replace the single spot form sheet (never stack sheets). */
+  /** Open or update the single spot form sheet (never stack / remount). */
   const openSpotDetail = useCallback(
     (spot: SpotFeature) => {
       const id = String(spot.id ?? "");
@@ -240,12 +240,11 @@ export default function MapScreen() {
       }
       setSelected(spot);
       stageSpotForSheet(spot);
-      const href = `/spot/${id}` as Href;
       if (pathname.startsWith("/spot")) {
-        router.replace(href);
-      } else {
-        router.navigate(href);
+        // Sheet already open — only swap content (no navigation remount).
+        return;
       }
+      router.navigate(`/spot/${id}` as Href);
     },
     [pathname, router],
   );

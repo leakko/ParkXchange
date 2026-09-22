@@ -30,21 +30,19 @@ import { useSession } from "@/hooks/useSession";
 import { useActiveReservation } from "@/hooks/useSpotActions";
 import { useTranslation } from "@/i18n";
 import { SpotSheetBody } from "@/map/SpotSheetBody";
-import { takeStagedSpot, peekStagedSpot } from "@/map/spotSheetHandoff";
+import {
+  peekOpenSpot,
+  subscribeOpenSpot,
+} from "@/map/spotSheetHandoff";
 import { useConfirm } from "@/ui/ConfirmModal";
 
-function initialSpot(spotId: string): SpotFeature | null {
-  return spotId ? peekStagedSpot(spotId) : null;
-}
-
 /**
- * Native form-sheet spot detail (peek + expand). Options live in root Stack;
- * this screen avoids Stack.Screen / useFocusEffect so Android formSheet has a
- * navigation context before hooks run.
+ * Native form-sheet spot detail (peek + expand). Options live in root Stack.
+ * Content switches via spotSheetHandoff while the sheet stays mounted.
  */
 export default function SpotDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const spotId = id ? String(id) : "";
+  const routeId = id ? String(id) : "";
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
@@ -52,8 +50,9 @@ export default function SpotDetailScreen() {
   const { signedIn } = useSession();
 
   const [spot, setSpot] = useState<SpotFeature | null>(() =>
-    initialSpot(spotId),
+    routeId ? peekOpenSpot(routeId) : null,
   );
+  const spotId = spot ? String(spot.id) : routeId;
   const [loading, setLoading] = useState(() => !spot);
   const [vehicles, setVehicles] = useState<VehicleResponse[]>([]);
   const [pendingOffer, setPendingOffer] = useState<OfferResponse | null>(null);
@@ -82,25 +81,35 @@ export default function SpotDetailScreen() {
     return spot?.properties.owner_name ?? t("spotSheet.nav.title");
   }, [spot, t]);
 
-  const refreshSpot = useCallback(async () => {
-    if (!spotId) {
-      setSpot(null);
+  // Instant in-sheet swaps from the map (no navigation).
+  useEffect(() => {
+    return subscribeOpenSpot((next) => {
+      setSpot(next);
       setLoading(false);
+      setMakingOffer(false);
+      setPendingOffer(null);
+      const nextId = String(next.id);
+      if (nextId !== routeId) {
+        router.setParams({ id: nextId });
+      }
+    });
+  }, [routeId, router]);
+
+  const refreshSpot = useCallback(async (id: string) => {
+    if (!id) {
       return;
     }
     try {
-      setSpot(await getSpot(spotId));
+      setSpot(await getSpot(id));
     } catch {
-      setSpot((prev) =>
-        prev && String(prev.id) === spotId ? prev : null,
-      );
+      /* keep painted feature */
     } finally {
       setLoading(false);
     }
-  }, [spotId]);
+  }, []);
 
-  const refreshOffers = useCallback(async () => {
-    if (!signedIn || !spotId) {
+  const refreshOffers = useCallback(async (id: string) => {
+    if (!signedIn || !id) {
       setPendingOffer(null);
       return;
     }
@@ -108,13 +117,13 @@ export default function SpotDetailScreen() {
       const mine = await listMyOffers();
       setPendingOffer(
         mine.find(
-          (o) => String(o.spot_id) === spotId && o.status === "pending",
+          (o) => String(o.spot_id) === id && o.status === "pending",
         ) ?? null,
       );
     } catch {
       setPendingOffer(null);
     }
-  }, [signedIn, spotId]);
+  }, [signedIn]);
 
   const refreshVehicles = useCallback(async () => {
     if (!signedIn) {
@@ -128,29 +137,14 @@ export default function SpotDetailScreen() {
     }
   }, [signedIn]);
 
-  // Pin switch: paint map feature immediately, refresh in the background.
+  // Background refresh whenever the visible spot id changes.
   useEffect(() => {
     if (!spotId) {
-      setSpot(null);
       setLoading(false);
       return;
     }
-    setMakingOffer(false);
-    const staged = takeStagedSpot(spotId);
-    if (staged) {
-      setSpot(staged);
-      setLoading(false);
-    } else {
-      setSpot((prev) => {
-        if (prev && String(prev.id) === spotId) {
-          return prev;
-        }
-        setLoading(true);
-        return prev;
-      });
-    }
-    void refreshSpot();
-    void refreshOffers();
+    void refreshSpot(spotId);
+    void refreshOffers(spotId);
     void refreshVehicles();
     void refreshActive();
   }, [spotId, refreshSpot, refreshOffers, refreshVehicles, refreshActive]);
@@ -253,8 +247,8 @@ export default function SpotDetailScreen() {
                   confirmLabel: t("common.ok"),
                 });
                 await Promise.all([
-                  refreshSpot(),
-                  refreshOffers(),
+                  refreshSpot(spotId),
+                  refreshOffers(spotId),
                   refreshActive(),
                 ]);
               } catch (err) {
@@ -271,7 +265,7 @@ export default function SpotDetailScreen() {
               setOfferBusy(true);
               try {
                 await withdrawOffer(offer.id);
-                await refreshOffers();
+                await refreshOffers(spotId);
               } catch (err) {
                 await alert({
                   title: t("spotSheet.offer.withdrawFailed.title"),
@@ -292,7 +286,7 @@ export default function SpotDetailScreen() {
             onCancel={() => {
               void cancel().then(() => {
                 void refreshActive();
-                void refreshSpot();
+                void refreshSpot(spotId);
               });
             }}
             onEdit={(s) => {

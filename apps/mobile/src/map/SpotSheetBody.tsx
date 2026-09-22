@@ -275,102 +275,72 @@ export function SpotSheetBody({
     return <View />;
   }
 
+  // Peek-first: time + points + announcer rating + primary actions.
+  // Header already shows owner name — don't repeat it here.
+  const headlineTime =
+    isActiveForSpot && active ? (
+      <Text style={styles.freeAt}>
+        {t("spotSheet.exchange.time", {
+          datetime: formatDateTime(active.exchange_at),
+        })}
+      </Text>
+    ) : pendingOffer && !isActiveForSpot ? (
+      <Text style={styles.freeAt}>
+        {t("spotSheet.offer.pending.meta", {
+          points: formatPoints(pendingOffer.amount_cents),
+          datetime: formatDateTime(pendingOffer.exchange_at),
+        })}
+      </Text>
+    ) : (
+      <Text style={styles.freeAt}>
+        {spot.properties.preferred_departure_at
+          ? t("spotSheet.freeAt", {
+              datetime: formatDateTime(spot.properties.preferred_departure_at),
+            })
+          : t("spotSheet.flexibleDeparture")}
+      </Text>
+    );
+
+  const pointsLine =
+    isActiveForSpot && active ? (
+      <Text style={styles.pointsHero}>
+        {formatPoints(active.price_cents)} pts
+        <Text style={styles.meta}>
+          {" · "}
+          {sizeClassLabel(t, spot.properties.size_class)}
+        </Text>
+      </Text>
+    ) : pendingOffer && !isActiveForSpot ? null : (
+      <Text style={styles.pointsHero}>
+        {points} pts
+        <Text style={styles.meta}>
+          {" · "}
+          {sizeClassLabel(t, spot.properties.size_class)}
+          {" · "}
+          {spotStatusLabel(t, spot.properties.status)}
+        </Text>
+      </Text>
+    );
+
   return (
     <>
-      <Text style={styles.title}>{spot.properties.owner_name}</Text>
+      {spot.properties.is_mine ? (
+        <Text style={styles.mineBadge}>{t("spotSheet.yourListing")}</Text>
+      ) : null}
       {spot.properties.owner_rating != null ? (
-        <Text style={styles.meta}>
+        <Text style={styles.rating}>
           {t("spotSheet.rating", {
             score: spot.properties.owner_rating.toFixed(1),
           })}
         </Text>
       ) : null}
-      {spot.properties.is_mine ? (
-        <Text style={styles.mineBadge}>{t("spotSheet.yourListing")}</Text>
-      ) : null}
-      <Text style={styles.meta}>
-        {t("spotSheet.meta", {
-          sizeClass: sizeClassLabel(t, spot.properties.size_class),
-          points,
-          status: spotStatusLabel(t, spot.properties.status),
-        })}
-      </Text>
+
+      {headlineTime}
+      {pointsLine}
+
       {!exact && !spot.properties.is_mine ? (
         <Text style={styles.approxNotice}>{t("spotSheet.approxLocation")}</Text>
       ) : null}
-      {spot.properties.address_hint ? (
-        <Text style={styles.hint}>{spot.properties.address_hint}</Text>
-      ) : null}
-      {spot.properties.notes ? (
-        <Text style={styles.notes}>{spot.properties.notes}</Text>
-      ) : null}
-
-      {showInlineSpotVehicle ? (
-        <View style={styles.vehicleBlock}>
-          <Text style={styles.vehicleTitle}>
-            {vehicle.plate}
-            {vehicle.make_model ? ` · ${vehicle.make_model}` : ""}
-          </Text>
-          <Text style={styles.vehicleMeta}>
-            {[
-              vehicle.color,
-              vehicle.year || null,
-              vehicle.size_class
-                ? sizeClassLabel(t, vehicle.size_class)
-                : null,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </Text>
-          {photoUri ? (
-            <Image
-              source={{ uri: photoUri }}
-              style={styles.photo}
-              resizeMode="cover"
-            />
-          ) : null}
-        </View>
-      ) : null}
-
-      {ownerPhone ? (
-        <Text style={styles.hint}>
-          {t("spotSheet.ownerPhone", { phone: ownerPhone })}
-        </Text>
-      ) : null}
-
-      {isActiveForSpot && active ? (
-        <Text style={styles.freeAt}>
-          {t("spotSheet.exchange.time", {
-            datetime: formatDateTime(active.exchange_at),
-          })}
-        </Text>
-      ) : pendingOffer && !isActiveForSpot ? (
-        <Text style={styles.freeAt}>
-          {t("spotSheet.offer.pending.meta", {
-            points: formatPoints(pendingOffer.amount_cents),
-            datetime: formatDateTime(pendingOffer.exchange_at),
-          })}
-        </Text>
-      ) : (
-        <>
-          <Text style={styles.freeAt}>
-            {spot.properties.preferred_departure_at
-              ? t("spotSheet.freeAt", {
-                  datetime: formatDateTime(
-                    spot.properties.preferred_departure_at,
-                  ),
-                })
-              : t("spotSheet.flexibleDeparture")}
-          </Text>
-          {spot.properties.status === "available" ? (
-            <Text style={styles.listedUntil}>
-              {t("spotSheet.listedUntil", {
-                datetime: formatDateTime(spot.properties.listed_until),
-              })}
-            </Text>
-          ) : null}
-        </>
-      )}
 
       <View style={styles.actions}>
         {spot.properties.is_mine &&
@@ -411,9 +381,6 @@ export function SpotSheetBody({
         pendingOffer &&
         !makingOffer ? (
           <View style={styles.offerForm}>
-            <Text style={styles.formLabel}>
-              {t("spotSheet.offer.pending.title")}
-            </Text>
             <Pressable
               style={styles.primary}
               disabled={busy}
@@ -544,16 +511,6 @@ export function SpotSheetBody({
 
         {isActiveForSpot && active ? (
           <>
-            <PeerVehiclePanel
-              vehicle={isOwner ? active.driver_vehicle : active.owner_vehicle}
-              counterpart
-              photoUrl={peerVehiclePhotoUrl(String(active.id))}
-            />
-            <ExchangeStatusPanel
-              res={active}
-              iAmOwner={isOwner}
-              deadlineLabel={deadlineLabel}
-            />
             {!myReady && !myEnRoute ? (
               <Pressable
                 style={[styles.secondary, busy && styles.primaryDisabled]}
@@ -624,6 +581,26 @@ export function SpotSheetBody({
                 </Text>
               </Pressable>
             )}
+            {exact &&
+            !spot.properties.is_mine &&
+            coords &&
+            coords[0] != null &&
+            coords[1] != null ? (
+              <Pressable
+                style={styles.secondary}
+                onPress={() =>
+                  void openNavigation(
+                    { lon: coords[0]!, lat: coords[1]! },
+                    {
+                      failedTitle: t("navigation.failed.title"),
+                      failedMessage: t("navigation.failed.message"),
+                    },
+                  )
+                }
+              >
+                <Text style={styles.secondaryText}>{t("spotSheet.navigate")}</Text>
+              </Pressable>
+            ) : null}
             <Pressable
               style={styles.danger}
               disabled={busy}
@@ -652,6 +629,7 @@ export function SpotSheetBody({
 
         {exact &&
         !spot.properties.is_mine &&
+        !isActiveForSpot &&
         coords &&
         coords[0] != null &&
         coords[1] != null ? (
@@ -671,16 +649,88 @@ export function SpotSheetBody({
           </Pressable>
         ) : null}
       </View>
+
+      {/* Secondary detail — below the peek fold */}
+      {isActiveForSpot && active ? (
+        <>
+          <ExchangeStatusPanel
+            res={active}
+            iAmOwner={isOwner}
+            deadlineLabel={deadlineLabel}
+          />
+          <PeerVehiclePanel
+            vehicle={isOwner ? active.driver_vehicle : active.owner_vehicle}
+            counterpart
+            photoUrl={peerVehiclePhotoUrl(String(active.id))}
+          />
+        </>
+      ) : null}
+
+      {spot.properties.address_hint ? (
+        <Text style={styles.hint}>{spot.properties.address_hint}</Text>
+      ) : null}
+      {spot.properties.notes ? (
+        <Text style={styles.notes}>{spot.properties.notes}</Text>
+      ) : null}
+
+      {showInlineSpotVehicle ? (
+        <View style={styles.vehicleBlock}>
+          <Text style={styles.vehicleTitle}>
+            {vehicle.plate}
+            {vehicle.make_model ? ` · ${vehicle.make_model}` : ""}
+          </Text>
+          <Text style={styles.vehicleMeta}>
+            {[
+              vehicle.color,
+              vehicle.year || null,
+              vehicle.size_class
+                ? sizeClassLabel(t, vehicle.size_class)
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </Text>
+          {photoUri ? (
+            <Image
+              source={{ uri: photoUri }}
+              style={styles.photo}
+              resizeMode="cover"
+            />
+          ) : null}
+        </View>
+      ) : null}
+
+      {ownerPhone ? (
+        <Text style={styles.hint}>
+          {t("spotSheet.ownerPhone", { phone: ownerPhone })}
+        </Text>
+      ) : null}
+
+      {!isActiveForSpot &&
+      !pendingOffer &&
+      spot.properties.status === "available" ? (
+        <Text style={styles.listedUntil}>
+          {t("spotSheet.listedUntil", {
+            datetime: formatDateTime(spot.properties.listed_until),
+          })}
+        </Text>
+      ) : null}
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  title: { color: "#F4F7FA", fontSize: 18, fontWeight: "600" },
   mineBadge: { color: "#1B9AAA", fontSize: 13, fontWeight: "600" },
-  meta: { color: "#9DB4C0", fontSize: 14 },
-  hint: { color: "#D6E2E9", fontSize: 14, marginTop: 4 },
-  notes: { color: "#D6E2E9", fontSize: 14 },
+  rating: { color: "#9DB4C0", fontSize: 14, marginBottom: 2 },
+  meta: { color: "#9DB4C0", fontSize: 14, fontWeight: "400" },
+  pointsHero: {
+    color: "#F4F7FA",
+    fontSize: 16,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  hint: { color: "#D6E2E9", fontSize: 14, marginTop: 8 },
+  notes: { color: "#D6E2E9", fontSize: 14, marginTop: 6 },
   approxNotice: {
     color: "#FFB4C8",
     fontSize: 13,
@@ -692,7 +742,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     overflow: "hidden",
   },
-  vehicleBlock: { marginTop: 8, gap: 4 },
+  vehicleBlock: { marginTop: 10, gap: 4 },
   vehicleTitle: { color: "#F4F7FA", fontSize: 15, fontWeight: "600" },
   vehicleMeta: { color: "#9DB4C0", fontSize: 13 },
   photo: {
@@ -704,12 +754,12 @@ const styles = StyleSheet.create({
   },
   freeAt: {
     color: "#F4F7FA",
-    fontSize: 17,
-    fontWeight: "600",
-    marginTop: 10,
+    fontSize: 18,
+    fontWeight: "700",
+    marginTop: 4,
   },
-  listedUntil: { color: "#7A93A0", fontSize: 12, marginTop: 4 },
-  actions: { marginTop: 14, gap: 8 },
+  listedUntil: { color: "#7A93A0", fontSize: 12, marginTop: 10 },
+  actions: { marginTop: 12, gap: 8 },
   offerForm: { gap: 8 },
   formLabel: { color: "#9DB4C0", fontSize: 12, marginTop: 4 },
   help: { color: "#7A93A0", fontSize: 13, lineHeight: 18 },
