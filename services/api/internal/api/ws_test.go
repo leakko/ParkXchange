@@ -85,6 +85,43 @@ func TestUnrelatedViewportDoesNotReceiveTheSpot(t *testing.T) {
 	}
 }
 
+func TestSocketViewportIncludeFlexibleDefaultsTrueAndAcceptsFalse(t *testing.T) {
+	server, db := newServer(t)
+
+	owner, _, _ := registerUser(t, server)
+	watcher, _, _ := registerUser(t, server)
+	at := uniqueLocation()
+	flexible := createSpot(t, server, db, owner, at, nil)
+	departure := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+	scheduled := createSpot(t, server, db, owner, at, map[string]any{
+		"preferred_departure_at": departure,
+	})
+
+	conn := dialWS(t, server, watcher.AccessToken)
+	defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
+
+	sendViewport(t, conn, at)
+	omitted := readSnapshot(t, conn)
+	if _, found := (featureCollection{Features: omitted.Features}).find(flexible.ID); !found {
+		t.Error("omitted flag excluded the flexible spot")
+	}
+	if _, found := (featureCollection{Features: omitted.Features}).find(scheduled.ID); !found {
+		t.Error("omitted flag excluded the scheduled spot")
+	}
+
+	includeFlexible := false
+	if err := writeViewportWithIncludeFlexible(conn, at, &includeFlexible); err != nil {
+		t.Fatalf("write viewport: %v", err)
+	}
+	excluded := readSnapshot(t, conn)
+	if _, found := (featureCollection{Features: excluded.Features}).find(flexible.ID); found {
+		t.Error("include_flexible=false returned the flexible spot")
+	}
+	if _, found := (featureCollection{Features: excluded.Features}).find(scheduled.ID); !found {
+		t.Error("include_flexible=false excluded the scheduled spot")
+	}
+}
+
 func TestThousandSocketsReceiveOneFanOut(t *testing.T) {
 	if testing.Short() {
 		t.Skip("load demo")
@@ -210,12 +247,24 @@ func dialWSWithTicket(server *httptest.Server, ticket string) (*websocket.Conn, 
 }
 
 func writeViewport(conn *websocket.Conn, at testLocation) error {
+	return writeViewportWithIncludeFlexible(conn, at, nil)
+}
+
+func writeViewportWithIncludeFlexible(
+	conn *websocket.Conn,
+	at testLocation,
+	includeFlexible *bool,
+) error {
 	const pad = 0.002
-	payload, err := json.Marshal(map[string]any{
+	message := map[string]any{
 		"type": "viewport",
 		"bbox": []float64{at.Lon - pad, at.Lat - pad, at.Lon + pad, at.Lat + pad},
 		"zoom": 15,
-	})
+	}
+	if includeFlexible != nil {
+		message["include_flexible"] = *includeFlexible
+	}
+	payload, err := json.Marshal(message)
 	if err != nil {
 		return err
 	}

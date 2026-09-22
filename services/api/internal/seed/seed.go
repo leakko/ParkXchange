@@ -139,6 +139,13 @@ SELECT id,
 //
 // 15% are seeded as already expired. Those rows sit outside the partial GiST
 // index, which is what makes the index's selectivity visible in EXPLAIN.
+//
+// Among available listings, preferred departure is bucketed so the map filter
+// is easy to exercise by eye (i % 4):
+//   0 → flexible (no preferred; listed 24h)
+//   1 → within the next ~2 hours (15–104 min)
+//   2 → later the same day (3–10 hours)
+//   3 → spread across the next ~2 days (12–47h, odd minutes)
 const insertGeneratedSpotsSQL = `
 WITH districts(rn, name, lon, lat) AS (
     VALUES (0, 'Sur',            -5.97315::double precision, 37.37185::double precision),
@@ -168,7 +175,7 @@ generated AS (
            random()                                                   AS status_roll,
            random()                                                   AS price_roll,
            random()                                                   AS size_roll,
-           random()                                                   AS ttl_roll
+           g.i % 4                                                    AS departure_bucket
       FROM generate_series(1, $1::int) AS g(i)
       JOIN districts d ON d.rn = g.i % 10
 )
@@ -182,16 +189,25 @@ SELECT o.id,
        (ARRAY['small', 'medium', 'large'])[1 + floor(gen.size_roll * 3)::int],
        CASE WHEN gen.status_roll < 0.85 THEN 'available' ELSE 'expired' END,
        50 + floor(gen.price_roll * 19)::int * 25,
-       CASE WHEN gen.status_roll < 0.85 AND gen.i % 3 <> 0
-            THEN now() + make_interval(hours => 1 + floor(gen.ttl_roll * 48)::int)
-            ELSE NULL
+       CASE
+           WHEN gen.status_roll >= 0.85 THEN NULL
+           WHEN gen.departure_bucket = 0 THEN NULL
+           WHEN gen.departure_bucket = 1 THEN
+                now() + make_interval(mins => 15 + (gen.i % 90))
+           WHEN gen.departure_bucket = 2 THEN
+                now() + make_interval(hours => 3 + (gen.i % 8))
+           ELSE
+                now() + make_interval(
+                    hours => 12 + (gen.i % 36),
+                    mins => (gen.i * 7) % 60
+                )
        END,
        gen.i % 2 = 0,
-       CASE WHEN gen.status_roll < 0.85
-            THEN now() + interval '7 days'
-            ELSE now() - interval '30 minutes'
-       END
-       ,
+       CASE
+           WHEN gen.status_roll >= 0.85 THEN now() - interval '30 minutes'
+           WHEN gen.departure_bucket = 0 THEN now() + interval '24 hours'
+           ELSE now() + interval '7 days'
+       END,
        CASE WHEN gen.status_roll < 0.85
             THEN now()
             ELSE now() - interval '8 days'
@@ -202,10 +218,11 @@ SELECT o.id,
 
 // Spots at recognisable landmarks, all owned by the demo account, so manual
 // testing has predictable places to navigate to. The first row is the
-// developer home address used as the emulator GPS fix.
+// developer home address used as the emulator GPS fix. Preferred departures
+// cover soon / later / two-day / flexible so the filter is testable at known pins.
 const insertLandmarkSpotsSQL = `
 INSERT INTO spots (owner_id, vehicle_id, geom, address_hint, size_class, status,
-                   price_cents, expires_at)
+                   price_cents, preferred_departure_at, expires_at)
 SELECT u.id,
        v.id,
        ST_SetSRID(ST_MakePoint(s.lon, s.lat), 4326),
@@ -213,18 +230,26 @@ SELECT u.id,
        s.size_class,
        'available',
        s.price_cents,
-       now() + interval '7 days'
+       CASE s.bucket
+           WHEN 'soon' THEN now() + interval '45 minutes'
+           WHEN 'later' THEN now() + interval '5 hours'
+           WHEN 'twoday' THEN now() + interval '30 hours'
+           ELSE NULL
+       END,
+       CASE WHEN s.bucket = 'flex' THEN now() + interval '24 hours'
+            ELSE now() + interval '7 days'
+       END
   FROM users u
   JOIN vehicles v ON v.owner_id = u.id
   CROSS JOIN (VALUES
-           (-5.97315::double precision, 37.37185::double precision, 'Calle Malvaloca 5, 41013 Sevilla',     'medium', 250),
-           (-5.99250::double precision, 37.38610::double precision, 'Catedral / Giralda',                 'small',  300),
-           (-5.98690::double precision, 37.37720::double precision, 'Plaza de Espana',                    'medium', 200),
-           (-5.99190::double precision, 37.39300::double precision, 'Metropol Parasol (Setas)',           'medium', 175),
-           (-5.99650::double precision, 37.38240::double precision, 'Torre del Oro',                      'small',  225),
-           (-5.98850::double precision, 37.37550::double precision, 'Parque de Maria Luisa',              'large',  150),
-           (-5.97050::double precision, 37.38410::double precision, 'Estadio Ramon Sanchez-Pizjuan',      'large',  125),
-           (-6.00900::double precision, 37.40500::double precision, 'Isla de la Cartuja',                 'medium', 100)
-       ) AS s(lon, lat, hint, size_class, price_cents)
+           (-5.97315::double precision, 37.37185::double precision, 'Calle Malvaloca 5, 41013 Sevilla',     'medium', 250, 'soon'),
+           (-5.99250::double precision, 37.38610::double precision, 'Catedral / Giralda',                 'small',  300, 'later'),
+           (-5.98690::double precision, 37.37720::double precision, 'Plaza de Espana',                    'medium', 200, 'twoday'),
+           (-5.99190::double precision, 37.39300::double precision, 'Metropol Parasol (Setas)',           'medium', 175, 'flex'),
+           (-5.99650::double precision, 37.38240::double precision, 'Torre del Oro',                      'small',  225, 'soon'),
+           (-5.98850::double precision, 37.37550::double precision, 'Parque de Maria Luisa',              'large',  150, 'later'),
+           (-5.97050::double precision, 37.38410::double precision, 'Estadio Ramon Sanchez-Pizjuan',      'large',  125, 'twoday'),
+           (-6.00900::double precision, 37.40500::double precision, 'Isla de la Cartuja',                 'medium', 100, 'flex')
+       ) AS s(lon, lat, hint, size_class, price_cents, bucket)
  WHERE u.email = 'owner@parkxchange.test'
 `

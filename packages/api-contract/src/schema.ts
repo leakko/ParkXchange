@@ -942,6 +942,8 @@ export interface components {
             from?: string;
             /** Format: date-time */
             to?: string;
+            /** @description When true, include spots with no preferred_departure_at. Defaults to true when omitted. */
+            include_flexible?: boolean;
         };
         /** @description Server to client WebSocket snapshot after a viewport */
         SnapshotMessage: {
@@ -998,6 +1000,8 @@ export interface components {
         From: string;
         /** @description Exclusive end of the time window (RFC3339) */
         To: string;
+        /** @description When true, include spots with no preferred_departure_at */
+        IncludeFlexible: boolean;
     };
     requestBodies: never;
     headers: never;
@@ -1620,6 +1624,8 @@ export interface operations {
                 from?: components["parameters"]["From"];
                 /** @description Exclusive end of the time window (RFC3339) */
                 to?: components["parameters"]["To"];
+                /** @description When true, include spots with no preferred_departure_at */
+                include_flexible?: components["parameters"]["IncludeFlexible"];
             };
             header?: never;
             path?: never;

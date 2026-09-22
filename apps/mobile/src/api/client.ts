@@ -232,12 +232,14 @@ export async function fetchSpots(opts: {
   zoom: number;
   from: string;
   to: string;
+  includeFlexible: boolean;
 }): Promise<SpotFeatureCollection> {
   const qs = new URLSearchParams({
     bbox: bboxQuery(opts.bbox),
     zoom: String(Math.round(opts.zoom)),
     from: opts.from,
     to: opts.to,
+    include_flexible: String(opts.includeFlexible),
   });
   const res = await apiFetch(`/v1/spots?${qs}`);
   if (!res.ok) {

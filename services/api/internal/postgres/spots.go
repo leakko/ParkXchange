@@ -55,14 +55,28 @@ const spotFrom = `
 const discoveryQuery = `
 	SELECT ` + spotColumns + spotFrom + `
 	 WHERE s.status = 'available'
-	   AND s.expires_at > $5
+	   AND s.expires_at > now()
 	   AND (
-	     s.preferred_departure_at IS NULL
-	     OR s.preferred_departure_at + interval '24 hours' > $5
+	     (
+	       s.preferred_departure_at IS NOT NULL
+	       AND s.preferred_departure_at + interval '24 hours' > now()
+	     )
+	     OR (
+	       s.preferred_departure_at IS NULL
+	       AND s.created_at + interval '24 hours' > now()
+	     )
+	   )
+	   AND (
+	     (
+	       s.preferred_departure_at IS NOT NULL
+	       AND s.preferred_departure_at >= $5
+	       AND s.preferred_departure_at < $6
+	     )
+	     OR ($7::boolean AND s.preferred_departure_at IS NULL)
 	   )
 	   AND s.geom && ST_MakeEnvelope($1, $2, $3, $4, 4326)
 	 ORDER BY s.created_at DESC
-	 LIMIT $6`
+	 LIMIT $8`
 
 func scanSpot(row pgx.Row) (domain.Spot, error) {
 	var (
@@ -137,7 +151,7 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 // geometry would defeat the index entirely, because the bounding box of a
 // collection spanning the antimeridian is the whole planet. A viewport only
 // splits when it crosses the date line, so in practice this loop runs once.
-func (db *DB) SpotsInBBox(ctx context.Context, boxes []geo.BBox, from, to time.Time, limit int) ([]domain.Spot, error) {
+func (db *DB) SpotsInBBox(ctx context.Context, boxes []geo.BBox, from, to time.Time, includeFlexible bool, limit int) ([]domain.Spot, error) {
 	// Deduplicated by id because a caller could pass overlapping rectangles.
 	// The antimeridian split never does, but the port does not forbid it and
 	// returning the same spot twice would put two markers on one pin.
@@ -149,8 +163,9 @@ func (db *DB) SpotsInBBox(ctx context.Context, boxes []geo.BBox, from, to time.T
 			break
 		}
 
-		rows, err := db.Pool.Query(ctx, discoveryQuery,
-			box.MinLon, box.MinLat, box.MaxLon, box.MaxLat, from, limit-len(spots))
+		rows, err := db.q().Query(ctx, discoveryQuery,
+			box.MinLon, box.MinLat, box.MaxLon, box.MaxLat,
+			from, to, includeFlexible, limit-len(spots))
 		if err != nil {
 			return nil, translate(err, "query spots in bbox")
 		}

@@ -632,11 +632,14 @@ type VersionResponse struct {
 // ViewportMessage Client to server WebSocket message
 type ViewportMessage struct {
 	// Bbox [west, south, east, north]
-	Bbox []float64           `json:"bbox"`
-	From *time.Time          `json:"from,omitempty"`
-	To   *time.Time          `json:"to,omitempty"`
-	Type ViewportMessageType `json:"type"`
-	Zoom *int                `json:"zoom,omitempty"`
+	Bbox []float64  `json:"bbox"`
+	From *time.Time `json:"from,omitempty"`
+
+	// IncludeFlexible When true, include spots with no preferred_departure_at. Defaults to true when omitted.
+	IncludeFlexible *bool               `json:"include_flexible,omitempty"`
+	To              *time.Time          `json:"to,omitempty"`
+	Type            ViewportMessageType `json:"type"`
+	Zoom            *int                `json:"zoom,omitempty"`
 }
 
 // ViewportMessageType defines model for ViewportMessage.Type.
@@ -647,6 +650,9 @@ type BBox = string
 
 // From defines model for From.
 type From = time.Time
+
+// IncludeFlexible defines model for IncludeFlexible.
+type IncludeFlexible = bool
 
 // OfferID defines model for OfferID.
 type OfferID = openapi_types.UUID
@@ -696,6 +702,9 @@ type ListSpotsParams struct {
 
 	// To Exclusive end of the time window (RFC3339)
 	To *To `form:"to,omitempty" json:"to,omitempty"`
+
+	// IncludeFlexible When true, include spots with no preferred_departure_at
+	IncludeFlexible *IncludeFlexible `form:"include_flexible,omitempty" json:"include_flexible,omitempty"`
 }
 
 // OpenWebSocketParams defines parameters for OpenWebSocket.

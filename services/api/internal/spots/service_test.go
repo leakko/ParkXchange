@@ -24,10 +24,11 @@ type fakeStore struct {
 	spots map[string]domain.Spot
 
 	// gotBoxes and gotLimit capture the last SpotsInBBox call.
-	gotBoxes []geo.BBox
-	gotLimit int
-	gotFrom  time.Time
-	gotTo    time.Time
+	gotBoxes           []geo.BBox
+	gotLimit           int
+	gotFrom            time.Time
+	gotTo              time.Time
+	gotIncludeFlexible bool
 
 	// cancelCalls counts attempted withdrawals, so a test can assert that the
 	// service did not even try when a rule already forbade it.
@@ -63,12 +64,25 @@ func newFakeStore() *fakeStore {
 	return &fakeStore{spots: make(map[string]domain.Spot)}
 }
 
-func (f *fakeStore) SpotsInBBox(_ context.Context, boxes []geo.BBox, from, to time.Time, limit int) ([]domain.Spot, error) {
+func (f *fakeStore) SpotsInBBox(_ context.Context, boxes []geo.BBox, from, to time.Time, includeFlexible bool, limit int) ([]domain.Spot, error) {
 	f.gotBoxes = boxes
 	f.gotLimit = limit
 	f.gotFrom = from
 	f.gotTo = to
-	return f.inBBox, nil
+	f.gotIncludeFlexible = includeFlexible
+	filtered := make([]domain.Spot, 0, len(f.inBBox))
+	for _, spot := range f.inBBox {
+		if spot.PreferredDepartureAt == nil {
+			if includeFlexible {
+				filtered = append(filtered, spot)
+			}
+			continue
+		}
+		if !spot.PreferredDepartureAt.Before(from) && spot.PreferredDepartureAt.Before(to) {
+			filtered = append(filtered, spot)
+		}
+	}
+	return filtered, nil
 }
 
 func (f *fakeStore) CreateSpot(_ context.Context, draft domain.SpotDraft) (domain.Spot, error) {
@@ -257,7 +271,8 @@ func TestInViewportAllowsAnUnspecifiedZoom(t *testing.T) {
 	service := spots.New(newFakeStore(), []byte("test-location-fuzz-secret-32bytes!!"))
 
 	if _, err := service.InViewport(context.Background(), spots.ViewportQuery{
-		BBox: barcelona,
+		BBox:            barcelona,
+		IncludeFlexible: true,
 	}); err != nil {
 		t.Errorf("InViewport with no zoom: %v", err)
 	}
@@ -273,7 +288,9 @@ func TestInViewportSplitsAWrappingViewport(t *testing.T) {
 
 	fiji := geo.BBox{MinLon: 179.9, MinLat: -16.6, MaxLon: -179.9, MaxLat: -16.4}
 
-	if _, err := service.InViewport(context.Background(), spots.ViewportQuery{BBox: fiji}); err != nil {
+	if _, err := service.InViewport(context.Background(), spots.ViewportQuery{
+		BBox: fiji, IncludeFlexible: true,
+	}); err != nil {
 		t.Fatalf("InViewport: %v", err)
 	}
 
@@ -294,13 +311,40 @@ func TestInViewportCapsTheResultCount(t *testing.T) {
 	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
 
 	if _, err := service.InViewport(context.Background(), spots.ViewportQuery{
-		BBox: barcelona,
+		BBox:            barcelona,
+		IncludeFlexible: true,
 	}); err != nil {
 		t.Fatalf("InViewport: %v", err)
 	}
 
 	if store.gotLimit != spots.MaxResults {
 		t.Errorf("limit = %d, want %d", store.gotLimit, spots.MaxResults)
+	}
+	if !store.gotIncludeFlexible {
+		t.Error("IncludeFlexible = false, want true")
+	}
+}
+
+func TestInViewportDefaultsToTheNextTwoHours(t *testing.T) {
+	t.Parallel()
+
+	preferred := time.Now().Add(3 * time.Hour)
+	store := newFakeStore()
+	store.inBBox = []domain.Spot{{
+		ID:                   "later",
+		Status:               domain.SpotAvailable,
+		PreferredDepartureAt: &preferred,
+	}}
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
+
+	visible, err := service.InViewport(context.Background(), spots.ViewportQuery{
+		BBox: barcelona,
+	})
+	if err != nil {
+		t.Fatalf("InViewport: %v", err)
+	}
+	if len(visible) != 0 {
+		t.Fatalf("got %d spots, want none beyond the default two-hour window", len(visible))
 	}
 }
 
@@ -321,8 +365,9 @@ func TestInViewportAppliesThePrivacyRule(t *testing.T) {
 
 	t.Run("a stranger gets snapped coordinates", func(t *testing.T) {
 		visible, err := service.InViewport(context.Background(), spots.ViewportQuery{
-			BBox:   barcelona,
-			Viewer: domain.Claims{UserID: "stranger"},
+			BBox:            barcelona,
+			IncludeFlexible: true,
+			Viewer:          domain.Claims{UserID: "stranger"},
 		})
 		if err != nil {
 			t.Fatalf("InViewport: %v", err)
@@ -345,8 +390,9 @@ func TestInViewportAppliesThePrivacyRule(t *testing.T) {
 
 	t.Run("the owner gets exact coordinates", func(t *testing.T) {
 		visible, err := service.InViewport(context.Background(), spots.ViewportQuery{
-			BBox:   barcelona,
-			Viewer: domain.Claims{UserID: "owner-1"},
+			BBox:            barcelona,
+			IncludeFlexible: true,
+			Viewer:          domain.Claims{UserID: "owner-1"},
 		})
 		if err != nil {
 			t.Fatalf("InViewport: %v", err)

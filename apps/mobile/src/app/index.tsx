@@ -23,32 +23,17 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { OfferResponse, SpotFeature, VehicleResponse } from "@/api/client";
-import {
-  ApiError,
-  fetchMySpots,
-  getSpot,
-  listMyOffers,
-  listVehicles,
-} from "@/api/client";
+import { ApiError, fetchMySpots, getSpot, listMyOffers, listVehicles } from "@/api/client";
 import { apiErrorMessage } from "@/api/errors";
 import { getAccessToken } from "@/api/session";
 import { ensureEmailVerified } from "@/auth/requireEmailVerified";
-import {
-  defaultMapCenter,
-  fallbackZoom,
-  mapStyleUrl,
-  userZoom,
-} from "@/config";
+import { defaultMapCenter, fallbackZoom, mapStyleUrl, userZoom } from "@/config";
 import {
   loadPersistedMapCenter,
   resolveBootstrapCenter,
   shouldAnimateInitialCenter,
 } from "@/map/mapHomeCenter";
-import {
-  defaultTimeWindow,
-  useDiscovery,
-  type Viewport,
-} from "@/hooks/useDiscovery";
+import { useDiscovery, type Viewport } from "@/hooks/useDiscovery";
 import { useSession } from "@/hooks/useSession";
 import { useMapLocation } from "@/hooks/useMapLocation";
 import { announceAt, useActiveReservation } from "@/hooks/useSpotActions";
@@ -79,10 +64,7 @@ import { OfferedSpotLayers } from "@/map/OfferedSpotLayers";
 import { SearchPlaceLayers } from "@/map/SearchPlaceLayers";
 import { UncertaintyCircle } from "@/map/UncertaintyCircle";
 import { partitionMapSpots } from "@/map/partitionMapSpots";
-import {
-  AnnounceModal,
-  type AnnounceValues,
-} from "@/map/AnnounceModal";
+import { AnnounceModal, type AnnounceValues } from "@/map/AnnounceModal";
 import {
   autocompletePlaces,
   boundsForHits,
@@ -96,8 +78,14 @@ import {
   type ViewBox,
 } from "@/map/geocode";
 import { bannerNextStep, bannerPeerStatusKey } from "@/map/exchangeCopy";
+import { passAuthGate } from "@/map/authGate";
 import { SpotLayers } from "@/map/SpotLayers";
 import { stageSpotForSheet, beginSpotSheetPresentation } from "@/map/spotSheetHandoff";
+import { defaultMapFilter } from "@/map/mapFilter";
+import {
+  stageMapFilter,
+  subscribeMapFilter,
+} from "@/map/mapFilterHandoff";
 
 const DEBOUNCE_MS = 350;
 /** Longer than map pan debounce — typing must not hammer LocationIQ. */
@@ -132,7 +120,7 @@ export default function MapScreen() {
   const pendingSearchFocusRef = useRef(false);
   /** Query that produced the current searchHits — editing away clears results. */
   const lastSearchedQueryRef = useRef("");
-  const timeWindow = useMemo(() => defaultTimeWindow(), []);
+  const [mapFilter, setMapFilter] = useState(() => defaultMapFilter());
 
   const { ready, signedIn, error: sessionError, retry: retrySession } = useSession();
   const location = useMapLocation();
@@ -141,17 +129,13 @@ export default function MapScreen() {
    * Map mounts only after storage + location.ready so first paint can use
    * OS last-known (or persisted) instead of flashing Sevilla.
    */
-  const [persistedHome, setPersistedHome] = useState<
-    [number, number] | null | undefined
-  >(undefined);
+  const [persistedHome, setPersistedHome] = useState<[number, number] | null | undefined>(
+    undefined,
+  );
   const [homeCenter, setHomeCenter] = useState<[number, number] | null>(null);
   const [homeZoom, setHomeZoom] = useState(fallbackZoom);
   const homeCenterRef = useRef<[number, number] | null>(null);
-  const [follow, dispatchFollow] = useReducer(
-    followReducer,
-    undefined,
-    initialFollowState,
-  );
+  const [follow, dispatchFollow] = useReducer(followReducer, undefined, initialFollowState);
   const [viewport, setViewport] = useState<Viewport | null>(null);
   const [selected, setSelected] = useState<SpotFeature | null>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -162,16 +146,10 @@ export default function MapScreen() {
   const [myOffers, setMyOffers] = useState<OfferResponse[]>([]);
   const [announceOpen, setAnnounceOpen] = useState(false);
   const [announceVehicles, setAnnounceVehicles] = useState<VehicleResponse[]>([]);
-  const [announceCoords, setAnnounceCoords] = useState<[number, number] | null>(
-    null,
-  );
+  const [announceCoords, setAnnounceCoords] = useState<[number, number] | null>(null);
   const [announceLabel, setAnnounceLabel] = useState<string | null>(null);
-  const [announcePriceCents, setAnnouncePriceCents] = useState<number | null>(
-    null,
-  );
-  const [announceVehicleId, setAnnounceVehicleId] = useState<string | null>(
-    null,
-  );
+  const [announcePriceCents, setAnnouncePriceCents] = useState<number | null>(null);
+  const [announceVehicleId, setAnnounceVehicleId] = useState<string | null>(null);
   const [announcePickMode, setAnnouncePickMode] = useState(false);
   /** Keep form fields when returning from map pick / search. */
   const [announceKeepForm, setAnnounceKeepForm] = useState(false);
@@ -184,10 +162,7 @@ export default function MapScreen() {
   const [mapViewbox, setMapViewbox] = useState<ViewBox | null>(null);
   mapViewboxRef.current = mapViewbox;
 
-  const puckReady = locationComponentReady(
-    follow.locationGranted,
-    location.coords,
-  );
+  const puckReady = locationComponentReady(follow.locationGranted, location.coords);
 
   // Foreground location is requested by useMapLocation (policy case A).
   // Background / “always” is only requested after «Voy de camino» (geofence).
@@ -212,16 +187,12 @@ export default function MapScreen() {
     });
     homeCenterRef.current = center;
     setHomeCenter(center);
-    setHomeZoom(
-      location.coords != null || persistedHome != null ? userZoom : fallbackZoom,
-    );
+    setHomeZoom(location.coords != null || persistedHome != null ? userZoom : fallbackZoom);
   }, [homeCenter, persistedHome, location.ready, location.coords]);
 
   const requireSignIn = useCallback(
     (returnTo: string = "/") => {
-      router.push(
-        `/auth/login?returnTo=${encodeURIComponent(returnTo)}` as Href,
-      );
+      router.push(`/auth/login?returnTo=${encodeURIComponent(returnTo)}` as Href);
     },
     [router],
   );
@@ -297,10 +268,7 @@ export default function MapScreen() {
     [openSpotDetail],
   );
 
-  const { collection, featureById, isLoading, error, refetch } = useDiscovery(
-    viewport,
-    signedIn,
-  );
+  const { collection, featureById, isLoading, error, refetch } = useDiscovery(viewport, signedIn);
   const {
     active,
     activeSpot,
@@ -339,11 +307,7 @@ export default function MapScreen() {
       setMySpotFeatures(
         collection.features.filter((f) => {
           const status = f.properties.status;
-          return (
-            status === "available" ||
-            status === "reserved" ||
-            status === "handover"
-          );
+          return status === "available" || status === "reserved" || status === "handover";
         }),
       );
     } catch {
@@ -452,11 +416,7 @@ export default function MapScreen() {
     // Owner listings (including reserved/handover) stay on the map via /spots/mine.
     for (const feature of mySpotFeatures) {
       const status = feature.properties.status;
-      if (
-        status !== "available" &&
-        status !== "reserved" &&
-        status !== "handover"
-      ) {
+      if (status !== "available" && status !== "reserved" && status !== "handover") {
         continue;
       }
       const id = String(feature.id ?? "");
@@ -488,14 +448,7 @@ export default function MapScreen() {
       mine: { type: "FeatureCollection" as const, features: mine },
       offered: { type: "FeatureCollection" as const, features: offered },
     };
-  }, [
-    collection.features,
-    pendingOfferBySpotId,
-    mySpotFeatures,
-    active,
-    isDriver,
-    isOwner,
-  ]);
+  }, [collection.features, pendingOfferBySpotId, mySpotFeatures, active, isDriver, isOwner]);
 
   // Live exchange: sheet follows getSpot only, and only when fields actually drift
   // (poll every 5s must not rewrite selected with a fresh object each time).
@@ -594,11 +547,7 @@ export default function MapScreen() {
     if (!location.ready) {
       return;
     }
-    dispatchFollow(
-      location.granted
-        ? { type: "location_granted" }
-        : { type: "location_denied" },
-    );
+    dispatchFollow(location.granted ? { type: "location_granted" } : { type: "location_denied" });
   }, [location.ready, location.granted]);
 
   useEffect(() => {
@@ -646,11 +595,12 @@ export default function MapScreen() {
     setViewport({
       bbox: bounds,
       zoom,
-      from: timeWindow.from,
-      to: timeWindow.to,
+      from: mapFilter.from,
+      to: mapFilter.to,
+      includeFlexible: mapFilter.includeFlexible,
     });
     setMapViewbox(bounds as ViewBox);
-  }, [timeWindow.from, timeWindow.to]);
+  }, [mapFilter]);
 
   const onRegionDidChange = useCallback(
     (event: NativeSyntheticEvent<ViewStateChangeEvent>) => {
@@ -671,8 +621,7 @@ export default function MapScreen() {
   const onPressFeature = useCallback(
     (id: string) => {
       void (async () => {
-        const fromActive =
-          activeSpot && String(activeSpot.id) === id ? activeSpot : null;
+        const fromActive = activeSpot && String(activeSpot.id) === id ? activeSpot : null;
         const fromMine = mySpotsById.get(id);
         const fromDiscovery = featureById(id);
         // Prefer party views (active exchange / own listing) over discovery fuzz.
@@ -853,10 +802,7 @@ export default function MapScreen() {
       });
       applySearchResult(hits, inViewport, shouldZoomOut, q);
     } catch (err) {
-      const detail =
-        err instanceof Error && err.message.trim()
-          ? err.message
-          : t("common.error");
+      const detail = err instanceof Error && err.message.trim() ? err.message : t("common.error");
       await alert({
         title: t("map.search.failed"),
         message: detail,
@@ -872,17 +818,14 @@ export default function MapScreen() {
       setSearchBusy(true);
       try {
         const viewbox = await resolveViewbox();
-        const { hits, inViewport, shouldZoomOut } = await searchCategoryNearby(
-          hint.osmTags,
-          { viewbox, locale },
-        );
+        const { hits, inViewport, shouldZoomOut } = await searchCategoryNearby(hint.osmTags, {
+          viewbox,
+          locale,
+        });
         setSearchQuery(hint.label);
         applySearchResult(hits, inViewport, shouldZoomOut, hint.label);
       } catch (err) {
-        const detail =
-          err instanceof Error && err.message.trim()
-            ? err.message
-            : t("common.error");
+        const detail = err instanceof Error && err.message.trim() ? err.message : t("common.error");
         await alert({
           title: t("map.search.failed"),
           message: detail,
@@ -938,6 +881,23 @@ export default function MapScreen() {
     })();
   }, [location, userZoom]);
 
+  // Filter form sheet publishes Apply/Reset here (same pattern as spot handoff).
+  useEffect(() => {
+    return subscribeMapFilter((next) => {
+      setMapFilter(next);
+      setViewport((current) =>
+        current
+          ? {
+              ...current,
+              from: next.from,
+              to: next.to,
+              includeFlexible: next.includeFlexible,
+            }
+          : current,
+      );
+    });
+  }, []);
+
   // Deep-link from "show my spot on map" in account → fly camera + open sheet.
   useEffect(() => {
     const lon = Number.parseFloat(String(focusParams.focusLon ?? ""));
@@ -951,9 +911,7 @@ export default function MapScreen() {
       zoom: FOCUS_SPOT_ZOOM,
       duration: 500,
     });
-    const spotId = focusParams.focusSpot
-      ? String(focusParams.focusSpot)
-      : null;
+    const spotId = focusParams.focusSpot ? String(focusParams.focusSpot) : null;
     if (spotId) {
       void (async () => {
         try {
@@ -1002,8 +960,19 @@ export default function MapScreen() {
       label: string | null,
       extras?: { priceCents?: number | null; vehicleId?: string | null },
     ) => {
-      if (!signedIn || !(await getAccessToken())) {
-        requireSignIn("/");
+      const hasSession = signedIn && !!(await getAccessToken());
+      const allowed = await passAuthGate({
+        signedIn: hasSession,
+        confirmSignIn: () =>
+          confirm({
+            title: t("auth.required.title"),
+            message: t("auth.required.announce"),
+            cancelLabel: t("common.cancel"),
+            confirmLabel: t("auth.required.signIn"),
+          }),
+        onRequireSignIn: () => requireSignIn("/"),
+      });
+      if (!allowed) {
         return;
       }
       if (!(await requireEmailVerified())) {
@@ -1034,7 +1003,15 @@ export default function MapScreen() {
         setAnnounceOpen(true);
       } catch (err) {
         if (err instanceof ApiError && err.code === "unauthorized") {
-          requireSignIn("/");
+          const go = await confirm({
+            title: t("auth.required.title"),
+            message: t("auth.required.announce"),
+            cancelLabel: t("common.cancel"),
+            confirmLabel: t("auth.required.signIn"),
+          });
+          if (go) {
+            requireSignIn("/");
+          }
           return;
         }
         await alert({
@@ -1056,13 +1033,9 @@ export default function MapScreen() {
     if (!mapReady || !Number.isFinite(lon) || !Number.isFinite(lat)) {
       return;
     }
-    const labelRaw = focusParams.announceLabel
-      ? String(focusParams.announceLabel)
-      : "";
+    const labelRaw = focusParams.announceLabel ? String(focusParams.announceLabel) : "";
     const priceRaw = Number.parseInt(String(focusParams.announcePrice ?? ""), 10);
-    const vehicleRaw = focusParams.announceVehicle
-      ? String(focusParams.announceVehicle)
-      : "";
+    const vehicleRaw = focusParams.announceVehicle ? String(focusParams.announceVehicle) : "";
     dispatchFollow({ type: "claim_camera" });
     cameraRef.current?.easeTo({
       center: [lon, lat],
@@ -1157,83 +1130,68 @@ export default function MapScreen() {
           <ActivityIndicator color="#7EC8E3" />
         </View>
       ) : (
-      <MapView
-        ref={mapRef}
-        style={styles.fill}
-        mapStyle={mapStyleUrl}
-        onDidFinishLoadingMap={() => {
-          setMapReady(true);
-          void publishViewport();
-        }}
-        onRegionDidChange={onRegionDidChange}
-        onPress={onPressMap}
-        onLongPress={onLongPress}
-      >
-        <Camera
-          ref={cameraRef}
-          initialViewState={{
-            center: homeCenter,
-            zoom: homeZoom,
+        <MapView
+          ref={mapRef}
+          style={styles.fill}
+          mapStyle={mapStyleUrl}
+          onDidFinishLoadingMap={() => {
+            setMapReady(true);
+            void publishViewport();
           }}
-        />
-        {puckReady ? (
-          <NativeUserLocation key={location.puckEpoch} mode="default" />
-        ) : null}
-        {searchHits.length > 0 ? (
-          <SearchPlaceLayers
-            hits={searchHits}
-            selectedId={selectedSearchId}
-            onPressHit={onPressSearchHit}
+          onRegionDidChange={onRegionDidChange}
+          onPress={onPressMap}
+          onLongPress={onLongPress}
+        >
+          <Camera
+            ref={cameraRef}
+            initialViewState={{
+              center: homeCenter,
+              zoom: homeZoom,
+            }}
           />
-        ) : null}
-        {(announceOpen || announcePickMode) && announceCoords ? (
-          <AnnounceDraftLayers coords={announceCoords} />
-        ) : null}
-        {spotsArmed ? (
-          <SpotLayers data={spotData.others} onPressFeature={onPressFeature} />
-        ) : null}
-        {offeredArmed ? (
-          <OfferedSpotLayers
-            data={spotData.offered}
-            onPressFeature={onPressFeature}
-          />
-        ) : null}
-        {mineArmed ? (
-          <MySpotLayers data={ownerExchangeMine} onPressFeature={onPressFeature} />
-        ) : null}
-        {exchangeData.features.length > 0 ? (
-          <ExchangeLayers
-            data={exchangeData}
-            role="driver"
-            onPressFeature={onPressFeature}
-          />
-        ) : null}
-        {selected &&
-        !selected.properties.exact_location &&
-        selected.geometry.coordinates[0] != null &&
-        selected.geometry.coordinates[1] != null ? (
-          <UncertaintyCircle
-            lon={selected.geometry.coordinates[0]}
-            lat={selected.geometry.coordinates[1]}
-          />
-        ) : null}
-      </MapView>
+          {puckReady ? <NativeUserLocation key={location.puckEpoch} mode="default" /> : null}
+          {searchHits.length > 0 ? (
+            <SearchPlaceLayers
+              hits={searchHits}
+              selectedId={selectedSearchId}
+              onPressHit={onPressSearchHit}
+            />
+          ) : null}
+          {(announceOpen || announcePickMode) && announceCoords ? (
+            <AnnounceDraftLayers coords={announceCoords} />
+          ) : null}
+          {spotsArmed ? (
+            <SpotLayers data={spotData.others} onPressFeature={onPressFeature} />
+          ) : null}
+          {offeredArmed ? (
+            <OfferedSpotLayers data={spotData.offered} onPressFeature={onPressFeature} />
+          ) : null}
+          {mineArmed ? (
+            <MySpotLayers data={ownerExchangeMine} onPressFeature={onPressFeature} />
+          ) : null}
+          {exchangeData.features.length > 0 ? (
+            <ExchangeLayers data={exchangeData} role="driver" onPressFeature={onPressFeature} />
+          ) : null}
+          {selected &&
+          !selected.properties.exact_location &&
+          selected.geometry.coordinates[0] != null &&
+          selected.geometry.coordinates[1] != null ? (
+            <UncertaintyCircle
+              lon={selected.geometry.coordinates[0]}
+              lat={selected.geometry.coordinates[1]}
+            />
+          ) : null}
+        </MapView>
       )}
 
       {!ready ? (
-        <View
-          style={[styles.banner, { top: insets.top + 8 }]}
-          pointerEvents="none"
-        >
+        <View style={[styles.banner, { top: insets.top + 8 }]} pointerEvents="none">
           <ActivityIndicator color="#F4F7FA" />
           <Text style={styles.bannerText}>{t("map.banner.checkingSession")}</Text>
         </View>
       ) : null}
       {ready && isLoading ? (
-        <View
-          style={[styles.banner, { top: insets.top + 8 }]}
-          pointerEvents="none"
-        >
+        <View style={[styles.banner, { top: insets.top + 8 }]} pointerEvents="none">
           <ActivityIndicator color="#F4F7FA" />
           <Text style={styles.bannerText}>{t("map.banner.loadingSpots")}</Text>
         </View>
@@ -1250,115 +1208,105 @@ export default function MapScreen() {
           <View style={styles.spotCountPlaceholder} />
         )}
         <View style={styles.searchCluster}>
-        <View style={styles.searchBar}>
-          <TextInput
-            ref={searchInputRef}
-            style={styles.searchInput}
-            value={searchQuery}
-            onChangeText={onChangeSearchQuery}
-            onPressIn={() => {
-              if (!spotSheetOpen) {
-                return;
-              }
-              // Dismiss first; focus after unmount so the keyboard never
-              // fights the form sheet (which expands the sheet violently).
-              pendingSearchFocusRef.current = true;
-              dismissSpotSheet();
-            }}
-            showSoftInputOnFocus={!spotSheetOpen}
-            placeholder={t("map.search.placeholder")}
-            placeholderTextColor="#7A93A0"
-            returnKeyType="search"
-            onSubmitEditing={() => void runMapSearch()}
-            editable={!searchBusy}
-          />
-          <Pressable
-            style={styles.searchBtn}
-            disabled={searchBusy}
-            onPress={() => void runMapSearch()}
-          >
-            {searchBusy ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.searchBtnText}>{t("map.search.button")}</Text>
-            )}
-          </Pressable>
-          {searchHits.length > 0 ||
-          suggestHits.length > 0 ||
-          categoryHint ? (
+          <View style={styles.searchBar}>
+            <TextInput
+              ref={searchInputRef}
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={onChangeSearchQuery}
+              onPressIn={() => {
+                if (!spotSheetOpen) {
+                  return;
+                }
+                // Dismiss first; focus after unmount so the keyboard never
+                // fights the form sheet (which expands the sheet violently).
+                pendingSearchFocusRef.current = true;
+                dismissSpotSheet();
+              }}
+              showSoftInputOnFocus={!spotSheetOpen}
+              placeholder={t("map.search.placeholder")}
+              placeholderTextColor="#7A93A0"
+              returnKeyType="search"
+              onSubmitEditing={() => void runMapSearch()}
+              editable={!searchBusy}
+            />
             <Pressable
-              onPress={clearSearchHits}
-              accessibilityLabel={t("map.search.clear")}
+              style={styles.searchBtn}
+              disabled={searchBusy}
+              onPress={() => void runMapSearch()}
             >
-              <Ionicons name="close-circle" size={22} color="#9DB4C0" />
+              {searchBusy ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.searchBtnText}>{t("map.search.button")}</Text>
+              )}
             </Pressable>
-          ) : null}
-        </View>
-        {searchHits.length === 0 &&
-        (categoryHint || suggestHits.length > 0) ? (
-          <View style={styles.searchSuggestPanel}>
-            {categoryHint ? (
-              <Pressable
-                style={styles.searchCategoryRow}
-                onPress={() => void runCategoryHintSearch(categoryHint)}
-                disabled={searchBusy}
-              >
-                <Ionicons name="grid-outline" size={16} color="#00BBF9" />
-                <Text style={styles.searchCategoryText} numberOfLines={1}>
-                  {t("map.search.categoryNear", {
-                    category: categoryHint.label,
-                  })}
-                </Text>
+            {searchHits.length > 0 || suggestHits.length > 0 || categoryHint ? (
+              <Pressable onPress={clearSearchHits} accessibilityLabel={t("map.search.clear")}>
+                <Ionicons name="close-circle" size={22} color="#9DB4C0" />
               </Pressable>
             ) : null}
-            {suggestHits.slice(0, 3).map((hit) => (
-              <Pressable
-                key={hit.id}
-                style={styles.searchSuggestRow}
-                onPress={() => onPressSuggestHit(hit)}
-              >
-                <Text style={styles.searchSuggestText} numberOfLines={1}>
-                  {hit.label}
-                </Text>
-              </Pressable>
-            ))}
           </View>
-        ) : null}
-        {searchHits.length > 0 ? (
-          <ScrollView
-            style={styles.searchResults}
-            keyboardShouldPersistTaps="handled"
-            nestedScrollEnabled
-          >
-            {searchHits.slice(0, 6).map((hit) => {
-              const selected = hit.id === selectedSearchId;
-              return (
+          {searchHits.length === 0 && (categoryHint || suggestHits.length > 0) ? (
+            <View style={styles.searchSuggestPanel}>
+              {categoryHint ? (
+                <Pressable
+                  style={styles.searchCategoryRow}
+                  onPress={() => void runCategoryHintSearch(categoryHint)}
+                  disabled={searchBusy}
+                >
+                  <Ionicons name="grid-outline" size={16} color="#00BBF9" />
+                  <Text style={styles.searchCategoryText} numberOfLines={1}>
+                    {t("map.search.categoryNear", {
+                      category: categoryHint.label,
+                    })}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {suggestHits.slice(0, 3).map((hit) => (
                 <Pressable
                   key={hit.id}
-                  style={[
-                    styles.searchResultRow,
-                    selected ? styles.searchResultRowSelected : null,
-                  ]}
-                  onPress={() => onPressSearchHit(hit.id)}
+                  style={styles.searchSuggestRow}
+                  onPress={() => onPressSuggestHit(hit)}
                 >
-                  <Text style={styles.searchResultText} numberOfLines={2}>
+                  <Text style={styles.searchSuggestText} numberOfLines={1}>
                     {hit.label}
                   </Text>
                 </Pressable>
-              );
-            })}
-            <Text style={styles.searchAttribution}>
-              {t("map.search.attribution")}
-            </Text>
-          </ScrollView>
-        ) : null}
+              ))}
+            </View>
+          ) : null}
+          {searchHits.length > 0 ? (
+            <ScrollView
+              style={styles.searchResults}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+            >
+              {searchHits.slice(0, 6).map((hit) => {
+                const selected = hit.id === selectedSearchId;
+                return (
+                  <Pressable
+                    key={hit.id}
+                    style={[
+                      styles.searchResultRow,
+                      selected ? styles.searchResultRowSelected : null,
+                    ]}
+                    onPress={() => onPressSearchHit(hit.id)}
+                  >
+                    <Text style={styles.searchResultText} numberOfLines={2}>
+                      {hit.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+              <Text style={styles.searchAttribution}>{t("map.search.attribution")}</Text>
+            </ScrollView>
+          ) : null}
         </View>
         {announcePickMode ? (
           <View style={styles.pickBanner}>
             <Text style={styles.pickBannerText}>
-              {searchHits.length > 0
-                ? t("map.search.pickHint")
-                : t("announce.location.pickHint")}
+              {searchHits.length > 0 ? t("map.search.pickHint") : t("announce.location.pickHint")}
             </Text>
             <Pressable
               style={styles.pickBannerBack}
@@ -1445,6 +1393,20 @@ export default function MapScreen() {
       ) : null}
 
       <Pressable
+        style={[styles.filterFab, { bottom: 228 + insets.bottom }]}
+        onPress={() => {
+          stageMapFilter(mapFilter);
+          router.push("/filter" as Href);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={t("map.filter.fab")}
+        accessibilityHint={mapFilter.isCustom ? t("map.filter.fabHint") : undefined}
+      >
+        <Ionicons name="options-outline" size={22} color="#fff" />
+        {mapFilter.isCustom ? <View style={styles.filterBadge} /> : null}
+      </Pressable>
+
+      <Pressable
         style={[styles.accountFab, { bottom: 164 + insets.bottom }]}
         onPress={() => {
           if (!signedIn) {
@@ -1477,10 +1439,6 @@ export default function MapScreen() {
         style={[styles.fab, { bottom: 36 + insets.bottom }]}
         disabled={announcing || !ready}
         onPress={() => {
-          if (!signedIn) {
-            requireSignIn("/");
-            return;
-          }
           void openAnnounce(null, null);
         }}
       >
@@ -1722,6 +1680,28 @@ const styles = StyleSheet.create({
   },
   bannerText: { color: "#F4F7FA", fontSize: 13 },
   link: { color: "#fff", fontWeight: "700", fontSize: 13 },
+  filterFab: {
+    position: "absolute",
+    right: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#16324F",
+    elevation: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterBadge: {
+    position: "absolute",
+    top: 1,
+    right: 1,
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#16324F",
+    backgroundColor: "#E85D04",
+  },
   accountFab: {
     position: "absolute",
     right: 20,

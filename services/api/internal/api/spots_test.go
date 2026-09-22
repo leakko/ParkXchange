@@ -386,6 +386,42 @@ func TestListSpotsReturnsSpotsInsideTheViewport(t *testing.T) {
 	}
 }
 
+func TestListSpotsIncludeFlexibleDefaultsTrueAndAcceptsFalse(t *testing.T) {
+	server, db := newServer(t)
+
+	owner, _, _ := registerUser(t, server)
+	at := uniqueLocation()
+	flexible := createSpot(t, server, db, owner, at, nil)
+	departure := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+	scheduled := createSpot(t, server, db, owner, at, map[string]any{
+		"preferred_departure_at": departure,
+	})
+
+	omitted := get(t, server, "/v1/spots?bbox="+at.bbox())
+	if omitted.StatusCode != http.StatusOK {
+		t.Fatalf("omitted flag: status = %d, want 200", omitted.StatusCode)
+	}
+	omittedCollection := decode[featureCollection](t, omitted)
+	if _, found := omittedCollection.find(flexible.ID); !found {
+		t.Error("omitted flag excluded the flexible spot")
+	}
+	if _, found := omittedCollection.find(scheduled.ID); !found {
+		t.Error("omitted flag excluded the scheduled spot")
+	}
+
+	excluded := get(t, server, "/v1/spots?bbox="+at.bbox()+"&include_flexible=false")
+	if excluded.StatusCode != http.StatusOK {
+		t.Fatalf("false flag: status = %d, want 200", excluded.StatusCode)
+	}
+	excludedCollection := decode[featureCollection](t, excluded)
+	if _, found := excludedCollection.find(flexible.ID); found {
+		t.Error("include_flexible=false returned the flexible spot")
+	}
+	if _, found := excludedCollection.find(scheduled.ID); !found {
+		t.Error("include_flexible=false excluded the scheduled spot")
+	}
+}
+
 func TestListSpotsExcludesSpotsOutsideTheViewport(t *testing.T) {
 	server, db := newServer(t)
 
@@ -459,6 +495,11 @@ func TestListSpotsValidatesTheBBox(t *testing.T) {
 		},
 		"zoom not a number": {
 			"/v1/spots?bbox=2.15,41.38,2.19,41.40&zoom=close", http.StatusBadRequest, "zoom_invalid",
+		},
+		"include flexible not a boolean": {
+			"/v1/spots?bbox=2.15,41.38,2.19,41.40&include_flexible=sometimes",
+			http.StatusBadRequest,
+			"include_flexible_invalid",
 		},
 	}
 

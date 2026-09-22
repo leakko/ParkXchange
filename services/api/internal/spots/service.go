@@ -25,6 +25,9 @@ const MaxResults = 500
 // OwnSpotsLimit caps the "my spots" listing.
 const OwnSpotsLimit = 100
 
+// DefaultViewportWindow matches the map's initial departure filter.
+const DefaultViewportWindow = 2 * time.Hour
+
 // Service carries out the spot use cases.
 type Service struct {
 	store Store
@@ -97,9 +100,12 @@ type ViewportQuery struct {
 	Zoom int
 
 	// From and To bound the availability window the caller is interested in.
-	// Zero means "from now through the next 24 hours".
+	// Zero means "from now through the next two hours".
 	From time.Time
 	To   time.Time
+
+	// IncludeFlexible admits listings without a preferred departure time.
+	IncludeFlexible bool
 
 	Viewer domain.Claims
 }
@@ -123,7 +129,7 @@ func (s *Service) InViewport(ctx context.Context, q ViewportQuery) ([]VisibleSpo
 
 	// Splitting here, not in the adapter, keeps the antimeridian rule in one
 	// place and testable without a database.
-	found, err := s.store.SpotsInBBox(ctx, q.BBox.Split(), from, to, MaxResults)
+	found, err := s.store.SpotsInBBox(ctx, q.BBox.Split(), from, to, q.IncludeFlexible, MaxResults)
 	if err != nil {
 		return nil, domain.Internal(err)
 	}
@@ -420,7 +426,7 @@ func (s *Service) visibleOne(spot domain.Spot, viewer domain.Claims) VisibleSpot
 func windowOrDefault(from, to, now time.Time) (time.Time, time.Time, error) {
 	switch {
 	case from.IsZero() && to.IsZero():
-		return now, now.Add(domain.MaxLeadTime), nil
+		return now, now.Add(DefaultViewportWindow), nil
 	case from.IsZero() || to.IsZero():
 		return time.Time{}, time.Time{}, domain.Invalid("window_invalid",
 			"from and to must both be set, or both omitted")

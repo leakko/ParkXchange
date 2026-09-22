@@ -26,11 +26,11 @@ If that test fails, fix the code, not the test.
   mobile smoke). Ops handoff **smoke passed**.
 - **Also open:** payments deferred. Location permission policy — device demo
   pending. Account-delete confirm is now an in-app modal (pushed).
-- **Just shipped (pending push):** available spots auto-expire when
-  `preferred_departure_at + 24h` has passed (sweeper + discovery + domain
-  `Expired`); SpotSheet drag stability (photo placeholder, poll identity
-  stabilize, ConfirmHost isolated from map tree).
-- **Last updated:** 2026-09-22
+- **Just shipped (pending push):** map departure filtering (default next 2h
+  plus flexibles, custom day/hour window, optional flexibles) across REST,
+  WebSocket, and mobile; flexible listings expire 24h after publication;
+  offer, add-vehicle, and announce actions now show a login gate to guests.
+- **Last updated:** 2026-09-23
 - **Phases complete:** 12 of 12 (MVP) + handshake + push coaching + cancel-actor fix
   + map search pins / push / GPS (prior); geocode LocationIQ wired in mobile;
   ops handoff (Dozzle, loopback DB, `ops-queries.sql`, README) deployed and
@@ -44,8 +44,9 @@ If that test fails, fix the code, not the test.
 
 1. Finish Play Console App content + store listing; produce production AAB;
    internal testing track.
-2. Deploy API so peer-vehicle photo + departure+24h expiry are live; device-smoke
-   reserved SpotSheet drag; rebuild preview APK only when asked.
+2. Start PostGIS and run the pending full API suite/seed verification; deploy
+   the departure filter + flexible expiry API, then device-smoke the map filter
+   and guest login gates. Rebuild the preview APK only when asked.
 3. Device smoke for location policy (foreground vs «Voy de camino»).
 
 
@@ -659,6 +660,23 @@ instead; the container then became ready in about a second.
 ---
 
 ## Session log
+
+### 2026-09-23 — Map departure filter + guest auth gate
+
+- Discovery now applies the requested half-open departure window and
+  `include_flexible` consistently to REST and WebSocket viewports. The mobile
+  map defaults to the next two hours plus flexibles and offers a compact
+  day/hour filter sheet.
+- Flexible available listings expire 24 hours after publication in the domain,
+  discovery, sweeper, and development seed. Preferred listings retain their
+  preferred-departure +24h rule.
+- Guests keep the offer, add-vehicle, and announce actions visible, but receive
+  an explanatory login modal before any vehicle or form flow.
+- **Verified:** mobile typecheck; focused map-filter/auth tests (7/7);
+  database-independent Go packages; contract regeneration. Docker was down, so
+  PostGIS/API integration and seed verification remain pending. The full mobile
+  suite passed 105/106; its existing `exchangeCopy.test.ts` cannot resolve the
+  `@/map` alias under Node's test runner.
 
 ### 2026-09-22 — Departure+24h expiry + SpotSheet drag stability
 
