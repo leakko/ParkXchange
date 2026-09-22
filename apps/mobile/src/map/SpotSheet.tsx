@@ -2,7 +2,7 @@ import BottomSheet, {
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
-import { forwardRef, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
+import { forwardRef, memo, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -65,7 +65,8 @@ type Props = {
   onManageExchange?: () => void;
 };
 
-export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
+export const SpotSheet = memo(
+  forwardRef<BottomSheet, Props>(function SpotSheet(
   {
     spot,
     active,
@@ -264,6 +265,10 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
       enablePanDownToClose
       enableOverDrag={false}
       overDragResistanceFactor={0}
+      // Lift the sheet above the system nav bar. Putting that gap inside the
+      // ScrollView as padding made the content artificially tall: a fast
+      // dismiss fling then bounced the scroll upward while the sheet closed.
+      bottomInset={insets.bottom}
       keyboardBehavior="extend"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
@@ -275,11 +280,12 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
     >
       <BottomSheetScrollView
         ref={scrollRef}
+        bounces={false}
+        overScrollMode="never"
         contentContainerStyle={[
           styles.body,
-          {
-            paddingBottom: (makingOffer ? 120 : 28) + insets.bottom,
-          },
+          // Offer form only: extra room so the points field clears the keyboard.
+          makingOffer ? { paddingBottom: 96 } : null,
         ]}
         keyboardShouldPersistTaps="handled"
       >
@@ -712,16 +718,28 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
       </BottomSheetScrollView>
     </BottomSheet>
   );
-});
+}),
+  // Map GPS updates rewrite parent callbacks every few seconds; ignore those
+  // so a dismiss fling is not interrupted mid-animation.
+  (prev, next) =>
+    prev.spot === next.spot &&
+    prev.active === next.active &&
+    prev.pendingOffer === next.pendingOffer &&
+    prev.vehicles === next.vehicles &&
+    prev.isOwner === next.isOwner &&
+    prev.isDriver === next.isDriver &&
+    prev.busy === next.busy,
+);
 
 const styles = StyleSheet.create({
   sheetContainer: {
     zIndex: 40,
-    elevation: 40,
+    // Avoid Android elevation here: it forces expensive recomposites while
+    // the sheet animates closed and exaggerates dismiss jerks.
   },
   sheet: { backgroundColor: "#0B1F33" },
   handle: { backgroundColor: "#5B7A8C" },
-  body: { paddingHorizontal: 20, paddingBottom: 28, gap: 6 },
+  body: { paddingHorizontal: 20, paddingBottom: 16, gap: 6 },
   title: { color: "#F4F7FA", fontSize: 18, fontWeight: "600" },
   mineBadge: { color: "#1B9AAA", fontSize: 13, fontWeight: "600" },
   meta: { color: "#9DB4C0", fontSize: 14 },
