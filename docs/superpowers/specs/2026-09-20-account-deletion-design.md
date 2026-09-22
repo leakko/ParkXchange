@@ -106,9 +106,10 @@ OpenAPI / contract types updated if the repo keeps them in sync for `/v1/me`.
 - Screen: `apps/mobile/src/app/account/index.tsx` (hub).
 - Control: danger-styled «Borrar cuenta» under sign out (reuse `accountStyles`
   danger tokens).
-- Confirm: `Alert.alert` with cancel + destructive confirm (same pattern as
-  spot withdraw / vehicle delete). Message must mention cancellation of
-  listings/reservations and loss of remaining points.
+- Confirm: in-app `Modal` (not system `Alert.alert`) with cancel + destructive
+  confirm — Android system alerts were easy to miss next to lookalike danger
+  buttons. Message must mention cancellation of listings/reservations and loss
+  of remaining points.
 - On success: `signOut` / `clearSession`, navigate to signed-out hub state.
 - i18n: ES + EN strings for button, confirm title/body, failure.
 
