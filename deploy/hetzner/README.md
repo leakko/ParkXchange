@@ -79,21 +79,65 @@ tunnels from your laptop (below).
 from GitHub Actions secrets (`DEPLOY_*`) or from `deploy/hetzner/.env` **on the
 server**. Docs in this repo use placeholders only.
 
-### Logs (Dozzle)
+### SSH into the VPS (shell)
+
+You need a laptop key that is in the server’s `authorized_keys` (this can be
+your personal key; Actions uses a separate deploy key). Values:
+
+| Placeholder | Where to read it |
+| --- | --- |
+| `DEPLOY_HOST` | GitHub → Settings → Secrets → `DEPLOY_HOST`, or Hetzner Cloud → server → IPv4 |
+| `DEPLOY_USER` | Usually `root` (secret `DEPLOY_USER`) |
+
+From **Git Bash / PowerShell / terminal on the laptop**:
+
+```bash
+ssh DEPLOY_USER@DEPLOY_HOST
+```
+
+First time: accept the host fingerprint. You should get a shell prompt on the
+VPS. All of the `ss` / `docker` checks below run **inside that session**.
+
+Optional: add a host alias in `~/.ssh/config` so you type `ssh parkxchange`
+(do not commit that file; it lives only on your machine):
+
+```text
+Host parkxchange
+  HostName DEPLOY_HOST
+  User DEPLOY_USER
+  IdentityFile ~/.ssh/your_laptop_key
+```
+
+### After a deploy (on the VPS shell)
+
+Confirm Postgres and Dozzle listen on **loopback only**:
+
+```bash
+ss -lntp | grep -E '5432|8888'
+docker ps --format '{{.Names}} {{.Ports}}' | grep -E 'dozzle|postgres'
+```
+
+Expect `127.0.0.1:5432` and `127.0.0.1:8888`, plus container
+`parkxchange-dozzle`. Empty `ss` output usually means the new compose has not
+been applied yet (wait for Actions, or from the app dir on the VPS:
+`docker compose -f deploy/hetzner/docker-compose.yml --env-file deploy/hetzner/.env up -d`).
+
+### Logs (Dozzle) — tunnel from the laptop
 
 Dozzle is a browser UI over Docker logs. It shows whatever the `json-file`
 driver still retains (compose caps ~50 MB × 7 files per service) — typically
 several days, not an infinite archive.
 
+Open a **new** laptop terminal (leave it open while you browse):
+
 ```bash
 ssh -L 8888:127.0.0.1:8888 DEPLOY_USER@DEPLOY_HOST
 ```
 
-Leave that session open, then open [http://127.0.0.1:8888](http://127.0.0.1:8888)
-on the laptop. Pick `parkxchange-api` (or others) to scroll history and follow
-live output.
+Then open [http://127.0.0.1:8888](http://127.0.0.1:8888) on the laptop. Pick
+`parkxchange-api` (or others) to scroll history and follow live output.
 
-### Database (TablePlus)
+### Database (TablePlus) — tunnel from the laptop
 
 ```bash
 ssh -L 5433:127.0.0.1:5432 DEPLOY_USER@DEPLOY_HOST
@@ -117,16 +161,6 @@ zones, recent spot detail).
 
 Hetzner Cloud Console → your project → the VPS → **Graphs** (CPU, RAM, disk,
 network). No extra agent in this stack.
-
-### After a deploy that adds Dozzle
-
-On the VPS (or via Actions `docker compose up -d`), confirm listeners are
-loopback-only:
-
-```bash
-ss -lntp | grep -E '5432|8888'
-docker ps --format '{{.Names}} {{.Ports}}' | grep -E 'dozzle|postgres'
-```
 
 ## Without a domain yet
 
