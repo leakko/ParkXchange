@@ -30,11 +30,12 @@ type ticketResponse struct {
 }
 
 type viewportIn struct {
-	Type string    `json:"type"`
-	BBox []float64 `json:"bbox"`
-	Zoom int       `json:"zoom"`
-	From time.Time `json:"from"`
-	To   time.Time `json:"to"`
+	Type            string    `json:"type"`
+	BBox            []float64 `json:"bbox"`
+	Zoom            int       `json:"zoom"`
+	From            time.Time `json:"from"`
+	To              time.Time `json:"to"`
+	IncludeFlexible *bool     `json:"include_flexible"`
 }
 
 type snapshotOut struct {
@@ -129,13 +130,15 @@ func (a *API) readLoop(
 			MinLon: msg.BBox[0], MinLat: msg.BBox[1],
 			MaxLon: msg.BBox[2], MaxLat: msg.BBox[3],
 		}
+		includeFlexible := msg.IncludeFlexible == nil || *msg.IncludeFlexible
 
 		visible, err := a.spots.InViewport(ctx, spots.ViewportQuery{
-			BBox:   box,
-			Zoom:   msg.Zoom,
-			From:   msg.From,
-			To:     msg.To,
-			Viewer: claims,
+			BBox:            box,
+			Zoom:            msg.Zoom,
+			From:            msg.From,
+			To:              msg.To,
+			IncludeFlexible: includeFlexible,
+			Viewer:          claims,
 		})
 		if err != nil {
 			payload, _ := json.Marshal(map[string]string{

@@ -144,14 +144,24 @@ func (a *API) handleListSpots(w http.ResponseWriter, r *http.Request) error {
 		return domain.Invalid("to_invalid", "to must be an RFC3339 timestamp")
 	}
 
+	includeFlexible := true
+	if raw := query.Get("include_flexible"); raw != "" {
+		includeFlexible, err = strconv.ParseBool(raw)
+		if err != nil {
+			return domain.Invalid("include_flexible_invalid",
+				"include_flexible must be a boolean")
+		}
+	}
+
 	viewer := claimsFrom(r.Context())
 
 	visible, err := a.spots.InViewport(r.Context(), spots.ViewportQuery{
-		BBox:   bbox,
-		Zoom:   zoom,
-		From:   from,
-		To:     to,
-		Viewer: viewer,
+		BBox:            bbox,
+		Zoom:            zoom,
+		From:            from,
+		To:              to,
+		IncludeFlexible: includeFlexible,
+		Viewer:          viewer,
 	})
 	if err != nil {
 		return err

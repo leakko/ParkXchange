@@ -522,6 +522,7 @@ paths:
         - $ref: "#/components/parameters/Zoom"
         - $ref: "#/components/parameters/From"
         - $ref: "#/components/parameters/To"
+        - $ref: "#/components/parameters/IncludeFlexible"
       responses:
         "200":
           description: FeatureCollection of spots
@@ -1017,6 +1018,14 @@ components:
       schema:
         type: string
         format: date-time
+    IncludeFlexible:
+      name: include_flexible
+      in: query
+      required: false
+      description: When true, include spots with no preferred_departure_at
+      schema:
+        type: boolean
+        default: true
 
   responses:
     Error:
@@ -1632,6 +1641,9 @@ components:
         to:
           type: string
           format: date-time
+        include_flexible:
+          type: boolean
+          description: When true, include spots with no preferred_departure_at. Defaults to true when omitted.
 
     SnapshotMessage:
       type: object
