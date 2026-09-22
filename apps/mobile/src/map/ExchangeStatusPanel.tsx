@@ -87,7 +87,8 @@ const styles = StyleSheet.create({
     color: "#1B9AAA",
     fontSize: 13,
     fontWeight: "700",
-    width: 88,
+    flexShrink: 0,
+    maxWidth: "42%",
   },
   phase: {
     color: "#F4F7FA",

@@ -40,7 +40,8 @@ describe("catalogLabels", () => {
   });
 
   it("translates reservation and offer statuses", () => {
-    assert.equal(reservationStatusLabel(tFor(es), "confirmed"), "Confirmada");
+    assert.equal(reservationStatusLabel(tFor(es), "confirmed"), "Reservada");
+    assert.equal(reservationStatusLabel(tFor(en), "confirmed"), "Reserved");
     assert.equal(offerStatusLabel(tFor(en), "pending"), "Pending");
   });
 });

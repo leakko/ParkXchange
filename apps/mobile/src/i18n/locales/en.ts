@@ -205,7 +205,7 @@ export const en: Record<TranslationKey, string> = {
   "account.reservations.offerTitle": "{points} pts · {status}",
   "account.reservations.exchangeAt": "Exchange: {datetime}",
   "account.reservations.status.pending": "Pending",
-  "account.reservations.status.confirmed": "Confirmed",
+  "account.reservations.status.confirmed": "Reserved",
   "account.reservations.status.arrived": "Arrived",
   "account.reservations.status.completed": "Completed",
   "account.reservations.status.cancelled": "Cancelled",
