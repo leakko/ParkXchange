@@ -187,7 +187,9 @@ SELECT o.id,
             ELSE NULL
        END,
        gen.i % 2 = 0,
-       CASE WHEN gen.status_roll < 0.85
+       CASE WHEN gen.status_roll < 0.85 AND gen.i % 3 = 0
+            THEN now() + interval '24 hours'
+            WHEN gen.status_roll < 0.85
             THEN now() + interval '7 days'
             ELSE now() - interval '30 minutes'
        END
@@ -213,7 +215,7 @@ SELECT u.id,
        s.size_class,
        'available',
        s.price_cents,
-       now() + interval '7 days'
+       now() + interval '24 hours'
   FROM users u
   JOIN vehicles v ON v.owner_id = u.id
   CROSS JOIN (VALUES
