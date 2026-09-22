@@ -71,7 +71,6 @@ import {
   locationComponentReady,
   markSessionCameraCentered,
   shouldInitialCenterCamera,
-  trackUserLocationMode,
 } from "@/map/followUser";
 import { ExchangeLayers } from "@/map/ExchangeLayers";
 import { AnnounceDraftLayers } from "@/map/AnnounceDraftLayers";
@@ -1171,7 +1170,6 @@ export default function MapScreen() {
             center: defaultMapCenter,
             zoom: fallbackZoom,
           }}
-          trackUserLocation={trackUserLocationMode(follow.followUser)}
         />
         {puckReady ? (
           <NativeUserLocation key={location.puckEpoch} mode="default" />
