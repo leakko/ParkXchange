@@ -83,7 +83,20 @@ export default function RootLayout() {
                       contentStyle: { backgroundColor: accountColors.bg },
                       animation: "slide_from_right",
                     }}
-                  />
+                  >
+                    <Stack.Screen
+                      name="spot/[id]"
+                      options={{
+                        presentation: "formSheet",
+                        headerShown: false,
+                        contentStyle: { backgroundColor: accountColors.bg },
+                        sheetAllowedDetents: [0.36, 0.85],
+                        sheetInitialDetentIndex: 0,
+                        sheetGrabberVisible: true,
+                        sheetLargestUndimmedDetentIndex: 0,
+                      }}
+                    />
+                  </Stack>
                 </OfflineGate>
                 </ConfirmProvider>
               </ToastProvider>

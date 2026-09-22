@@ -1,6 +1,5 @@
-import { useFocusEffect } from "@react-navigation/native";
-import { type Href, Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { type Href, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -33,7 +32,9 @@ import { SpotSheetBody } from "@/map/SpotSheetBody";
 import { useConfirm } from "@/ui/ConfirmModal";
 
 /**
- * Native form-sheet / modal spot detail. Replaces the in-map gorhom SpotSheet.
+ * Native form-sheet spot detail (peek + expand). Options live in root Stack;
+ * this screen avoids Stack.Screen / useFocusEffect so Android formSheet has a
+ * navigation context before hooks run.
  */
 export default function SpotDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -80,8 +81,7 @@ export default function SpotDetailScreen() {
       return;
     }
     try {
-      const feature = await getSpot(spotId);
-      setSpot(feature);
+      setSpot(await getSpot(spotId));
     } catch {
       setSpot(null);
     } finally {
@@ -118,18 +118,18 @@ export default function SpotDetailScreen() {
     }
   }, [signedIn]);
 
-  useFocusEffect(
-    useCallback(() => {
-      setLoading(true);
-      void refreshSpot();
-      void refreshOffers();
-      void refreshVehicles();
-      void refreshActive();
-    }, [refreshSpot, refreshOffers, refreshVehicles, refreshActive]),
-  );
+  useEffect(() => {
+    setLoading(true);
+    void refreshSpot();
+    void refreshOffers();
+    void refreshVehicles();
+    void refreshActive();
+  }, [refreshSpot, refreshOffers, refreshVehicles, refreshActive]);
 
   const requireSignIn = useCallback(() => {
-    router.replace(`/auth/login?returnTo=${encodeURIComponent(`/spot/${spotId}`)}` as Href);
+    router.replace(
+      `/auth/login?returnTo=${encodeURIComponent(`/spot/${spotId}`)}` as Href,
+    );
   }, [router, spotId]);
 
   const requireEmailVerified = useCallback(async (): Promise<boolean> => {
@@ -148,38 +148,20 @@ export default function SpotDetailScreen() {
   }, [router]);
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title,
-          headerShown: true,
-          headerStyle: { backgroundColor: accountColors.bg },
-          headerTintColor: accountColors.text,
-          headerTitleStyle: {
-            color: accountColors.text,
-            fontWeight: "600",
-          },
-          headerShadowVisible: false,
-          contentStyle: { backgroundColor: accountColors.bg },
-          // Native sheet: peek first (map still readable), expand when wanted.
-          presentation: "formSheet",
-          sheetAllowedDetents: [0.36, 0.85],
-          sheetInitialDetentIndex: 0,
-          sheetGrabberVisible: true,
-          // Peek stays undimmed so other pins remain visible on the map.
-          sheetLargestUndimmedDetentIndex: 0,
-          headerRight: () => (
-            <Pressable
-              onPress={close}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel={t("common.close")}
-            >
-              <Text style={styles.close}>{t("common.close")}</Text>
-            </Pressable>
-          ),
-        }}
-      />
+    <View style={[styles.fill, { paddingTop: Math.max(insets.top, 8) }]}>
+      <View style={styles.header}>
+        <Text style={styles.title} numberOfLines={1}>
+          {title}
+        </Text>
+        <Pressable
+          onPress={close}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={t("common.close")}
+        >
+          <Text style={styles.close}>{t("common.close")}</Text>
+        </Pressable>
+      </View>
 
       {loading && !spot ? (
         <View style={styles.center}>
@@ -218,7 +200,7 @@ export default function SpotDetailScreen() {
             makingOffer={makingOffer}
             setMakingOffer={setMakingOffer}
             onExpandSheet={() => {
-              /* native sheet is already near-full; scroll covers the form */
+              /* native sheet detents handle expand */
             }}
             onMakeOffer={async (s, vehicleId, exchangeAt, amountCents) => {
               if (!signedIn) {
@@ -240,7 +222,11 @@ export default function SpotDetailScreen() {
                   message: t("map.alert.offerSent.message"),
                   confirmLabel: t("common.ok"),
                 });
-                await Promise.all([refreshSpot(), refreshOffers(), refreshActive()]);
+                await Promise.all([
+                  refreshSpot(),
+                  refreshOffers(),
+                  refreshActive(),
+                ]);
               } catch (err) {
                 await alert({
                   title: t("map.alert.offerFailed.title"),
@@ -333,19 +319,32 @@ export default function SpotDetailScreen() {
           />
         </ScrollView>
       )}
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: accountColors.bg },
-  body: { paddingHorizontal: 20, paddingTop: 8, gap: 6 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+    gap: 12,
+  },
+  title: {
+    flex: 1,
+    color: accountColors.text,
+    fontSize: 17,
+    fontWeight: "700",
+  },
+  body: { paddingHorizontal: 20, paddingTop: 4, gap: 6 },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
-    backgroundColor: accountColors.bg,
     gap: 16,
   },
   missing: { color: accountColors.muted, fontSize: 15, textAlign: "center" },
@@ -353,7 +352,6 @@ const styles = StyleSheet.create({
     color: accountColors.accent,
     fontSize: 16,
     fontWeight: "600",
-    paddingHorizontal: 4,
   },
   closeBtn: {
     backgroundColor: accountColors.accent,
