@@ -29,6 +29,10 @@ const (
 	// dates, not to "minutes remaining", but the listing itself still ends.
 	ListingDuration = 7 * 24 * time.Hour
 
+	// FlexibleListingDuration is how long a listing without a preferred
+	// departure stays visible after publish.
+	FlexibleListingDuration = 24 * time.Hour
+
 	// MaxDuration is the upper bound on listed_until - created_at.
 	MaxDuration = ListingDuration
 
@@ -180,8 +184,13 @@ func (s Spot) Expired(now time.Time) bool {
 		return true
 	}
 	if s.PreferredDepartureAt != nil {
-		cutoff := s.PreferredDepartureAt.Add(24 * time.Hour)
+		cutoff := s.PreferredDepartureAt.Add(FlexibleListingDuration)
 		if !cutoff.After(now) {
+			return true
+		}
+	}
+	if s.PreferredDepartureAt == nil && !s.CreatedAt.IsZero() {
+		if !s.CreatedAt.Add(FlexibleListingDuration).After(now) {
 			return true
 		}
 	}
@@ -289,7 +298,8 @@ type NewSpotInput struct {
 	// AutoCancelNoShow defaults to true when the pointer is nil.
 	AutoCancelNoShow *bool
 
-	// ExpiresAt is optional; zero means now + ListingDuration.
+	// ExpiresAt is optional; zero means now + FlexibleListingDuration when
+	// no preferred departure is set, otherwise now + ListingDuration.
 	ExpiresAt time.Time
 }
 
@@ -330,9 +340,19 @@ func NewSpot(in NewSpotInput, now time.Time) (SpotDraft, error) {
 		fields["address_hint"] = "must be at most 160 characters"
 	}
 
+	var preferred *time.Time
+	if in.PreferredDepartureAt != nil && !in.PreferredDepartureAt.IsZero() {
+		p := in.PreferredDepartureAt.UTC()
+		preferred = &p
+	}
+
 	expiresAt := in.ExpiresAt
 	if expiresAt.IsZero() {
-		expiresAt = now.Add(ListingDuration)
+		if preferred == nil {
+			expiresAt = now.Add(FlexibleListingDuration)
+		} else {
+			expiresAt = now.Add(ListingDuration)
+		}
 	}
 
 	switch {
@@ -344,10 +364,8 @@ func NewSpot(in NewSpotInput, now time.Time) (SpotDraft, error) {
 		fields["expires_at"] = "must be in the future"
 	}
 
-	var preferred *time.Time
-	if in.PreferredDepartureAt != nil && !in.PreferredDepartureAt.IsZero() {
-		p := in.PreferredDepartureAt.UTC()
-		preferred = &p
+	if preferred != nil {
+		p := *preferred
 		switch {
 		case !p.After(now):
 			fields["preferred_departure_at"] = "must be in the future"

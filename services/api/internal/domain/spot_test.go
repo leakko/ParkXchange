@@ -181,6 +181,7 @@ func TestSpotExpiryAndClaimability(t *testing.T) {
 		status               domain.SpotStatus
 		availableFrom        time.Time
 		expiresAt            time.Time
+		createdAt            time.Time
 		preferredDepartureAt *time.Time
 		wantExpired          bool
 		wantClaimable        bool
@@ -239,6 +240,22 @@ func TestSpotExpiryAndClaimability(t *testing.T) {
 			preferredDepartureAt: ptrTime(now.Add(-23 * time.Hour)),
 			wantClaimable:        true,
 		},
+		{
+			name:          "flexible past publish+24h",
+			status:        domain.SpotAvailable,
+			expiresAt:     now.Add(6 * 24 * time.Hour),
+			createdAt:     now.Add(-25 * time.Hour),
+			wantExpired:   true,
+			wantClaimable: false,
+		},
+		{
+			name:          "flexible inside publish+24h",
+			status:        domain.SpotAvailable,
+			expiresAt:     now.Add(6 * 24 * time.Hour),
+			createdAt:     now.Add(-2 * time.Hour),
+			wantExpired:   false,
+			wantClaimable: true,
+		},
 	}
 
 	for _, tc := range tests {
@@ -249,6 +266,7 @@ func TestSpotExpiryAndClaimability(t *testing.T) {
 				Status:               tc.status,
 				AvailableFrom:        tc.availableFrom,
 				ExpiresAt:            tc.expiresAt,
+				CreatedAt:            tc.createdAt,
 				PreferredDepartureAt: tc.preferredDepartureAt,
 			}
 
@@ -259,6 +277,28 @@ func TestSpotExpiryAndClaimability(t *testing.T) {
 				t.Errorf("Claimable = %v, want %v", got, tc.wantClaimable)
 			}
 		})
+	}
+}
+
+func TestNewSpotDefaultsFlexibleListingTo24h(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
+	in := domain.NewSpotInput{
+		OwnerID:    "owner-1",
+		VehicleID:  "vehicle-1",
+		Lon:        testLon,
+		Lat:        testLat,
+		Size:       "medium",
+		PriceCents: 150,
+	}
+
+	draft, err := domain.NewSpot(in, now)
+	if err != nil {
+		t.Fatalf("NewSpot: %v", err)
+	}
+	if draft.ExpiresIn != domain.FlexibleListingDuration {
+		t.Errorf("ExpiresIn = %v, want FlexibleListingDuration", draft.ExpiresIn)
 	}
 }
 
@@ -302,11 +342,13 @@ func TestNewSpotValidation(t *testing.T) {
 		}
 	})
 
-	t.Run("default listing is seven days", func(t *testing.T) {
+	t.Run("preferred listing defaults to seven days", func(t *testing.T) {
 		t.Parallel()
 
+		pref := now.Add(2 * time.Hour)
 		input := valid
 		input.ExpiresAt = time.Time{}
+		input.PreferredDepartureAt = &pref
 		draft, err := domain.NewSpot(input, now)
 		if err != nil {
 			t.Fatalf("NewSpot: %v", err)
