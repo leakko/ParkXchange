@@ -65,7 +65,7 @@ export function AnnounceDraftLayers({ coords }: Props) {
           layerIndex={932}
           layout={{
             "icon-image": "announce-draft-pencil",
-            "icon-size": 0.32,
+            "icon-size": 0.22,
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
           }}

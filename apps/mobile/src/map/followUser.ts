@@ -13,6 +13,25 @@ export type FollowAction =
   | { type: "user_gesture" }
   | { type: "recenter" };
 
+/**
+ * Survives MapScreen remounts (tab blur, reconnect, Fast Refresh of the route)
+ * so a late GPS fix cannot yank the camera again mid-session.
+ */
+let sessionCameraCentered = false;
+
+export function hasSessionCameraCentered(): boolean {
+  return sessionCameraCentered;
+}
+
+export function markSessionCameraCentered(): void {
+  sessionCameraCentered = true;
+}
+
+/** Test-only: reset the process-wide one-shot center flag. */
+export function resetSessionCameraCenteredForTests(): void {
+  sessionCameraCentered = false;
+}
+
 export function initialFollowState(): FollowState {
   return { followUser: false, locationGranted: false };
 }
@@ -28,9 +47,11 @@ export function followReducer(
     case "location_denied":
       return { followUser: false, locationGranted: false };
     case "user_gesture":
+      markSessionCameraCentered();
       return state.followUser ? { ...state, followUser: false } : state;
     case "recenter":
       // Locate FAB does a one-shot easeTo; never re-enable tracking.
+      markSessionCameraCentered();
       return state;
   }
 }
@@ -52,6 +73,31 @@ export function locationComponentReady(
   coords: [number, number] | null,
 ): boolean {
   return locationGranted && coords != null;
+}
+
+/**
+ * One automatic jump per JS process: when the map is ready, we have a fix,
+ * and nothing else (pick mode / prior center / remount) owns the camera.
+ */
+export function shouldInitialCenterCamera(args: {
+  mapReady: boolean;
+  coords: [number, number] | null;
+  announcePickMode: boolean;
+}): boolean {
+  return (
+    args.mapReady &&
+    args.coords != null &&
+    !sessionCameraCentered &&
+    !args.announcePickMode
+  );
+}
+
+/** Prefer a fresh fix; fall back to the last known map coords so locate always moves. */
+export function resolveLocateTarget(
+  fresh: [number, number] | null,
+  cached: [number, number] | null,
+): [number, number] | null {
+  return fresh ?? cached;
 }
 
 export function resolveInitialView(args: {

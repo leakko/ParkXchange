@@ -1,13 +1,21 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, beforeEach } from "node:test";
 
 import {
   followReducer,
   initialFollowState,
   locationComponentReady,
+  markSessionCameraCentered,
+  resetSessionCameraCenteredForTests,
   resolveInitialView,
+  resolveLocateTarget,
+  shouldInitialCenterCamera,
   trackUserLocationMode,
 } from "./followUser.ts";
+
+beforeEach(() => {
+  resetSessionCameraCenteredForTests();
+});
 
 describe("initialFollowState", () => {
   it("starts without location and without follow", () => {
@@ -30,14 +38,24 @@ describe("followReducer", () => {
     assert.deepEqual(next, { followUser: false, locationGranted: false });
   });
 
-  it("recenter is a no-op (locate FAB is one-shot easeTo)", () => {
+  it("recenter marks session centered without enabling follow", () => {
     const granted = followReducer(initialFollowState(), { type: "location_granted" });
     assert.deepEqual(followReducer(granted, { type: "recenter" }), granted);
+    assert.equal(shouldInitialCenterCamera({
+      mapReady: true,
+      coords: [2, 41],
+      announcePickMode: false,
+    }), false);
   });
 
-  it("user_gesture stays idle when not following", () => {
+  it("user_gesture stays idle when not following and marks session centered", () => {
     const granted = followReducer(initialFollowState(), { type: "location_granted" });
     assert.deepEqual(followReducer(granted, { type: "user_gesture" }), granted);
+    assert.equal(shouldInitialCenterCamera({
+      mapReady: true,
+      coords: [2, 41],
+      announcePickMode: false,
+    }), false);
   });
 });
 
@@ -54,6 +72,58 @@ describe("locationComponentReady", () => {
     assert.equal(locationComponentReady(true, null), false);
     assert.equal(locationComponentReady(false, [2, 41]), false);
     assert.equal(locationComponentReady(true, [2, 41]), true);
+  });
+});
+
+describe("shouldInitialCenterCamera", () => {
+  it("centers once when map and fix are ready", () => {
+    assert.equal(
+      shouldInitialCenterCamera({
+        mapReady: true,
+        coords: [2.15, 41.4],
+        announcePickMode: false,
+      }),
+      true,
+    );
+  });
+
+  it("waits for mapReady and skips pick mode", () => {
+    assert.equal(
+      shouldInitialCenterCamera({
+        mapReady: false,
+        coords: [2.15, 41.4],
+        announcePickMode: false,
+      }),
+      false,
+    );
+    assert.equal(
+      shouldInitialCenterCamera({
+        mapReady: true,
+        coords: [2.15, 41.4],
+        announcePickMode: true,
+      }),
+      false,
+    );
+  });
+
+  it("does not re-center after mark (survives remount semantics)", () => {
+    markSessionCameraCentered();
+    assert.equal(
+      shouldInitialCenterCamera({
+        mapReady: true,
+        coords: [2.15, 41.4],
+        announcePickMode: false,
+      }),
+      false,
+    );
+  });
+});
+
+describe("resolveLocateTarget", () => {
+  it("prefers fresh then cached", () => {
+    assert.deepEqual(resolveLocateTarget([1, 2], [3, 4]), [1, 2]);
+    assert.deepEqual(resolveLocateTarget(null, [3, 4]), [3, 4]);
+    assert.equal(resolveLocateTarget(null, null), null);
   });
 });
 

@@ -185,7 +185,7 @@ export const es = {
   "account.spots.edit.autoCancelHelp": "Después del margen de cortesía.",
   "account.spots.edit.vehicle": "Vehículo",
   "account.spots.edit.vehicleSelected": "Seleccionado",
-  "account.spots.edit.saveSpot": "Guardar plaza",
+  "account.spots.edit.saveSpot": "Guardar",
   "account.spots.edit.pendingOffers": "Ofertas pendientes",
   "account.spots.edit.offerAtPreferredTime": "a tu hora",
   "account.spots.edit.offerAtOtherTime": "otra hora",

@@ -187,7 +187,7 @@ export const en: Record<TranslationKey, string> = {
   "account.spots.edit.autoCancelHelp": "After the courtesy window.",
   "account.spots.edit.vehicle": "Vehicle",
   "account.spots.edit.vehicleSelected": "Selected",
-  "account.spots.edit.saveSpot": "Save spot",
+  "account.spots.edit.saveSpot": "Save",
   "account.spots.edit.pendingOffers": "Pending offers",
   "account.spots.edit.offerAtPreferredTime": "at your time",
   "account.spots.edit.offerAtOtherTime": "other time",

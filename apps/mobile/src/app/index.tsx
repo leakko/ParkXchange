@@ -69,6 +69,9 @@ import {
   followReducer,
   initialFollowState,
   locationComponentReady,
+  markSessionCameraCentered,
+  shouldInitialCenterCamera,
+  trackUserLocationMode,
 } from "@/map/followUser";
 import { ExchangeLayers } from "@/map/ExchangeLayers";
 import { AnnounceDraftLayers } from "@/map/AnnounceDraftLayers";
@@ -122,9 +125,9 @@ export default function MapScreen() {
   const sheetRef = useRef<BottomSheet>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suggestDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const jumpedToUserRef = useRef(false);
-  const lastJumpCoordsRef = useRef<[number, number] | null>(null);
   const mapViewboxRef = useRef<ViewBox | null>(null);
+  /** Bumped on pan/search so a late locate refresh cannot yank the camera. */
+  const locateGenRef = useRef(0);
   /** Query that produced the current searchHits — editing away clears results. */
   const lastSearchedQueryRef = useRef("");
   const timeWindow = useMemo(() => defaultTimeWindow(), []);
@@ -178,7 +181,9 @@ export default function MapScreen() {
   useEffect(() => {
     void (async () => {
       await promptAlwaysLocationOnFirstOpen((key) => t(key as Parameters<typeof t>[0]));
-      await location.refresh();
+      // Remount puck only after the always-permission prompt may have upgraded
+      // the fused provider — not on every locate / resume.
+      await location.refresh({ remountPuck: true });
     })();
     // Once on mount — t/location.refresh are stable enough for first-open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -568,14 +573,27 @@ export default function MapScreen() {
   }, [location.ready, location.granted]);
 
   useEffect(() => {
-    // One jump per app session when GPS first arrives — never continuous follow.
-    if (!location.coords || announcePickMode || jumpedToUserRef.current) {
+    // Pick mode owns the camera: consume the one-shot so a late GPS fix (or
+    // leaving pick) cannot yank back to the user.
+    if (announcePickMode && location.coords && mapReady) {
+      markSessionCameraCentered();
+      return;
+    }
+    // One jump per JS process when map + GPS are ready — never continuous follow.
+    // Module flag survives MapScreen remount (blur/reconnect) so resume ≠ recenter.
+    if (
+      !shouldInitialCenterCamera({
+        mapReady,
+        coords: location.coords,
+        announcePickMode,
+      }) ||
+      !location.coords
+    ) {
       return;
     }
     cameraRef.current?.jumpTo({ center: location.coords, zoom: userZoom });
-    jumpedToUserRef.current = true;
-    lastJumpCoordsRef.current = location.coords;
-  }, [location.coords, announcePickMode, userZoom]);
+    markSessionCameraCentered();
+  }, [location.coords, announcePickMode, userZoom, mapReady]);
 
   const publishViewport = useCallback(async () => {
     const map = mapRef.current;
@@ -602,6 +620,7 @@ export default function MapScreen() {
   const onRegionDidChange = useCallback(
     (event: NativeSyntheticEvent<ViewStateChangeEvent>) => {
       if (event.nativeEvent.userInteraction) {
+        locateGenRef.current += 1;
         dispatchFollow({ type: "user_gesture" });
       }
       if (debounceRef.current) {
@@ -848,19 +867,31 @@ export default function MapScreen() {
 
   const onRecenter = useCallback(() => {
     dispatchFollow({ type: "recenter" });
+    const gen = ++locateGenRef.current;
+    const cached = location.coords;
+    // One camera move only. A late getCurrentPosition (~few seconds) must not
+    // easeTo again — the user may already have panned away.
+    if (cached) {
+      cameraRef.current?.easeTo({
+        center: cached,
+        zoom: userZoom,
+        duration: 400,
+      });
+      void location.refresh();
+      return;
+    }
     void (async () => {
-      const coords = await location.refresh();
-      if (!coords) {
+      const fresh = await location.refresh();
+      if (gen !== locateGenRef.current || !fresh) {
         return;
       }
-      lastJumpCoordsRef.current = coords;
       cameraRef.current?.easeTo({
-        center: coords,
+        center: fresh,
         zoom: userZoom,
         duration: 400,
       });
     })();
-  }, [location]);
+  }, [location, userZoom]);
 
   // Deep-link from "show my spot on map" in account → fly camera + open sheet.
   useEffect(() => {
@@ -1140,6 +1171,7 @@ export default function MapScreen() {
             center: defaultMapCenter,
             zoom: fallbackZoom,
           }}
+          trackUserLocation={trackUserLocationMode(follow.followUser)}
         />
         {puckReady ? (
           <NativeUserLocation key={location.puckEpoch} mode="default" />
