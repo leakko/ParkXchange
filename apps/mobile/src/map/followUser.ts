@@ -1,4 +1,8 @@
 export type FollowState = {
+  /**
+   * Continuous camera follow is intentionally unused: flaky GPS was yanking
+   * the map. Kept for API compatibility; always stays false after grant.
+   */
   followUser: boolean;
   locationGranted: boolean;
 };
@@ -19,20 +23,23 @@ export function followReducer(
 ): FollowState {
   switch (action.type) {
     case "location_granted":
-      return { followUser: true, locationGranted: true };
+      // Permission only — do not enable continuous follow.
+      return { followUser: false, locationGranted: true };
     case "location_denied":
       return { followUser: false, locationGranted: false };
     case "user_gesture":
       return state.followUser ? { ...state, followUser: false } : state;
     case "recenter":
-      return state.locationGranted ? { ...state, followUser: true } : state;
+      // Locate FAB does a one-shot easeTo; never re-enable tracking.
+      return state;
   }
 }
 
+/** Continuous trackUserLocation is disabled; locate is one-shot only. */
 export function trackUserLocationMode(
-  followUser: boolean,
+  _followUser: boolean,
 ): "default" | undefined {
-  return followUser ? "default" : undefined;
+  return undefined;
 }
 
 /**

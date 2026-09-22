@@ -568,21 +568,14 @@ export default function MapScreen() {
   }, [location.ready, location.granted]);
 
   useEffect(() => {
-    // Never steal the camera while the user is placing/editing an announce pin.
-    if (!location.coords || !follow.followUser || announcePickMode) {
-      return;
-    }
-    const [lon, lat] = location.coords;
-    const prev = lastJumpCoordsRef.current;
-    const movedFar =
-      prev != null && Math.hypot(lon - prev[0], lat - prev[1]) > 0.5;
-    if (jumpedToUserRef.current && !movedFar) {
+    // One jump per app session when GPS first arrives — never continuous follow.
+    if (!location.coords || announcePickMode || jumpedToUserRef.current) {
       return;
     }
     cameraRef.current?.jumpTo({ center: location.coords, zoom: userZoom });
     jumpedToUserRef.current = true;
     lastJumpCoordsRef.current = location.coords;
-  }, [location.coords, follow.followUser, announcePickMode, userZoom]);
+  }, [location.coords, announcePickMode, userZoom]);
 
   const publishViewport = useCallback(async () => {
     const map = mapRef.current;
@@ -1147,9 +1140,6 @@ export default function MapScreen() {
             center: defaultMapCenter,
             zoom: fallbackZoom,
           }}
-          {...(follow.followUser && puckReady && !announcePickMode
-            ? { trackUserLocation: "default" as const }
-            : {})}
         />
         {puckReady ? (
           <NativeUserLocation key={location.puckEpoch} mode="default" />

@@ -19,45 +19,31 @@ describe("initialFollowState", () => {
 });
 
 describe("followReducer", () => {
-  it("starts following when location is granted", () => {
+  it("records grant without enabling continuous follow", () => {
     const next = followReducer(initialFollowState(), { type: "location_granted" });
-    assert.deepEqual(next, { followUser: true, locationGranted: true });
+    assert.deepEqual(next, { followUser: false, locationGranted: true });
   });
 
-  it("clears follow when location is denied", () => {
+  it("clears grant when location is denied", () => {
     const granted = followReducer(initialFollowState(), { type: "location_granted" });
     const next = followReducer(granted, { type: "location_denied" });
     assert.deepEqual(next, { followUser: false, locationGranted: false });
   });
 
-  it("stops following on user gesture", () => {
-    const following = followReducer(initialFollowState(), { type: "location_granted" });
-    const next = followReducer(following, { type: "user_gesture" });
-    assert.equal(next.followUser, false);
-    assert.equal(next.locationGranted, true);
+  it("recenter is a no-op (locate FAB is one-shot easeTo)", () => {
+    const granted = followReducer(initialFollowState(), { type: "location_granted" });
+    assert.deepEqual(followReducer(granted, { type: "recenter" }), granted);
   });
 
-  it("keeps stopped state when gesture arrives while not following", () => {
-    const following = followReducer(initialFollowState(), { type: "location_granted" });
-    const stopped = followReducer(following, { type: "user_gesture" });
-    const next = followReducer(stopped, { type: "user_gesture" });
-    assert.deepEqual(next, stopped);
-  });
-
-  it("recenters only when location was granted", () => {
-    const denied = followReducer(initialFollowState(), { type: "location_denied" });
-    assert.deepEqual(followReducer(denied, { type: "recenter" }), denied);
-
-    const following = followReducer(initialFollowState(), { type: "location_granted" });
-    const stopped = followReducer(following, { type: "user_gesture" });
-    const next = followReducer(stopped, { type: "recenter" });
-    assert.deepEqual(next, { followUser: true, locationGranted: true });
+  it("user_gesture stays idle when not following", () => {
+    const granted = followReducer(initialFollowState(), { type: "location_granted" });
+    assert.deepEqual(followReducer(granted, { type: "user_gesture" }), granted);
   });
 });
 
 describe("trackUserLocationMode", () => {
-  it("returns default while following and undefined otherwise", () => {
-    assert.equal(trackUserLocationMode(true), "default");
+  it("never enables continuous camera tracking", () => {
+    assert.equal(trackUserLocationMode(true), undefined);
     assert.equal(trackUserLocationMode(false), undefined);
   });
 });

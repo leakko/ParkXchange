@@ -212,7 +212,7 @@ export default function ReservationDetailScreen() {
             }
           />
 
-          {!myEnRoute ? (
+          {!myReady && !myEnRoute ? (
             <Pressable
               style={[accountStyles.secondary, action.isPending && { opacity: 0.6 }]}
               disabled={action.isPending}

@@ -133,13 +133,14 @@ export function bannerNextStep(opts: {
   const myReady = opts.iAmOwner
     ? opts.res.owner_ready_at
     : opts.res.driver_ready_at;
+  // Ready wins even if en-route was skipped (parked → announce → listo).
+  if (myReady) {
+    return { action: "unready", labelKey: "map.banner.unready" };
+  }
   if (!myEnRoute) {
     return { action: "en_route", labelKey: "map.banner.enRoute" };
   }
-  if (!myReady) {
-    return { action: "ready", labelKey: "map.banner.ready" };
-  }
-  return { action: "unready", labelKey: "map.banner.unready" };
+  return { action: "ready", labelKey: "map.banner.ready" };
 }
 
 export { exchangeWindow, peerPhase, shouldShowNoShowDeadline };

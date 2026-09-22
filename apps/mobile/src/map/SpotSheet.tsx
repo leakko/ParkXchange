@@ -559,7 +559,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                       : active.driver_en_route_at;
                     return (
                       <>
-                        {!myEnRoute ? (
+                        {!myReady && !myEnRoute ? (
                           <Pressable
                             style={[styles.secondary, busy && styles.primaryDisabled]}
                             disabled={busy}
