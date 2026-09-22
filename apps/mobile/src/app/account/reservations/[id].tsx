@@ -7,6 +7,7 @@ import {
   cancelReservation,
   getMe,
   getReservation,
+  peerVehiclePhotoUrl,
   reservationEnRoute,
   reservationReady,
   reservationUnready,
@@ -212,6 +213,7 @@ export default function ReservationDetailScreen() {
           <PeerVehiclePanel
             vehicle={isOwner ? res.driver_vehicle : res.owner_vehicle}
             counterpart
+            photoUrl={peerVehiclePhotoUrl(String(res.id))}
           />
           <ExchangeStatusPanel
             res={res}

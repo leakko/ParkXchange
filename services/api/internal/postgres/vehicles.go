@@ -226,6 +226,11 @@ func (db *DB) Photo(ctx context.Context, id string) ([]byte, string, error) {
 	return photo, *contentType, nil
 }
 
+// VehiclePhoto satisfies reservations.Store; same bytes as Photo.
+func (db *DB) VehiclePhoto(ctx context.Context, vehicleID string) ([]byte, string, error) {
+	return db.Photo(ctx, vehicleID)
+}
+
 // ActiveSpotCount counts spots still offered against this vehicle.
 func (db *DB) ActiveSpotCount(ctx context.Context, vehicleID string) (int, error) {
 	var n int

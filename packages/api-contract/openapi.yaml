@@ -819,6 +819,30 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
 
+  /v1/reservations/{id}/peer-vehicle/photo:
+    get:
+      tags: [reservations]
+      operationId: getReservationPeerVehiclePhoto
+      summary: Photo of the counterpart's vehicle on a reservation
+      parameters:
+        - $ref: "#/components/parameters/ReservationID"
+      responses:
+        "200":
+          description: Image bytes
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
   /v1/reservations/{id}/en-route:
     post:
       tags: [reservations]

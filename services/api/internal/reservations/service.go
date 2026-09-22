@@ -120,6 +120,49 @@ func (s *Service) PartyVehicles(ctx context.Context, res domain.Reservation) Par
 	return out
 }
 
+// PeerVehiclePhoto returns the counterpart's car photo for a reservation party.
+func (s *Service) PeerVehiclePhoto(ctx context.Context, reservationID string, viewer domain.Claims) ([]byte, string, error) {
+	res, err := s.Get(ctx, reservationID, viewer)
+	if err != nil {
+		return nil, "", err
+	}
+
+	vehicleID, err := s.peerVehicleID(ctx, res, viewer.UserID)
+	if err != nil {
+		return nil, "", err
+	}
+	if vehicleID == "" {
+		return nil, "", domain.NotFound("photo_not_found", "that vehicle has no photo")
+	}
+
+	photo, contentType, err := s.store.VehiclePhoto(ctx, vehicleID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			return nil, "", domain.NotFound("photo_not_found", "that vehicle has no photo")
+		}
+		return nil, "", domain.Internal(err)
+	}
+	return photo, contentType, nil
+}
+
+func (s *Service) peerVehicleID(ctx context.Context, res domain.Reservation, viewerID string) (string, error) {
+	switch viewerID {
+	case res.OwnerID:
+		return res.DriverVehicleID, nil
+	case res.DriverID:
+		owner, err := s.store.SpotOwnerVehicleSummary(ctx, res.SpotID)
+		if err != nil {
+			if errors.Is(err, domain.ErrNoRows) {
+				return "", nil
+			}
+			return "", domain.Internal(err)
+		}
+		return owner.ID, nil
+	default:
+		return "", domain.NotFound("reservation_not_found", "that reservation does not exist")
+	}
+}
+
 // Active lists the caller's live reservations (as driver or owner).
 func (s *Service) Active(ctx context.Context, viewer domain.Claims) ([]domain.Reservation, error) {
 	if !viewer.Authenticated() {

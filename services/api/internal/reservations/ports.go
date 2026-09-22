@@ -33,6 +33,8 @@ type Store interface {
 	VehicleSummaryByID(ctx context.Context, id string) (domain.VehicleSummary, error)
 	// SpotOwnerVehicleSummary loads the car linked to the reserved spot.
 	SpotOwnerVehicleSummary(ctx context.Context, spotID string) (domain.VehicleSummary, error)
+	// VehiclePhoto returns stored image bytes for a vehicle id, or ErrNoRows.
+	VehiclePhoto(ctx context.Context, vehicleID string) (photo []byte, contentType string, err error)
 }
 
 // SweepResult is what one pass of the sweeper did, for logs and tests.

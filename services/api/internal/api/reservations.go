@@ -87,6 +87,18 @@ func (a *API) handleGetReservation(w http.ResponseWriter, r *http.Request) error
 	return web.JSON(w, http.StatusOK, a.enrichReservation(r.Context(), res))
 }
 
+func (a *API) handleReservationPeerVehiclePhoto(w http.ResponseWriter, r *http.Request) error {
+	photo, contentType, err := a.reserves.PeerVehiclePhoto(
+		r.Context(), r.PathValue("id"), claimsFrom(r.Context()))
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.WriteHeader(http.StatusOK)
+	_, err = w.Write(photo)
+	return err
+}
+
 func (a *API) handleActiveReservations(w http.ResponseWriter, r *http.Request) error {
 	found, err := a.reserves.Active(r.Context(), claimsFrom(r.Context()))
 	if err != nil {

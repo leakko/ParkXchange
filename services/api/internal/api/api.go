@@ -152,6 +152,7 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("GET /v1/reservations/active", a.requireAuth(a.handleActiveReservations))
 	mux.Handle("GET /v1/reservations", a.requireAuth(a.handleListReservations))
 	mux.Handle("GET /v1/reservations/{id}", a.requireAuth(a.handleGetReservation))
+	mux.Handle("GET /v1/reservations/{id}/peer-vehicle/photo", a.requireAuth(a.handleReservationPeerVehiclePhoto))
 	mux.Handle("POST /v1/reservations/{id}/en-route", a.requireAuth(a.handleReservationEnRoute))
 	mux.Handle("POST /v1/reservations/{id}/ready", a.requireAuth(a.handleReservationReady))
 	mux.Handle("DELETE /v1/reservations/{id}/ready", a.requireAuth(a.handleReservationUnready))

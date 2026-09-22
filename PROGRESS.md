@@ -21,36 +21,28 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** LocationIQ geocode device smoke (needs Free key). Ops
-  handoff **smoke passed** (Dozzle + loopback Postgres + TablePlus over SSH).
-- **Also open:** Play Console identity verification; payments deferred.
-  Location permission policy patch coded (no “always” on cold start; always only
-  after «Voy de camino») — **device demo pending**.
+- **Phase in progress:** Play Store closed/internal testing setup (declarations
+  in progress). Peer vehicle photo in exchange UI **coded** (needs API deploy +
+  mobile smoke). Ops handoff **smoke passed**.
+- **Also open:** payments deferred. Location permission policy — device demo
+  pending. Account-delete confirm is now an in-app modal (pushed).
 - **Last updated:** 2026-09-22
 - **Phases complete:** 12 of 12 (MVP) + handshake + push coaching + cancel-actor fix
   + map search pins / push / GPS (prior); geocode LocationIQ wired in mobile;
   ops handoff (Dozzle, loopback DB, `ops-queries.sql`, README) deployed and
   verified on the VPS.
-- **Blockers:** Play Console identity verification still pending for public
-  listing; payments deferred until after email gate. Map search needs a
-  LocationIQ Free key in env/EAS.
+- **Blockers:** Play listing/Data safety still being filled; public/open testing
+  later. LocationIQ key is on EAS preview env (confirm device smoke).
 
 ---
 
 ## Next immediate step
 
-1. Device smoke for location policy: clear app data → open map → only foreground;
-   mark «Voy de camino» → always prompt + geofence. Spec:
-   [`docs/superpowers/specs/2026-09-22-location-permission-policy-design.md`](docs/superpowers/specs/2026-09-22-location-permission-policy-design.md).
-2. Create LocationIQ Free key; put in `apps/mobile/.env.development` /
-   EAS secrets as `EXPO_PUBLIC_LOCATIONIQ_KEY`.
-3. Smoke: street+number, category row (peluquería), brand autocomplete, reverse
-   on announce.
-4. Push preview APK when geocode smoke is green; confirm `curl …/healthz`.
-
-Ops reference: `deploy/hetzner/README.md` + `ops-queries.sql`. Spec/plan:
-[`docs/superpowers/specs/2026-09-22-ops-handoff-design.md`](docs/superpowers/specs/2026-09-22-ops-handoff-design.md),
-[`docs/superpowers/plans/2026-09-22-ops-handoff.md`](docs/superpowers/plans/2026-09-22-ops-handoff.md).
+1. Finish Play Console App content + store listing; produce production AAB;
+   internal testing track.
+2. Deploy API so `GET /v1/reservations/{id}/peer-vehicle/photo` is live; rebuild
+   preview APK; smoke peer thumbnail during an exchange.
+3. Device smoke for location policy (foreground vs «Voy de camino»).
 
 
 ---

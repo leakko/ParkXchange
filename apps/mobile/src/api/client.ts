@@ -411,6 +411,10 @@ export function spotVehiclePhotoUrl(spotId: string): string {
   return `${apiUrl}/v1/spots/${spotId}/vehicle/photo`;
 }
 
+export function peerVehiclePhotoUrl(reservationId: string): string {
+  return `${apiUrl}/v1/reservations/${reservationId}/peer-vehicle/photo`;
+}
+
 export async function createOffer(
   spotId: string,
   body: CreateOfferRequest,

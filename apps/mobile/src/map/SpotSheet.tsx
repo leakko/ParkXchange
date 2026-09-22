@@ -20,7 +20,7 @@ import type {
   SpotFeature,
   VehicleResponse,
 } from "@/api/client";
-import { listOffers, spotVehiclePhotoUrl } from "@/api/client";
+import { listOffers, peerVehiclePhotoUrl, spotVehiclePhotoUrl } from "@/api/client";
 import { useAuthImage } from "@/hooks/useAuthImage";
 import { useTranslation } from "@/i18n";
 import { sizeClassLabel, spotStatusLabel } from "@/i18n/catalogLabels";
@@ -534,6 +534,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                       isOwner ? active.driver_vehicle : active.owner_vehicle
                     }
                     counterpart
+                    photoUrl={peerVehiclePhotoUrl(String(active.id))}
                   />
                   <ExchangeStatusPanel
                     res={active}
