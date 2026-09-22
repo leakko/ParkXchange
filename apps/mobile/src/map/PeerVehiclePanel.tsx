@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import type { components } from "@parkxchange/api-contract";
 
 import { useTranslation } from "@/i18n";
+import { sizeClassLabel } from "@/i18n/catalogLabels";
 
 type VehicleSummary = components["schemas"]["VehicleSummary"];
 
@@ -21,7 +22,11 @@ export function PeerVehiclePanel({ vehicle, counterpart = true }: Props) {
     return null;
   }
 
-  const meta = [vehicle.color, vehicle.year || null, vehicle.size_class]
+  const meta = [
+    vehicle.color,
+    vehicle.year || null,
+    vehicle.size_class ? sizeClassLabel(t, vehicle.size_class) : null,
+  ]
     .filter(Boolean)
     .join(" · ");
 

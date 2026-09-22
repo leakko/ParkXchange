@@ -23,6 +23,7 @@ import type {
 import { listOffers, spotVehiclePhotoUrl } from "@/api/client";
 import { useAuthImage } from "@/hooks/useAuthImage";
 import { useTranslation } from "@/i18n";
+import { sizeClassLabel, spotStatusLabel } from "@/i18n/catalogLabels";
 import { formatPoints, parsePointsInput } from "@/i18n/formatPoints";
 import { openNavigation } from "@/lib/navigation";
 import { DateTimeField } from "@/ui/DateTimeField";
@@ -277,9 +278,9 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
             ) : null}
             <Text style={styles.meta}>
               {t("spotSheet.meta", {
-                sizeClass: spot.properties.size_class,
+                sizeClass: sizeClassLabel(t, spot.properties.size_class),
                 points,
-                status: spot.properties.status,
+                status: spotStatusLabel(t, spot.properties.status),
               })}
             </Text>
             {!exact && !spot.properties.is_mine ? (
@@ -299,7 +300,13 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
                   {vehicle.make_model ? ` · ${vehicle.make_model}` : ""}
                 </Text>
                 <Text style={styles.vehicleMeta}>
-                  {[vehicle.color, vehicle.year || null, vehicle.size_class]
+                  {[
+                    vehicle.color,
+                    vehicle.year || null,
+                    vehicle.size_class
+                      ? sizeClassLabel(t, vehicle.size_class)
+                      : null,
+                  ]
                     .filter(Boolean)
                     .join(" · ")}
                 </Text>

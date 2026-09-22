@@ -13,8 +13,9 @@ import {
 } from "@/api/client";
 import { accountStyles } from "@/account/theme";
 import { useSession } from "@/hooks/useSession";
-import { useTranslation, type TranslationKey } from "@/i18n";
+import { useTranslation } from "@/i18n";
 import { formatSignedPoints } from "@/i18n/formatPoints";
+import { reservationStatusLabel } from "@/i18n/catalogLabels";
 import { ExchangeStatusPanel } from "@/map/ExchangeStatusPanel";
 import { PeerVehiclePanel } from "@/map/PeerVehiclePanel";
 import {
@@ -29,10 +30,6 @@ import {
 } from "@/map/exchangeLeave";
 import { reservationPointsDelta } from "@/map/reservationPoints";
 import { armGeofenceForReservation, disarmArrivalGeofence, clearArrivalPromptFired } from "@/push/geofence";
-
-function reservationStatusKey(status: string): TranslationKey {
-  return `account.reservations.status.${status}` as TranslationKey;
-}
 
 export default function ReservationDetailScreen() {
   const { t, formatDateTime } = useTranslation();
@@ -180,7 +177,7 @@ export default function ReservationDetailScreen() {
       <Text style={accountStyles.title}>
         {t("account.reservations.rowTitle", {
           points: formatSignedPoints(reservationPointsDelta(res, userId)),
-          status: t(reservationStatusKey(res.status)),
+          status: reservationStatusLabel(t, res.status),
         })}
       </Text>
       <Text style={accountStyles.meta}>

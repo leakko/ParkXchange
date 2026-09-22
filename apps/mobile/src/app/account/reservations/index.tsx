@@ -29,20 +29,14 @@ import {
 import { AuthScroll } from "@/auth/AuthScroll";
 import { AuthTextInput } from "@/auth/AuthTextInput";
 import { useSession } from "@/hooks/useSession";
-import { useTranslation, type TranslationKey } from "@/i18n";
+import { useTranslation } from "@/i18n";
+import {
+  offerStatusLabel,
+  reservationStatusLabel,
+} from "@/i18n/catalogLabels";
 import { formatPoints, formatSignedPoints, parsePointsInput } from "@/i18n/formatPoints";
 import { reservationPointsDelta } from "@/map/reservationPoints";
 import { DateTimeField } from "@/ui/DateTimeField";
-
-function reservationStatusKey(status: string): TranslationKey {
-  const key = `account.reservations.status.${status}` as TranslationKey;
-  return key;
-}
-
-function offerStatusKey(status: string): TranslationKey {
-  const key = `account.reservations.offerStatus.${status}` as TranslationKey;
-  return key;
-}
 
 function mergeReservations(
   list: ReservationResponse[] | undefined,
@@ -240,7 +234,7 @@ export default function MyReservationsScreen() {
                       ? -Math.abs(offer.amount_cents)
                       : 0,
                   ),
-                  status: t(offerStatusKey(offer.status)),
+                  status: offerStatusLabel(t, offer.status),
                 })}
               </Text>
               <Text style={accountStyles.rowMeta}>
@@ -342,7 +336,7 @@ export default function MyReservationsScreen() {
                       ? reservationPointsDelta(res, userId)
                       : res.price_cents,
                   ),
-                  status: t(reservationStatusKey(res.status)),
+                  status: reservationStatusLabel(t, res.status),
                 })}
               </Text>
               {canNav || canReannounce ? (

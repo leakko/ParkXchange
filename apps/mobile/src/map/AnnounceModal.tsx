@@ -15,6 +15,7 @@ import type { VehicleResponse } from "@/api/client";
 import { AuthScroll } from "@/auth/AuthScroll";
 import { AuthTextInput } from "@/auth/AuthTextInput";
 import { useTranslation } from "@/i18n";
+import { sizeClassLabel } from "@/i18n/catalogLabels";
 import { parsePointsInput } from "@/i18n/formatPoints";
 import { reverseGeocode } from "@/map/geocode";
 import { DateTimeField } from "@/ui/DateTimeField";
@@ -294,7 +295,7 @@ export function AnnounceModal({
                       >
                         <Text style={styles.optionTitle}>{vehicleLabel(v)}</Text>
                         <Text style={styles.optionMeta}>
-                          {v.color} · {v.year} · {v.size_class}
+                          {v.color} · {v.year} · {sizeClassLabel(t, v.size_class)}
                         </Text>
                       </Pressable>
                     ))

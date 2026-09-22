@@ -7,6 +7,10 @@ import {
 import { accountStyles } from "@/account/theme";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
+import {
+  sizeClassLabel,
+  spotStatusLabel,
+} from "@/i18n/catalogLabels";
 import { formatPoints, formatSignedPoints } from "@/i18n/formatPoints";
 import { reservationPointsDelta } from "@/map/reservationPoints";
 import { useQueries, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -175,7 +179,7 @@ export default function MySpotsScreen() {
                               reservation.owner_id,
                             ),
                           ),
-                          status: item.properties.status,
+                          status: spotStatusLabel(t, item.properties.status),
                         })}
                       </Text>
                     </>
@@ -183,7 +187,7 @@ export default function MySpotsScreen() {
                     <Text style={accountStyles.rowTitle}>
                       {t("account.spots.spotTitle", {
                         points: formatPoints(item.properties.price_cents),
-                        status: item.properties.status,
+                        status: spotStatusLabel(t, item.properties.status),
                       })}
                     </Text>
                   )}
@@ -216,7 +220,7 @@ export default function MySpotsScreen() {
               <Text style={accountStyles.rowMeta}>
                 {item.properties.vehicle
                   ? `${item.properties.vehicle.plate} · ${item.properties.vehicle.make_model}`
-                  : item.properties.size_class}
+                  : sizeClassLabel(t, item.properties.size_class)}
               </Text>
               {canEdit ? (
                 <Text style={accountStyles.rowMeta}>

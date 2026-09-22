@@ -12,6 +12,7 @@ import { listVehicles } from "@/api/client";
 import { accountStyles } from "@/account/theme";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
+import { sizeClassLabel } from "@/i18n/catalogLabels";
 
 export default function VehiclesListScreen() {
   const { t } = useTranslation();
@@ -58,7 +59,7 @@ export default function VehiclesListScreen() {
                 {item.plate} · {item.make_model}
               </Text>
               <Text style={accountStyles.rowMeta}>
-                {item.color} · {item.year} · {item.size_class}
+                {item.color} · {item.year} · {sizeClassLabel(t, item.size_class)}
                 {item.has_photo ? t("account.vehicles.hasPhoto") : ""}
               </Text>
             </View>

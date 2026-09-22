@@ -26,6 +26,7 @@ import { AuthTextInput } from "@/auth/AuthTextInput";
 import { ensureEmailVerified } from "@/auth/requireEmailVerified";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
+import { spotStatusLabel } from "@/i18n/catalogLabels";
 import { formatPoints, parsePointsInput } from "@/i18n/formatPoints";
 import { matchesPreferredMinute } from "@/map/exchange";
 import { DateTimeField } from "@/ui/DateTimeField";
@@ -193,7 +194,9 @@ export default function EditSpotScreen() {
     return (
       <View style={[accountStyles.screen, accountStyles.scroll]}>
         <Text style={accountStyles.meta}>
-          {t("account.spots.edit.notAvailable", { status: spot.properties.status })}
+          {t("account.spots.edit.notAvailable", {
+            status: spotStatusLabel(t, spot.properties.status),
+          })}
         </Text>
         <Pressable
           style={[accountStyles.danger, { marginTop: 16 }]}
