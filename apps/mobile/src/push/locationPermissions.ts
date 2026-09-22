@@ -39,6 +39,7 @@ export async function hasAlwaysLocation(): Promise<boolean> {
 
 /**
  * Explain why we need “Allow all the time”, then request FG → BG.
+ * Call only after «Voy de camino» (arrival geofence). Never on cold start.
  * Returns whether background (“always”) was granted.
  */
 export async function ensureAlwaysLocation(opts: {
@@ -78,16 +79,4 @@ export async function ensureAlwaysLocation(opts: {
   } catch {
     return false;
   }
-}
-
-/** First-launch / cold path: explain + request once per install. */
-export async function promptAlwaysLocationOnFirstOpen(t: TFn): Promise<void> {
-  if (Platform.OS === "web") {
-    return;
-  }
-  const prompted = (await AsyncStorage.getItem(ALWAYS_PROMPTED_KEY)) === "1";
-  if (prompted) {
-    return;
-  }
-  await ensureAlwaysLocation({ t, forceExplain: true });
 }

@@ -24,6 +24,8 @@ If that test fails, fix the code, not the test.
 - **Phase in progress:** LocationIQ geocode device smoke (needs Free key). Ops
   handoff **smoke passed** (Dozzle + loopback Postgres + TablePlus over SSH).
 - **Also open:** Play Console identity verification; payments deferred.
+  Location permission policy patch coded (no “always” on cold start; always only
+  after «Voy de camino») — **device demo pending**.
 - **Last updated:** 2026-09-22
 - **Phases complete:** 12 of 12 (MVP) + handshake + push coaching + cancel-actor fix
   + map search pins / push / GPS (prior); geocode LocationIQ wired in mobile;
@@ -37,11 +39,14 @@ If that test fails, fix the code, not the test.
 
 ## Next immediate step
 
-1. Create LocationIQ Free key; put in `apps/mobile/.env.development` /
+1. Device smoke for location policy: clear app data → open map → only foreground;
+   mark «Voy de camino» → always prompt + geofence. Spec:
+   [`docs/superpowers/specs/2026-09-22-location-permission-policy-design.md`](docs/superpowers/specs/2026-09-22-location-permission-policy-design.md).
+2. Create LocationIQ Free key; put in `apps/mobile/.env.development` /
    EAS secrets as `EXPO_PUBLIC_LOCATIONIQ_KEY`.
-2. Smoke: street+number, category row (peluquería), brand autocomplete, reverse
+3. Smoke: street+number, category row (peluquería), brand autocomplete, reverse
    on announce.
-3. Push preview APK when geocode smoke is green; confirm `curl …/healthz`.
+4. Push preview APK when geocode smoke is green; confirm `curl …/healthz`.
 
 Ops reference: `deploy/hetzner/README.md` + `ops-queries.sql`. Spec/plan:
 [`docs/superpowers/specs/2026-09-22-ops-handoff-design.md`](docs/superpowers/specs/2026-09-22-ops-handoff-design.md),

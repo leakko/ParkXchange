@@ -96,7 +96,6 @@ import {
   type ViewBox,
 } from "@/map/geocode";
 import { bannerNextStep, bannerPeerStatusKey } from "@/map/exchangeCopy";
-import { promptAlwaysLocationOnFirstOpen } from "@/push/locationPermissions";
 import { SpotLayers } from "@/map/SpotLayers";
 import { SpotSheet } from "@/map/SpotSheet";
 
@@ -177,16 +176,8 @@ export default function MapScreen() {
     location.coords,
   );
 
-  useEffect(() => {
-    void (async () => {
-      await promptAlwaysLocationOnFirstOpen((key) => t(key as Parameters<typeof t>[0]));
-      // Remount puck only after the always-permission prompt may have upgraded
-      // the fused provider — not on every locate / resume.
-      await location.refresh({ remountPuck: true });
-    })();
-    // Once on mount — t/location.refresh are stable enough for first-open.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Foreground location is requested by useMapLocation (policy case A).
+  // Background / “always” is only requested after «Voy de camino» (geofence).
 
   const requireSignIn = useCallback(
     (returnTo: string = "/") => {
