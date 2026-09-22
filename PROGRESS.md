@@ -21,27 +21,30 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** map place-search pins + push deep links + always-GPS
-  onboarding (spec 2026-09-21-map-search-push-gps); mobile green locally.
+- **Phase in progress:** LocationIQ geocode + search UX (plan
+  `2026-09-21-geocode-locationiq-early-phase`); set `EXPO_PUBLIC_LOCATIONIQ_KEY`
+  before device smoke.
 - **Also open:** Play Console identity verification; payments deferred.
-- **Last updated:** 2026-09-21
+- **Last updated:** 2026-09-22
 - **Phases complete:** 12 of 12 (MVP) + handshake + push coaching + cancel-actor fix
+  + map search pins / push / GPS (prior); geocode LocationIQ wired in mobile.
 - **Blockers:** Play Console identity verification still pending for public
-  listing; payments deferred until after email gate.
+  listing; payments deferred until after email gate. Map search needs a
+  LocationIQ Free key in env/EAS.
 
 ---
 
 ## Next immediate step
 
-1. Push `main` + preview APK; smoke search pins, offer push → spot screen, always prompt.
-2. Confirm GitHub Actions deploy + `curl …/healthz`.
-3. Device check: GPS not stuck after Always grant.
-3. `eas build --profile preview --platform android` (NetInfo is native).
-4. Device smoke: locale EN push, offline overlay, safe area on cancel, push
-   open+dismiss, single peer car, stack slides without white flash.
+1. Create LocationIQ Free key; put in `apps/mobile/.env.development` /
+   EAS secrets as `EXPO_PUBLIC_LOCATIONIQ_KEY`.
+2. Smoke: street+number, category row (peluquería), brand autocomplete, reverse
+   on announce.
+3. Push `main` + preview APK when smoke is green.
+4. Confirm GitHub Actions deploy + `curl …/healthz`.
 
-Spec:
-[`docs/superpowers/specs/2026-09-21-exchange-ux-push-offline-design.md`](docs/superpowers/specs/2026-09-21-exchange-ux-push-offline-design.md).
+Plan:
+[`docs/superpowers/plans/2026-09-21-geocode-locationiq-early-phase.md`](docs/superpowers/plans/2026-09-21-geocode-locationiq-early-phase.md).
 
 ---
 
@@ -653,6 +656,18 @@ instead; the container then became ready in about a second.
 ---
 
 ## Session log
+
+### 2026-09-22 — LocationIQ geocode + search UX
+
+- Replaced public Nominatim calls with LocationIQ (`eu1`): search, autocomplete,
+  reverse, Nearby. Photon kept as fuzzy fallback only.
+- Query routing: address (street+number) / category lexicon (es|en) / name.
+- Client cache TTL, reduced fan-out, production User-Agent.
+- Map search UX: category action row (no API until tap), debounced autocomplete
+  suggestions, heuristic confirm; LocationIQ attribution in list.
+- Docs: `ARCHITECTURE.md` §3.11a, `PROGRESS.md`, `.env.example` +
+  `EXPO_PUBLIC_LOCATIONIQ_KEY` placeholders.
+- **Needs:** Free LocationIQ key in env before device smoke.
 
 ### 2026-09-14 — Phase 1
 

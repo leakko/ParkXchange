@@ -3,10 +3,16 @@ import { describe, it } from "node:test";
 
 import {
   boundsForHits,
+  buildAutocompleteParams,
+  buildNearbyParams,
   buildNominatimSearchParams,
+  classifySearchQuery,
   ensureMinSearchBox,
   expandViewBox,
   filterHitsInViewBox,
+  matchCategoryPrefix,
+  matchExactCategory,
+  parseStreetAddressQuery,
   pointInViewBox,
   searchQueryVariants,
   sortHitsNearToFar,
@@ -32,6 +38,112 @@ describe("buildNominatimSearchParams", () => {
     });
     assert.equal(params.get("viewbox"), "0,1,1,0");
     assert.equal(params.get("bounded"), null);
+  });
+
+  it("uses street= for structured address search", () => {
+    const params = buildNominatimSearchParams("", {
+      street: "18 Avenida Las Golondrinas",
+      acceptLanguage: "es",
+    });
+    assert.equal(params.get("street"), "18 Avenida Las Golondrinas");
+    assert.equal(params.get("q"), null);
+    assert.equal(params.get("countrycodes"), "es");
+    assert.equal(params.get("accept-language"), "es");
+  });
+});
+
+describe("buildAutocompleteParams", () => {
+  it("biases with viewbox without hard bound", () => {
+    const params = buildAutocompleteParams("burg", {
+      viewbox: [-6, 37, -5.9, 37.4],
+      acceptLanguage: "en",
+      limit: 8,
+    });
+    assert.equal(params.get("q"), "burg");
+    assert.equal(params.get("viewbox"), "-6,37,-5.9,37.4");
+    assert.equal(params.get("bounded"), "0");
+    assert.equal(params.get("accept-language"), "en");
+    assert.equal(params.get("limit"), "8");
+  });
+});
+
+describe("buildNearbyParams", () => {
+  it("sets lat lon tag radius", () => {
+    const params = buildNearbyParams(37.39, -5.98, "shop:hairdresser", {
+      radius: 1200,
+      limit: 20,
+    });
+    assert.equal(params.get("lat"), "37.39");
+    assert.equal(params.get("lon"), "-5.98");
+    assert.equal(params.get("tag"), "shop:hairdresser");
+    assert.equal(params.get("radius"), "1200");
+  });
+});
+
+describe("parseStreetAddressQuery", () => {
+  it("parses trailing Spanish house number", () => {
+    const p = parseStreetAddressQuery("Avenida Las Golondrinas, 18");
+    assert.ok(p);
+    assert.equal(p!.houseNumber, "18");
+    assert.match(p!.street, /Las Golondrinas/i);
+    assert.equal(p!.freeForm, "18 Avenida Las Golondrinas");
+  });
+
+  it("parses leading house number", () => {
+    const p = parseStreetAddressQuery("18 Calle Enramadilla");
+    assert.ok(p);
+    assert.equal(p!.houseNumber, "18");
+    assert.equal(p!.structuredStreet, "18 Calle Enramadilla");
+  });
+
+  it("returns null for brand names", () => {
+    assert.equal(parseStreetAddressQuery("Burger King"), null);
+  });
+});
+
+describe("classifySearchQuery", () => {
+  it("routes street+number to address", () => {
+    assert.equal(
+      classifySearchQuery("Avenida Las Golondrinas, 18", "es").kind,
+      "address",
+    );
+  });
+
+  it("routes exact category in es and en to same tags", () => {
+    const es = classifySearchQuery("peluquería", "es");
+    const en = classifySearchQuery("hairdresser", "en");
+    assert.equal(es.kind, "category");
+    assert.equal(en.kind, "category");
+    assert.deepEqual(es.osmTags, ["shop:hairdresser"]);
+    assert.deepEqual(en.osmTags, ["shop:hairdresser"]);
+  });
+
+  it("routes named salon to name, not category", () => {
+    assert.equal(classifySearchQuery("Peluquería Ana", "es").kind, "name");
+  });
+
+  it("routes brands to name", () => {
+    assert.equal(classifySearchQuery("Burger King", "es").kind, "name");
+  });
+});
+
+describe("matchCategoryPrefix", () => {
+  it("suggests peluquerías while typing pelu", () => {
+    const hint = matchCategoryPrefix("pelu", "es");
+    assert.ok(hint);
+    assert.deepEqual(hint!.osmTags, ["shop:hairdresser"]);
+  });
+
+  it("skips named places", () => {
+    assert.equal(matchCategoryPrefix("Peluquería Ana", "es"), null);
+  });
+});
+
+describe("matchExactCategory", () => {
+  it("matches hair salon compact key", () => {
+    const hint = matchExactCategory("hair salon", "en");
+    assert.ok(hint);
+    assert.deepEqual(hint!.osmTags, ["shop:hairdresser"]);
   });
 });
 
@@ -69,9 +181,7 @@ describe("expandViewBox / filterHitsInViewBox", () => {
   });
 
   it("boundsForHits pads a single hit", () => {
-    const b = boundsForHits([
-      { id: "1", label: "x", lon: -6, lat: 37.4 },
-    ]);
+    const b = boundsForHits([{ id: "1", label: "x", lon: -6, lat: 37.4 }]);
     assert.ok(b);
     assert.ok(b![0]! < -6 && b![2]! > -6);
   });

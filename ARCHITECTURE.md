@@ -405,6 +405,30 @@ Development uses MapLibre's public demo tiles. Because the style URL is injected
 through `EXPO_PUBLIC_MAP_STYLE_URL`, switching to S3 is a configuration change
 rather than a code change.
 
+### 3.11a Map search uses LocationIQ (not public Nominatim)
+
+Place search, autocomplete, reverse geocode and category Nearby go through
+**LocationIQ** (`eu1`, Free tier by default) via `EXPO_PUBLIC_LOCATIONIQ_KEY`.
+Name search order: Autocomplete → Search → **Photon** (only if both returned
+nothing — typo / fuzzy last resort). Set `EXPO_PUBLIC_PHOTON_ENABLED=0` to
+disable Photon if the public demo rate-limits you. There is no cheaper managed
+fuzzy alternative for MVP; client brand aliases also reduce typos before any
+API call. Self-host Photon later if you need fuzzy at scale.
+
+- street + house number → structured / free-form search
+- exact category term (locale lexicon) → Nearby POI by OSM tag
+- otherwise → Autocomplete → Search → Photon
+
+Results are sorted near→far from the map viewport centre. Debounced
+autocomplete and an in-app category action row avoid burning the Free quota.
+Attribution: show “Search by LocationIQ.com” on Free commercial use.
+
+**Capacity (order of magnitude, with debounce + cache):** Free ~5k req/day ≈
+1.5–2.5k active users/day; Developer ~$100/mo ≈ 8–12k; Startup ~$200/mo ≈
+20–30k. Self-host Nominatim+Photon for Spain on Hetzner is a later option
+(~25–45 €/mo + ops) when paid LocationIQ hurts — see
+`docs/superpowers/plans/2026-09-21-geocode-locationiq-early-phase.md`.
+
 ### 3.12 Navigation is delegated, never reimplemented
 
 Turn-by-turn navigation is a solved problem owned by apps the user already

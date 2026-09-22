@@ -65,7 +65,7 @@ export function AnnounceModal({
   onPickOnMap,
   onSubmit,
 }: Props) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [price, setPrice] = useState("50");
   const [hasPreferredTime, setHasPreferredTime] = useState(false);
   const [preferredTime, setPreferredTime] = useState(defaultPreferred);
@@ -92,7 +92,7 @@ export function AnnounceModal({
     setAddressLabel(null);
     setResolvingLabel(true);
     try {
-      const resolved = await reverseGeocode(lon, lat);
+      const resolved = await reverseGeocode(lon, lat, locale);
       setAddressLabel(resolved);
     } catch {
       setAddressLabel(null);

@@ -81,9 +81,14 @@ import {
   type AnnounceValues,
 } from "@/map/AnnounceModal";
 import {
+  autocompletePlaces,
   boundsForHits,
+  matchCategoryPrefix,
+  matchExactCategory,
+  searchCategoryNearby,
   searchPlacesDetailed,
   type AddressSuggestion,
+  type CategoryHint,
   type ViewBox,
 } from "@/map/geocode";
 import { bannerNextStep, bannerPeerStatusKey } from "@/map/exchangeCopy";
@@ -95,7 +100,7 @@ const DEBOUNCE_MS = 350;
 const FOCUS_SPOT_ZOOM = 17;
 
 export default function MapScreen() {
-  const { t, formatDateTime } = useTranslation();
+  const { t, formatDateTime, locale } = useTranslation();
   const router = useRouter();
   const focusParams = useLocalSearchParams<{
     focusLon?: string;
@@ -107,6 +112,7 @@ export default function MapScreen() {
   const cameraRef = useRef<CameraRef>(null);
   const sheetRef = useRef<BottomSheet>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suggestDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const jumpedToUserRef = useRef(false);
   const lastJumpCoordsRef = useRef<[number, number] | null>(null);
   const timeWindow = useMemo(() => defaultTimeWindow(), []);
@@ -139,6 +145,8 @@ export default function MapScreen() {
   const [announceKeepForm, setAnnounceKeepForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchHits, setSearchHits] = useState<AddressSuggestion[]>([]);
+  const [suggestHits, setSuggestHits] = useState<AddressSuggestion[]>([]);
+  const [categoryHint, setCategoryHint] = useState<CategoryHint | null>(null);
   const [selectedSearchId, setSelectedSearchId] = useState<string | null>(null);
   const [searchBusy, setSearchBusy] = useState(false);
   const [mapViewbox, setMapViewbox] = useState<ViewBox | null>(null);
@@ -625,9 +633,43 @@ export default function MapScreen() {
 
   const clearSearchHits = useCallback(() => {
     setSearchHits([]);
+    setSuggestHits([]);
+    setCategoryHint(null);
     setSelectedSearchId(null);
     setSearchQuery("");
   }, []);
+
+  // Local category hint + debounced LocationIQ autocomplete (no Nearby until tap).
+  useEffect(() => {
+    const q = searchQuery.trim();
+    setCategoryHint(matchCategoryPrefix(q, locale));
+    if (suggestDebounceRef.current) {
+      clearTimeout(suggestDebounceRef.current);
+    }
+    if (q.length < 3 || matchExactCategory(q, locale)) {
+      setSuggestHits([]);
+      return;
+    }
+    suggestDebounceRef.current = setTimeout(() => {
+      void (async () => {
+        try {
+          const hits = await autocompletePlaces(q, {
+            viewbox: mapViewbox ?? undefined,
+            locale,
+            limit: 3,
+          });
+          setSuggestHits(hits);
+        } catch {
+          setSuggestHits([]);
+        }
+      })();
+    }, DEBOUNCE_MS);
+    return () => {
+      if (suggestDebounceRef.current) {
+        clearTimeout(suggestDebounceRef.current);
+      }
+    };
+  }, [searchQuery, locale, mapViewbox]);
 
   const onPressMap = useCallback(
     (event: NativeSyntheticEvent<PressEvent>) => {
@@ -669,41 +711,16 @@ export default function MapScreen() {
     [searchHits, userZoom],
   );
 
-  const runMapSearch = useCallback(async () => {
-    const q = searchQuery.trim();
-    if (q.length < 3) {
-      return;
-    }
-    setSearchBusy(true);
-    try {
-      let viewbox = mapViewbox;
-      try {
-        const bounds = await mapRef.current?.getBounds();
-        if (
-          bounds &&
-          bounds[2]! > bounds[0]! &&
-          bounds[3]! > bounds[1]!
-        ) {
-          viewbox = bounds as ViewBox;
-          setMapViewbox(viewbox);
-        }
-      } catch {
-        /* keep state */
-      }
-
-      const { hits, inViewport, shouldZoomOut } = await searchPlacesDetailed(
-        q,
-        { viewbox: viewbox ?? undefined },
-      );
+  const applySearchResult = useCallback(
+    (hits: AddressSuggestion[], inViewport: AddressSuggestion[], shouldZoomOut: boolean) => {
       setSearchHits(hits);
+      setSuggestHits([]);
       setSelectedSearchId(null);
       if (hits.length === 0) {
         Alert.alert(t("map.search.empty.title"), t("map.search.empty.message"));
         return;
       }
       dispatchFollow({ type: "user_gesture" });
-      // Google-like: keep zoom if something is already on screen; otherwise
-      // pull back enough to compare nearby matches.
       if (shouldZoomOut) {
         const fit = boundsForHits(hits.slice(0, 8));
         if (fit) {
@@ -719,12 +736,77 @@ export default function MapScreen() {
       } else if (hits.length === 1) {
         setSelectedSearchId(hits[0]!.id);
       }
+    },
+    [t],
+  );
+
+  const resolveViewbox = useCallback(async (): Promise<ViewBox | undefined> => {
+    let viewbox = mapViewbox;
+    try {
+      const bounds = await mapRef.current?.getBounds();
+      if (bounds && bounds[2]! > bounds[0]! && bounds[3]! > bounds[1]!) {
+        viewbox = bounds as ViewBox;
+        setMapViewbox(viewbox);
+      }
+    } catch {
+      /* keep state */
+    }
+    return viewbox ?? undefined;
+  }, [mapViewbox]);
+
+  const runMapSearch = useCallback(async () => {
+    const q = searchQuery.trim();
+    if (q.length < 3) {
+      return;
+    }
+    setSearchBusy(true);
+    try {
+      const viewbox = await resolveViewbox();
+      const { hits, inViewport, shouldZoomOut } = await searchPlacesDetailed(q, {
+        viewbox,
+        locale,
+      });
+      applySearchResult(hits, inViewport, shouldZoomOut);
     } catch {
       Alert.alert(t("map.search.failed"), t("common.error"));
     } finally {
       setSearchBusy(false);
     }
-  }, [searchQuery, mapViewbox, t]);
+  }, [searchQuery, locale, resolveViewbox, applySearchResult, t]);
+
+  const runCategoryHintSearch = useCallback(
+    async (hint: CategoryHint) => {
+      setSearchBusy(true);
+      try {
+        const viewbox = await resolveViewbox();
+        const { hits, inViewport, shouldZoomOut } = await searchCategoryNearby(
+          hint.osmTags,
+          { viewbox, locale },
+        );
+        setSearchQuery(hint.label);
+        applySearchResult(hits, inViewport, shouldZoomOut);
+      } catch {
+        Alert.alert(t("map.search.failed"), t("common.error"));
+      } finally {
+        setSearchBusy(false);
+      }
+    },
+    [resolveViewbox, locale, applySearchResult, t],
+  );
+
+  const onPressSuggestHit = useCallback(
+    (hit: AddressSuggestion) => {
+      applySearchResult([hit], [hit], false);
+      setSelectedSearchId(hit.id);
+      dispatchFollow({ type: "user_gesture" });
+      cameraRef.current?.easeTo({
+        center: [hit.lon, hit.lat],
+        zoom: Math.max(userZoom, 15),
+        duration: 450,
+      });
+    },
+    [applySearchResult, userZoom],
+  );
 
   const onRecenter = useCallback(() => {
     dispatchFollow({ type: "recenter" });
@@ -1099,7 +1181,9 @@ export default function MapScreen() {
               <Text style={styles.searchBtnText}>{t("map.search.button")}</Text>
             )}
           </Pressable>
-          {searchHits.length > 0 ? (
+          {searchHits.length > 0 ||
+          suggestHits.length > 0 ||
+          categoryHint ? (
             <Pressable
               onPress={clearSearchHits}
               accessibilityLabel={t("map.search.clear")}
@@ -1108,16 +1192,43 @@ export default function MapScreen() {
             </Pressable>
           ) : null}
         </View>
+        {searchHits.length === 0 &&
+        (categoryHint || suggestHits.length > 0) ? (
+          <View style={styles.searchSuggestPanel}>
+            {categoryHint ? (
+              <Pressable
+                style={styles.searchCategoryRow}
+                onPress={() => void runCategoryHintSearch(categoryHint)}
+                disabled={searchBusy}
+              >
+                <Ionicons name="grid-outline" size={16} color="#00BBF9" />
+                <Text style={styles.searchCategoryText} numberOfLines={1}>
+                  {t("map.search.categoryNear", {
+                    category: categoryHint.label,
+                  })}
+                </Text>
+              </Pressable>
+            ) : null}
+            {suggestHits.slice(0, 3).map((hit) => (
+              <Pressable
+                key={hit.id}
+                style={styles.searchSuggestRow}
+                onPress={() => onPressSuggestHit(hit)}
+              >
+                <Text style={styles.searchSuggestText} numberOfLines={1}>
+                  {hit.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
         {searchHits.length > 0 ? (
           <ScrollView
             style={styles.searchResults}
             keyboardShouldPersistTaps="handled"
             nestedScrollEnabled
           >
-            <Text style={styles.searchResultsTitle}>
-              {t("map.search.resultsTitle", { count: searchHits.length })}
-            </Text>
-            {searchHits.map((hit) => {
+            {searchHits.slice(0, 6).map((hit) => {
               const selected = hit.id === selectedSearchId;
               return (
                 <Pressable
@@ -1128,10 +1239,7 @@ export default function MapScreen() {
                   ]}
                   onPress={() => onPressSearchHit(hit.id)}
                 >
-                  <Text
-                    style={styles.searchResultText}
-                    numberOfLines={2}
-                  >
+                  <Text style={styles.searchResultText} numberOfLines={1}>
                     {hit.label}
                   </Text>
                   <Pressable
@@ -1148,6 +1256,9 @@ export default function MapScreen() {
                 </Pressable>
               );
             })}
+            <Text style={styles.searchAttribution}>
+              {t("map.search.attribution")}
+            </Text>
           </ScrollView>
         ) : null}
         {announcePickMode ? (
@@ -1456,10 +1567,25 @@ const styles = StyleSheet.create({
   },
   searchBtnText: { color: "#fff", fontWeight: "600", fontSize: 13 },
   searchResults: {
-    maxHeight: 200,
+    maxHeight: 148,
     backgroundColor: "rgba(11,31,51,0.94)",
     borderRadius: 12,
-    paddingVertical: 6,
+    paddingVertical: 2,
+  },
+  searchSuggestPanel: {
+    backgroundColor: "rgba(11,31,51,0.94)",
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  searchSuggestRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(157,180,192,0.2)",
+  },
+  searchSuggestText: {
+    color: "#D6E2EA",
+    fontSize: 13,
   },
   searchResultsTitle: {
     color: "#9DB4C0",
@@ -1470,36 +1596,56 @@ const styles = StyleSheet.create({
   },
   searchResultRow: {
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "rgba(157,180,192,0.25)",
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
   },
   searchResultRowSelected: {
     backgroundColor: "rgba(0,187,249,0.18)",
   },
   searchResultText: {
     color: "#F4F7FA",
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 16,
     flex: 1,
   },
   searchResultAnnounce: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: "#1B9AAA",
     alignItems: "center",
     justifyContent: "center",
   },
   searchResultAnnounceText: {
     color: "#fff",
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "700",
-    lineHeight: 24,
+    lineHeight: 22,
     marginTop: -1,
+  },
+  searchCategoryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  searchCategoryText: {
+    color: "#00BBF9",
+    fontSize: 13,
+    fontWeight: "600",
+    flex: 1,
+  },
+  searchAttribution: {
+    color: "#7A93A0",
+    fontSize: 10,
+    paddingHorizontal: 12,
+    paddingTop: 4,
+    paddingBottom: 6,
   },
   banner: {
     position: "absolute",

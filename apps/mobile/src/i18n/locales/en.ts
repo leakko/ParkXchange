@@ -10,7 +10,7 @@ export const en: Record<TranslationKey, string> = {
   "location.always.message":
     "To notify you when you arrive at the exchange with the app closed, choose “Allow all the time” on the next screen. That keeps arrival assistance working.",
 
-  "map.search.placeholder": "Search for a place",
+  "map.search.placeholder": "Street, place or type (e.g. hairdresser)",
   "map.search.button": "Search",
   "map.search.empty.title": "No results in this area",
   "map.search.empty.message":
@@ -20,6 +20,9 @@ export const en: Record<TranslationKey, string> = {
   "map.search.failed": "Search failed",
   "map.search.resultsTitle": "{count} results (near → far)",
   "map.search.announceHit": "Announce at this place",
+  "map.search.categoryNear": "Search {category} nearby",
+  "map.search.suggestionsTitle": "Suggestions",
+  "map.search.attribution": "Search by LocationIQ.com",
 
   "offline.title": "No connection",
   "offline.body": "You’re offline. Connect to the internet to use ParkXchange.",

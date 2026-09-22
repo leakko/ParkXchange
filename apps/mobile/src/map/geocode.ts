@@ -1,3 +1,5 @@
+import type { AppLocale } from "../i18n/resolveLocale.ts";
+
 export type AddressSuggestion = {
   id: string;
   label: string;
@@ -11,8 +13,15 @@ export type ViewBox = [number, number, number, number];
 export type SearchPlacesOptions = {
   /** Visible map bounds (camera). */
   viewbox?: ViewBox | undefined;
-  /** Soft limit; Nominatim max is typically 50. */
+  /** Soft limit; LocationIQ max is typically 50. */
   limit?: number | undefined;
+  /** App UI locale — category lexicon + accept-language. */
+  locale?: AppLocale | undefined;
+  /**
+   * Force a search branch (e.g. category row tap). When omitted, classify
+   * from the query text.
+   */
+  forceKind?: SearchQueryKind | undefined;
 };
 
 /**
@@ -26,7 +35,28 @@ export type PlaceSearchResult = {
   shouldZoomOut: boolean;
 };
 
-type NominatimHit = {
+export type SearchQueryKind = "address" | "category" | "name";
+
+export type ClassifiedQuery = {
+  kind: SearchQueryKind;
+  /** Tags when kind === "category". */
+  osmTags?: string[];
+  /** Display label for the category (locale-facing). */
+  categoryLabel?: string;
+  /** Parsed street + house number when kind === "address". */
+  street?: string;
+  houseNumber?: string;
+};
+
+export type CategoryHint = {
+  /** Normalized lexicon key. */
+  key: string;
+  /** Human label in the active locale. */
+  label: string;
+  osmTags: string[];
+};
+
+type GeocodeHit = {
   place_id?: number | string;
   display_name?: string;
   lon?: string;
@@ -63,12 +93,72 @@ type PhotonFeature = {
   };
 };
 
-const USER_AGENT = "ParkXchange/0.1 (local-dev)";
+type NearbyHit = {
+  place_id?: number | string;
+  display_name?: string;
+  name?: string;
+  lat?: string;
+  lon?: string;
+  distance?: number | string;
+};
 
-const NOMINATIM_HEADERS = {
+const APP_VERSION = process.env.EXPO_PUBLIC_APP_VERSION ?? "0.1.0";
+const USER_AGENT = `ParkXchange/${APP_VERSION} (geocode; https://park-xchange.com)`;
+
+const LIQ_BASE =
+  process.env.EXPO_PUBLIC_LOCATIONIQ_BASE_URL?.replace(/\/$/, "") ??
+  "https://eu1.locationiq.com/v1";
+const PHOTON_URL =
+  process.env.EXPO_PUBLIC_PHOTON_URL?.replace(/\/$/, "") ??
+  "https://photon.komoot.io/api";
+/**
+ * Last-resort fuzzy only (after LocationIQ Autocomplete + Search return
+ * nothing). Disable with EXPO_PUBLIC_PHOTON_ENABLED=0 if the public demo
+ * rate-limits you.
+ */
+const PHOTON_ENABLED = process.env.EXPO_PUBLIC_PHOTON_ENABLED !== "0";
+
+const JSON_HEADERS = {
   Accept: "application/json",
   "User-Agent": USER_AGENT,
 };
+
+const CACHE_TTL_MS = 10 * 60 * 1000;
+const ENOUGH_HITS = 5;
+
+type CacheEntry = { expires: number; value: unknown };
+const responseCache = new Map<string, CacheEntry>();
+
+function cacheGet<T>(key: string): T | undefined {
+  const hit = responseCache.get(key);
+  if (!hit) {
+    return undefined;
+  }
+  if (Date.now() > hit.expires) {
+    responseCache.delete(key);
+    return undefined;
+  }
+  return hit.value as T;
+}
+
+function cacheSet(key: string, value: unknown): void {
+  responseCache.set(key, { expires: Date.now() + CACHE_TTL_MS, value });
+}
+
+/** Test helper — clears in-memory geocode cache. */
+export function clearGeocodeCache(): void {
+  responseCache.clear();
+}
+
+function locationIqKey(): string {
+  const key = process.env.EXPO_PUBLIC_LOCATIONIQ_KEY?.trim() ?? "";
+  if (!key) {
+    throw new Error(
+      "EXPO_PUBLIC_LOCATIONIQ_KEY is not set — cannot call LocationIQ",
+    );
+  }
+  return key;
+}
 
 /**
  * Minimum half-span (~6–7 km) so a street-level zoom still searches a
@@ -94,6 +184,91 @@ const BRAND_QUERY_ALIASES: { keys: string[]; queries: string[] }[] = [
   { keys: ["aldi"], queries: ["Aldi"] },
   { keys: ["ikea"], queries: ["IKEA"] },
 ];
+
+/** Category lexicon: locale term → OSM Nearby tags + display label. */
+type CategoryEntry = { labels: Record<AppLocale, string>; tags: string[] };
+
+const CATEGORY_LEXICON: Record<string, CategoryEntry> = {
+  peluqueria: {
+    labels: { es: "Peluquerías", en: "Hairdressers" },
+    tags: ["shop:hairdresser"],
+  },
+  hairdresser: {
+    labels: { es: "Peluquerías", en: "Hairdressers" },
+    tags: ["shop:hairdresser"],
+  },
+  hairsalon: {
+    labels: { es: "Peluquerías", en: "Hairdressers" },
+    tags: ["shop:hairdresser"],
+  },
+  farmacia: {
+    labels: { es: "Farmacias", en: "Pharmacies" },
+    tags: ["amenity:pharmacy"],
+  },
+  pharmacy: {
+    labels: { es: "Farmacias", en: "Pharmacies" },
+    tags: ["amenity:pharmacy"],
+  },
+  supermercado: {
+    labels: { es: "Supermercados", en: "Supermarkets" },
+    tags: ["shop:supermarket"],
+  },
+  supermarket: {
+    labels: { es: "Supermercados", en: "Supermarkets" },
+    tags: ["shop:supermarket"],
+  },
+  gasolinera: {
+    labels: { es: "Gasolineras", en: "Petrol stations" },
+    tags: ["amenity:fuel"],
+  },
+  gasstation: {
+    labels: { es: "Gasolineras", en: "Petrol stations" },
+    tags: ["amenity:fuel"],
+  },
+  petrol: {
+    labels: { es: "Gasolineras", en: "Petrol stations" },
+    tags: ["amenity:fuel"],
+  },
+  parking: {
+    labels: { es: "Aparcamientos", en: "Parking" },
+    tags: ["amenity:parking"],
+  },
+  aparcamiento: {
+    labels: { es: "Aparcamientos", en: "Parking" },
+    tags: ["amenity:parking"],
+  },
+  restaurante: {
+    labels: { es: "Restaurantes", en: "Restaurants" },
+    tags: ["amenity:restaurant"],
+  },
+  restaurant: {
+    labels: { es: "Restaurantes", en: "Restaurants" },
+    tags: ["amenity:restaurant"],
+  },
+  cafe: {
+    labels: { es: "Cafés", en: "Cafés" },
+    tags: ["amenity:cafe"],
+  },
+  cafeteria: {
+    labels: { es: "Cafés", en: "Cafés" },
+    tags: ["amenity:cafe"],
+  },
+  banco: {
+    labels: { es: "Bancos", en: "Banks" },
+    tags: ["amenity:bank"],
+  },
+  bank: {
+    labels: { es: "Bancos", en: "Banks" },
+    tags: ["amenity:bank"],
+  },
+  hospital: {
+    labels: { es: "Hospitales", en: "Hospitals" },
+    tags: ["amenity:hospital"],
+  },
+};
+
+const STREET_TYPE_WORDS =
+  "avenida|avda\\.?|av\\.?|calle|c\\/?|plaza|pza\\.?|paseo|camino|carretera|ronda|glorieta|boulevard|blvd\\.?|street|st\\.?|avenue|ave\\.?|road|rd\\.?|square|sq\\.?";
 
 /** Strip accents / punctuation for fuzzy brand matching. */
 export function compactSearchKey(raw: string): string {
@@ -183,6 +358,150 @@ export function searchQueryVariants(raw: string): string[] {
   return out;
 }
 
+export type ParsedStreetAddress = {
+  street: string;
+  houseNumber: string;
+  /** "18 Avenida …" form preferred by Nominatim-compatible APIs. */
+  freeForm: string;
+  structuredStreet: string;
+};
+
+/** Detect Spanish/English street + house number queries. */
+export function parseStreetAddressQuery(
+  raw: string,
+): ParsedStreetAddress | null {
+  const q = raw.trim().replace(/\s+/g, " ");
+  if (q.length < 3) {
+    return null;
+  }
+  const trailing = new RegExp(
+    `^(?<street>(?:${STREET_TYPE_WORDS})\\s+.+?)[,\\s]+(?<num>\\d+[a-zA-Z]?)\\s*$`,
+    "i",
+  );
+  const leading = new RegExp(
+    `^(?<num>\\d+[a-zA-Z]?)\\s+(?<street>(?:${STREET_TYPE_WORDS})\\s+.+)$`,
+    "i",
+  );
+  const m = q.match(trailing) ?? q.match(leading);
+  if (!m?.groups?.street || !m.groups.num) {
+    return null;
+  }
+  const street = m.groups.street.trim().replace(/,\s*$/, "");
+  const houseNumber = m.groups.num.trim();
+  return {
+    street,
+    houseNumber,
+    freeForm: `${houseNumber} ${street}`,
+    structuredStreet: `${houseNumber} ${street}`,
+  };
+}
+
+function categoryEntryForCompact(
+  compact: string,
+): { key: string; entry: CategoryEntry } | null {
+  if (compact.length < 2) {
+    return null;
+  }
+  if (CATEGORY_LEXICON[compact]) {
+    return { key: compact, entry: CATEGORY_LEXICON[compact]! };
+  }
+  // Prefix match for UX hints (pelu → peluqueria). Prefer longest key.
+  let best: { key: string; entry: CategoryEntry } | null = null;
+  for (const [key, entry] of Object.entries(CATEGORY_LEXICON)) {
+    if (key.startsWith(compact) || compact.startsWith(key)) {
+      if (!best || key.length > best.key.length) {
+        best = { key, entry };
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Exact category match: whole query compact key is in the lexicon.
+ * "peluquería" / "hair salon" match; "Peluquería Ana" does not.
+ */
+export function matchExactCategory(
+  query: string,
+  locale: AppLocale = "es",
+): CategoryHint | null {
+  const key = compactSearchKey(query.trim());
+  const entry = CATEGORY_LEXICON[key];
+  if (!entry) {
+    return null;
+  }
+  return {
+    key,
+    label: entry.labels[locale],
+    osmTags: entry.tags,
+  };
+}
+
+/**
+ * Prefix / partial match for the category action row while typing.
+ * Does not fire an API by itself.
+ */
+export function matchCategoryPrefix(
+  query: string,
+  locale: AppLocale = "es",
+): CategoryHint | null {
+  const trimmed = query.trim();
+  if (trimmed.length < 3) {
+    return null;
+  }
+  // If it looks like a named place ("Peluquería Ana"), skip the row.
+  const words = trimmed.split(/\s+/);
+  if (words.length >= 2) {
+    const first = compactSearchKey(words[0]!);
+    const rest = compactSearchKey(words.slice(1).join(""));
+    if (CATEGORY_LEXICON[first] && rest.length > 0) {
+      return null;
+    }
+  }
+  const compact = compactSearchKey(trimmed);
+  const found = categoryEntryForCompact(compact);
+  if (!found) {
+    return null;
+  }
+  // Require a meaningful prefix (≥3 chars of key or exact).
+  if (
+    compact.length < 3 &&
+    compact !== found.key &&
+    !found.key.startsWith(compact)
+  ) {
+    return null;
+  }
+  return {
+    key: found.key,
+    label: found.entry.labels[locale],
+    osmTags: found.entry.tags,
+  };
+}
+
+/** Route a free-text query to address / category / name. */
+export function classifySearchQuery(
+  query: string,
+  locale: AppLocale = "es",
+): ClassifiedQuery {
+  const address = parseStreetAddressQuery(query);
+  if (address) {
+    return {
+      kind: "address",
+      street: address.street,
+      houseNumber: address.houseNumber,
+    };
+  }
+  const cat = matchExactCategory(query, locale);
+  if (cat) {
+    return {
+      kind: "category",
+      osmTags: cat.osmTags,
+      categoryLabel: cat.label,
+    };
+  }
+  return { kind: "name" };
+}
+
 /** Grow a viewbox around its center (factor 1 = same, 2 = twice as wide/tall). */
 export function expandViewBox(box: ViewBox, factor: number): ViewBox {
   const [west, south, east, north] = box;
@@ -251,6 +570,31 @@ export function sortHitsNearToFar(
   );
 }
 
+/** Map raw geocode hits to suggestions, preferring matching house numbers. */
+export function suggestionsPreferringHouseNumber(
+  rawHits: GeocodeHit[],
+  houseNumber?: string,
+): AddressSuggestion[] {
+  const want = houseNumber?.toLowerCase() ?? "";
+  const scored: { s: AddressSuggestion; match: boolean }[] = [];
+  for (const hit of rawHits) {
+    const s = hitToSuggestion(hit);
+    if (!s) {
+      continue;
+    }
+    const hn = hit.address?.house_number?.toLowerCase() ?? "";
+    const match =
+      want !== "" &&
+      (hn === want ||
+        hn.split(/[;,/]/).some((p) => p.trim() === want));
+    scored.push({ s, match });
+  }
+  if (want) {
+    scored.sort((a, b) => Number(b.match) - Number(a.match));
+  }
+  return scored.map((x) => x.s);
+}
+
 /** Bounds that contain all hits (or null if empty). */
 export function boundsForHits(
   hits: AddressSuggestion[],
@@ -273,7 +617,7 @@ export function boundsForHits(
   return [west - padLon, south - padLat, east + padLon, north + padLat];
 }
 
-function formatStreetLabel(hit: NominatimHit): string | null {
+function formatStreetLabel(hit: GeocodeHit): string | null {
   const a = hit.address;
   if (!a) {
     return hit.display_name ?? null;
@@ -281,7 +625,9 @@ function formatStreetLabel(hit: NominatimHit): string | null {
   const street = a.road ?? a.pedestrian ?? a.footway ?? a.path;
   const place = a.neighbourhood ?? a.suburb ?? a.city ?? a.town ?? a.village;
   if (street && a.house_number) {
-    return place ? `${street} ${a.house_number}, ${place}` : `${street} ${a.house_number}`;
+    return place
+      ? `${street} ${a.house_number}, ${place}`
+      : `${street} ${a.house_number}`;
   }
   if (street) {
     return place ? `${street}, ${place}` : street;
@@ -289,22 +635,33 @@ function formatStreetLabel(hit: NominatimHit): string | null {
   return hit.display_name ?? place ?? null;
 }
 
-/** Build Nominatim search query string (exported for tests). */
+/** Build LocationIQ / Nominatim-compatible search params (exported for tests). */
 export function buildNominatimSearchParams(
   query: string,
   opts: {
     viewbox?: ViewBox;
     bounded?: boolean;
     limit?: number;
+    acceptLanguage?: string;
+    street?: string;
   } = {},
 ): URLSearchParams {
   const params = new URLSearchParams({
-    q: query,
     format: "json",
     limit: String(opts.limit ?? 30),
     addressdetails: "1",
     dedupe: "1",
+    normalizeaddress: "1",
   });
+  if (opts.street) {
+    params.set("street", opts.street);
+    params.set("countrycodes", "es");
+  } else {
+    params.set("q", query);
+  }
+  if (opts.acceptLanguage) {
+    params.set("accept-language", opts.acceptLanguage);
+  }
   if (opts.viewbox) {
     const [west, south, east, north] = opts.viewbox;
     params.set("viewbox", `${west},${north},${east},${south}`);
@@ -315,7 +672,47 @@ export function buildNominatimSearchParams(
   return params;
 }
 
-function hitToSuggestion(hit: NominatimHit): AddressSuggestion | null {
+export function buildAutocompleteParams(
+  query: string,
+  opts: {
+    viewbox?: ViewBox;
+    limit?: number;
+    acceptLanguage?: string;
+  } = {},
+): URLSearchParams {
+  const params = new URLSearchParams({
+    q: query,
+    limit: String(Math.min(opts.limit ?? 10, 20)),
+    normalizecity: "1",
+  });
+  if (opts.acceptLanguage) {
+    params.set("accept-language", opts.acceptLanguage);
+  }
+  if (opts.viewbox) {
+    const [west, south, east, north] = opts.viewbox;
+    params.set("viewbox", `${west},${south},${east},${north}`);
+    params.set("bounded", "0");
+  }
+  return params;
+}
+
+export function buildNearbyParams(
+  lat: number,
+  lon: number,
+  tag: string,
+  opts: { radius?: number; limit?: number } = {},
+): URLSearchParams {
+  return new URLSearchParams({
+    lat: String(lat),
+    lon: String(lon),
+    tag,
+    radius: String(opts.radius ?? 1500),
+    limit: String(opts.limit ?? 30),
+    format: "json",
+  });
+}
+
+function hitToSuggestion(hit: GeocodeHit): AddressSuggestion | null {
   const lon = Number.parseFloat(hit.lon ?? "");
   const lat = Number.parseFloat(hit.lat ?? "");
   if (!Number.isFinite(lon) || !Number.isFinite(lat) || !hit.display_name) {
@@ -361,27 +758,94 @@ function photonToSuggestion(f: PhotonFeature): AddressSuggestion | null {
     p.state,
   ].filter((x): x is string => !!x && x.length > 0);
   const label = parts.length > 0 ? `${name} — ${parts.join(", ")}` : name;
-  const id = p.osm_id != null ? `photon:${p.osm_type ?? "x"}:${p.osm_id}` : `photon:${lon},${lat}`;
+  const id =
+    p.osm_id != null
+      ? `photon:${p.osm_type ?? "x"}:${p.osm_id}`
+      : `photon:${lon},${lat}`;
   return { id, label, lon, lat };
 }
 
-async function fetchNominatim(
-  params: URLSearchParams,
-): Promise<AddressSuggestion[]> {
-  const url = `https://nominatim.openstreetmap.org/search?${params.toString()}`;
-  const res = await fetch(url, { headers: NOMINATIM_HEADERS });
+function nearbyToSuggestion(hit: NearbyHit): AddressSuggestion | null {
+  const lon = Number.parseFloat(hit.lon ?? "");
+  const lat = Number.parseFloat(hit.lat ?? "");
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+    return null;
+  }
+  const label =
+    hit.name && hit.display_name
+      ? `${hit.name} — ${hit.display_name}`
+      : (hit.display_name ?? hit.name ?? `${lat}, ${lon}`);
+  return {
+    id: String(hit.place_id ?? `nearby:${lon},${lat}`),
+    label,
+    lon,
+    lat,
+  };
+}
+
+async function fetchJson(url: string): Promise<unknown> {
+  const cached = cacheGet<unknown>(url);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const res = await fetch(url, { headers: JSON_HEADERS });
   if (!res.ok) {
     throw new Error(`geocode failed (${res.status})`);
   }
-  const hits = (await res.json()) as NominatimHit[];
+  const body: unknown = await res.json();
+  cacheSet(url, body);
+  return body;
+}
+
+async function fetchSearchRaw(
+  params: URLSearchParams,
+): Promise<GeocodeHit[]> {
+  const key = locationIqKey();
+  params.set("key", key);
+  const url = `${LIQ_BASE}/search?${params.toString()}`;
+  const body = await fetchJson(url);
+  return Array.isArray(body) ? (body as GeocodeHit[]) : [];
+}
+
+async function fetchSearch(
+  params: URLSearchParams,
+): Promise<AddressSuggestion[]> {
+  const hits = await fetchSearchRaw(params);
   return hits
     .map(hitToSuggestion)
     .filter((s): s is AddressSuggestion => s != null);
 }
 
-/**
- * Komoot Photon — typo-tolerant OSM search (public demo API; be polite).
- */
+async function fetchAutocomplete(
+  params: URLSearchParams,
+): Promise<AddressSuggestion[]> {
+  const key = locationIqKey();
+  params.set("key", key);
+  const url = `${LIQ_BASE}/autocomplete?${params.toString()}`;
+  const body = await fetchJson(url);
+  const hits = Array.isArray(body) ? (body as GeocodeHit[]) : [];
+  return hits
+    .map(hitToSuggestion)
+    .filter((s): s is AddressSuggestion => s != null);
+}
+
+async function fetchNearby(
+  lat: number,
+  lon: number,
+  tag: string,
+  opts: { radius?: number; limit?: number } = {},
+): Promise<AddressSuggestion[]> {
+  const key = locationIqKey();
+  const params = buildNearbyParams(lat, lon, tag, opts);
+  params.set("key", key);
+  const url = `${LIQ_BASE}/nearby?${params.toString()}`;
+  const body = await fetchJson(url);
+  const hits = Array.isArray(body) ? (body as NearbyHit[]) : [];
+  return hits
+    .map(nearbyToSuggestion)
+    .filter((s): s is AddressSuggestion => s != null);
+}
+
 async function fetchPhoton(
   query: string,
   opts: {
@@ -390,6 +854,9 @@ async function fetchPhoton(
     limit?: number;
   } = {},
 ): Promise<AddressSuggestion[]> {
+  if (!PHOTON_ENABLED) {
+    return [];
+  }
   const params = new URLSearchParams({
     q: query,
     limit: String(opts.limit ?? 30),
@@ -402,14 +869,19 @@ async function fetchPhoton(
     const [west, south, east, north] = opts.bbox;
     params.set("bbox", `${west},${south},${east},${north}`);
   }
-  const url = `https://photon.komoot.io/api/?${params.toString()}`;
-  const res = await fetch(url, {
-    headers: { Accept: "application/json", "User-Agent": USER_AGENT },
-  });
-  if (!res.ok) {
-    throw new Error(`photon failed (${res.status})`);
+  const url = `${PHOTON_URL}?${params.toString()}`;
+  const cached = cacheGet<{ features?: PhotonFeature[] }>(url);
+  let body: { features?: PhotonFeature[] };
+  if (cached) {
+    body = cached;
+  } else {
+    const res = await fetch(url, { headers: JSON_HEADERS });
+    if (!res.ok) {
+      throw new Error(`photon failed (${res.status})`);
+    }
+    body = (await res.json()) as { features?: PhotonFeature[] };
+    cacheSet(url, body);
   }
-  const body = (await res.json()) as { features?: PhotonFeature[] };
   return (body.features ?? [])
     .map(photonToSuggestion)
     .filter((s): s is AddressSuggestion => s != null);
@@ -434,22 +906,138 @@ function cappedSearchBox(viewport: ViewBox): ViewBox {
   return searchBox;
 }
 
-/**
- * Search like Google Maps: flexible query matching, list near→far in a
- * neighbourhood radius; never returns other continents when a viewport is set.
- */
-export async function searchPlacesDetailed(
+function radiusMetersFromViewBox(box: ViewBox): number {
+  const [west, south, east, north] = box;
+  const halfDeg = Math.max((east - west) / 2, (north - south) / 2);
+  // ~111 km per degree latitude; clamp 500 m – 3 km
+  const m = halfDeg * 111_000;
+  return Math.min(3000, Math.max(500, Math.round(m)));
+}
+
+function emptyResult(): PlaceSearchResult {
+  return { hits: [], inViewport: [], shouldZoomOut: false };
+}
+
+function finalizeHits(
+  hits: AddressSuggestion[],
+  viewport: ViewBox | undefined,
+): PlaceSearchResult {
+  if (!viewport) {
+    return { hits, inViewport: hits, shouldZoomOut: false };
+  }
+  const [centerLon, centerLat] = viewBoxCenter(viewport);
+  const sorted = sortHitsNearToFar(hits, centerLon, centerLat);
+  const inViewport = filterHitsInViewBox(sorted, viewport);
+  return {
+    hits: sorted,
+    inViewport,
+    shouldZoomOut: inViewport.length === 0 && sorted.length > 0,
+  };
+}
+
+async function searchAddressBranch(
   query: string,
-  opts: SearchPlacesOptions = {},
+  opts: SearchPlacesOptions,
+): Promise<PlaceSearchResult> {
+  const parsed = parseStreetAddressQuery(query);
+  if (!parsed) {
+    return searchNameBranch(query, opts);
+  }
+  const locale = opts.locale ?? "es";
+  const limit = opts.limit ?? 30;
+  const viewport = opts.viewbox;
+  const lang = locale;
+
+  let raw = await fetchSearchRaw(
+    buildNominatimSearchParams(parsed.freeForm, {
+      street: parsed.structuredStreet,
+      ...(viewport ? { viewbox: viewport } : {}),
+      bounded: false,
+      limit,
+      acceptLanguage: lang,
+    }),
+  );
+
+  if (raw.length === 0) {
+    raw = await fetchSearchRaw(
+      buildNominatimSearchParams(parsed.freeForm, {
+        ...(viewport ? { viewbox: viewport } : {}),
+        bounded: false,
+        limit,
+        acceptLanguage: lang,
+      }),
+    );
+  }
+
+  // Soft local filter when viewport exists (bias, not a hard wall).
+  if (viewport && raw.length > 0) {
+    const wide = cappedSearchBox(viewport);
+    const [cx, cy] = viewBoxCenter(viewport);
+    const maxBox: ViewBox = [
+      cx - MAX_SEARCH_HALF_SPAN_DEG,
+      cy - MAX_SEARCH_HALF_SPAN_DEG,
+      cx + MAX_SEARCH_HALF_SPAN_DEG,
+      cy + MAX_SEARCH_HALF_SPAN_DEG,
+    ];
+    const box = expandViewBox(wide, 2);
+    const useBox =
+      halfSpan(box) > MAX_SEARCH_HALF_SPAN_DEG ? maxBox : box;
+    const kept = raw.filter((hit) => {
+      const lon = Number.parseFloat(hit.lon ?? "");
+      const lat = Number.parseFloat(hit.lat ?? "");
+      return (
+        Number.isFinite(lon) &&
+        Number.isFinite(lat) &&
+        pointInViewBox(lon, lat, useBox)
+      );
+    });
+    if (kept.length > 0) {
+      raw = kept;
+    }
+  }
+
+  return finalizeHits(
+    suggestionsPreferringHouseNumber(raw, parsed.houseNumber),
+    viewport,
+  );
+}
+
+async function searchCategoryBranch(
+  tags: string[],
+  opts: SearchPlacesOptions,
+): Promise<PlaceSearchResult> {
+  const viewport = opts.viewbox;
+  if (!viewport) {
+    return emptyResult();
+  }
+  const [lon, lat] = viewBoxCenter(viewport);
+  const radius = radiusMetersFromViewBox(cappedSearchBox(viewport));
+  const limit = opts.limit ?? 30;
+  const collected = new Map<string, AddressSuggestion>();
+  for (const tag of tags) {
+    const hits = await fetchNearby(lat, lon, tag, { radius, limit });
+    for (const h of hits) {
+      collected.set(h.id, h);
+    }
+    if (collected.size >= ENOUGH_HITS) {
+      break;
+    }
+  }
+  return finalizeHits([...collected.values()], viewport);
+}
+
+async function searchNameBranch(
+  query: string,
+  opts: SearchPlacesOptions,
 ): Promise<PlaceSearchResult> {
   const variants = searchQueryVariants(query);
   const primary = variants[0];
   if (!primary || primary.length < 3) {
-    return { hits: [], inViewport: [], shouldZoomOut: false };
+    return emptyResult();
   }
+  const locale = opts.locale ?? "es";
   const limit = opts.limit ?? 30;
   const viewport = opts.viewbox;
-
   const collected = new Map<string, AddressSuggestion>();
   const ingest = (raw: AddressSuggestion[], box: ViewBox | null) => {
     for (const h of box ? filterHitsInViewBox(raw, box) : raw) {
@@ -457,108 +1045,72 @@ export async function searchPlacesDetailed(
     }
   };
 
-  if (!viewport) {
-    for (const q of variants) {
-      ingest(await fetchNominatim(buildNominatimSearchParams(q, { limit })), null);
-      if (collected.size >= 5) {
-        break;
-      }
-    }
-    if (collected.size === 0) {
-      for (const q of variants) {
-        try {
-          ingest(await fetchPhoton(q, { limit }), null);
-        } catch {
-          /* Photon is best-effort */
-        }
-        if (collected.size > 0) {
-          break;
-        }
-      }
-    }
-    const hits = [...collected.values()];
-    return { hits, inViewport: hits, shouldZoomOut: false };
-  }
-
-  const [centerLon, centerLat] = viewBoxCenter(viewport);
-  const searchBox = cappedSearchBox(viewport);
-  const wide: ViewBox = [
-    centerLon - MAX_SEARCH_HALF_SPAN_DEG,
-    centerLat - MAX_SEARCH_HALF_SPAN_DEG,
-    centerLon + MAX_SEARCH_HALF_SPAN_DEG,
-    centerLat + MAX_SEARCH_HALF_SPAN_DEG,
-  ];
-
-  // 1) Nominatim with the typed query, expanding the box.
-  for (const factor of [1, 1.5, 2, 3]) {
-    const box = expandViewBox(searchBox, factor);
-    if (halfSpan(box) > MAX_SEARCH_HALF_SPAN_DEG * 1.05) {
-      break;
-    }
+  // 1) Autocomplete (partial / typeahead-friendly).
+  try {
     ingest(
-      await fetchNominatim(
-        buildNominatimSearchParams(primary, {
-          viewbox: box,
-          bounded: true,
-          limit,
+      await fetchAutocomplete(
+        buildAutocompleteParams(primary, {
+          ...(viewport ? { viewbox: viewport } : {}),
+          limit: Math.min(limit, 20),
+          acceptLanguage: locale,
         }),
       ),
-      box,
+      viewport ? cappedSearchBox(viewport) : null,
     );
-    if (collected.size >= 5) {
+  } catch {
+    /* fall through to search */
+  }
+  if (collected.size >= ENOUGH_HITS) {
+    return finalizeHits([...collected.values()], viewport);
+  }
+
+  // 2) Search free-form (one pass; brand variants if still thin).
+  const searchBox = viewport ? cappedSearchBox(viewport) : undefined;
+  const wide = viewport
+    ? ([
+        viewBoxCenter(viewport)[0] - MAX_SEARCH_HALF_SPAN_DEG,
+        viewBoxCenter(viewport)[1] - MAX_SEARCH_HALF_SPAN_DEG,
+        viewBoxCenter(viewport)[0] + MAX_SEARCH_HALF_SPAN_DEG,
+        viewBoxCenter(viewport)[1] + MAX_SEARCH_HALF_SPAN_DEG,
+      ] as ViewBox)
+    : undefined;
+
+  for (const q of variants.slice(0, 3)) {
+    try {
+      ingest(
+        await fetchSearch(
+          buildNominatimSearchParams(q, {
+            ...(searchBox
+              ? { viewbox: searchBox }
+              : wide
+                ? { viewbox: wide }
+                : {}),
+            bounded: Boolean(searchBox),
+            limit,
+            acceptLanguage: locale,
+          }),
+        ),
+        wide ?? searchBox ?? null,
+      );
+    } catch {
+      /* continue */
+    }
+    if (collected.size >= ENOUGH_HITS) {
       break;
     }
   }
 
-  // 2) Alternate spellings / brand canons (e.g. mcdonalds, McDonald's).
-  if (collected.size < 3) {
-    for (const q of variants.slice(1)) {
-      ingest(
-        await fetchNominatim(
-          buildNominatimSearchParams(q, {
-            viewbox: wide,
-            bounded: true,
-            limit,
-          }),
-        ),
-        wide,
-      );
-      if (collected.size >= 5) {
-        break;
-      }
-    }
-  }
-
-  // 3) Unbounded Nominatim preference inside the hard local filter.
-  if (collected.size === 0) {
-    for (const q of variants) {
-      ingest(
-        await fetchNominatim(
-          buildNominatimSearchParams(q, {
-            viewbox: wide,
-            bounded: false,
-            limit,
-          }),
-        ),
-        wide,
-      );
-      if (collected.size > 0) {
-        break;
-      }
-    }
-  }
-
-  // 4) Photon fuzzy fallback (handles "mc donalds" / light typos).
-  if (collected.size === 0) {
-    for (const q of variants) {
+  // 3) Photon fuzzy fallback once.
+  if (collected.size === 0 && PHOTON_ENABLED) {
+    for (const q of variants.slice(0, 2)) {
       try {
-        // Prefer lat/lon bias (bbox alone is too strict for spaced queries).
+        const center = viewport ? viewBoxCenter(viewport) : undefined;
         ingest(
           await fetchPhoton(q, {
-            center: [centerLon, centerLat],
+            ...(center ? { center } : {}),
             limit,
           }),
-          wide,
+          wide ?? null,
         );
       } catch {
         /* ignore */
@@ -569,17 +1121,76 @@ export async function searchPlacesDetailed(
     }
   }
 
-  const hits = sortHitsNearToFar(
-    [...collected.values()],
-    centerLon,
-    centerLat,
-  );
-  const inViewport = filterHitsInViewBox(hits, viewport);
-  return {
-    hits,
-    inViewport,
-    shouldZoomOut: inViewport.length === 0 && hits.length > 0,
-  };
+  return finalizeHits([...collected.values()], viewport);
+}
+
+/**
+ * Debounced typeahead suggestions (names / addresses). Does not run
+ * category Nearby — that is only on explicit category tap or confirm.
+ */
+export async function autocompletePlaces(
+  query: string,
+  opts: SearchPlacesOptions = {},
+): Promise<AddressSuggestion[]> {
+  const q = query.trim();
+  if (q.length < 3) {
+    return [];
+  }
+  const locale = opts.locale ?? "es";
+  try {
+    const hits = await fetchAutocomplete(
+      buildAutocompleteParams(q, {
+        ...(opts.viewbox ? { viewbox: opts.viewbox } : {}),
+        limit: opts.limit ?? 8,
+        acceptLanguage: locale,
+      }),
+    );
+    if (!opts.viewbox) {
+      return hits;
+    }
+    const [clon, clat] = viewBoxCenter(opts.viewbox);
+    return sortHitsNearToFar(hits, clon, clat);
+  } catch {
+    return [];
+  }
+}
+
+/** Run a category Nearby search (e.g. after tapping the category row). */
+export async function searchCategoryNearby(
+  osmTags: string[],
+  opts: SearchPlacesOptions = {},
+): Promise<PlaceSearchResult> {
+  return searchCategoryBranch(osmTags, opts);
+}
+
+/**
+ * Search like Google Maps: classify query, then address / category / name
+ * branch; list near→far when a viewport is set.
+ */
+export async function searchPlacesDetailed(
+  query: string,
+  opts: SearchPlacesOptions = {},
+): Promise<PlaceSearchResult> {
+  const q = query.trim();
+  if (q.length < 3) {
+    return emptyResult();
+  }
+  const locale = opts.locale ?? "es";
+  const kind =
+    opts.forceKind ?? classifySearchQuery(q, locale).kind;
+
+  if (kind === "address") {
+    return searchAddressBranch(q, { ...opts, locale });
+  }
+  if (kind === "category") {
+    const classified = classifySearchQuery(q, locale);
+    const tags = classified.osmTags ?? [];
+    if (tags.length === 0) {
+      return searchNameBranch(q, { ...opts, locale });
+    }
+    return searchCategoryBranch(tags, { ...opts, locale });
+  }
+  return searchNameBranch(q, { ...opts, locale });
 }
 
 /** Convenience: just the ordered hit list. */
@@ -602,20 +1213,30 @@ export async function searchAddresses(
 export async function reverseGeocode(
   lon: number,
   lat: number,
+  locale: AppLocale = "es",
 ): Promise<string | null> {
-  const url =
-    "https://nominatim.openstreetmap.org/reverse?" +
-    new URLSearchParams({
-      lon: String(lon),
-      lat: String(lat),
-      format: "json",
-      addressdetails: "1",
-      zoom: "18",
-    }).toString();
-  const res = await fetch(url, { headers: NOMINATIM_HEADERS });
-  if (!res.ok) {
-    throw new Error(`reverse geocode failed (${res.status})`);
+  const key = locationIqKey();
+  const roundLon = lon.toFixed(5);
+  const roundLat = lat.toFixed(5);
+  const params = new URLSearchParams({
+    key,
+    lon: String(lon),
+    lat: String(lat),
+    format: "json",
+    addressdetails: "1",
+    zoom: "18",
+    "accept-language": locale,
+  });
+  const url = `${LIQ_BASE}/reverse?${params.toString()}`;
+  const cacheKey = `rev:${locale}:${roundLon},${roundLat}`;
+  const cached = cacheGet<GeocodeHit>(cacheKey);
+  let hit: GeocodeHit;
+  if (cached) {
+    hit = cached;
+  } else {
+    const body = await fetchJson(url);
+    hit = body as GeocodeHit;
+    cacheSet(cacheKey, hit);
   }
-  const hit = (await res.json()) as NominatimHit;
   return formatStreetLabel(hit);
 }

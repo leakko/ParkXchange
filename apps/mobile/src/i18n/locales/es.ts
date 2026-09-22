@@ -8,7 +8,7 @@ export const es = {
   "location.always.message":
     "Para avisar cuando llegues al punto de intercambio con la app cerrada, elige «Permitir siempre» (o «Permitir todo el tiempo») en la siguiente pantalla. Así la ayuda de llegada funciona bien.",
 
-  "map.search.placeholder": "Busca un lugar",
+  "map.search.placeholder": "Calle, sitio o tipo (ej. peluquería)",
   "map.search.button": "Buscar",
   "map.search.empty.title": "Sin resultados en esta zona",
   "map.search.empty.message":
@@ -18,6 +18,9 @@ export const es = {
   "map.search.failed": "No se pudo buscar",
   "map.search.resultsTitle": "{count} resultados (cerca → lejos)",
   "map.search.announceHit": "Anunciar en este lugar",
+  "map.search.categoryNear": "Buscar {category} cerca",
+  "map.search.suggestionsTitle": "Sugerencias",
+  "map.search.attribution": "Search by LocationIQ.com",
 
   "offline.title": "Sin conexión",
   "offline.body": "No tienes internet. Conéctate para usar ParkXchange.",
