@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -119,6 +120,7 @@ export default function SpotDetailScreen() {
   }, [signedIn]);
 
   useEffect(() => {
+    setMakingOffer(false);
     setLoading(true);
     void refreshSpot();
     void refreshOffers();
@@ -158,8 +160,9 @@ export default function SpotDetailScreen() {
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel={t("common.close")}
+          style={styles.closeHit}
         >
-          <Text style={styles.close}>{t("common.close")}</Text>
+          <Ionicons name="close" size={26} color={accountColors.text} />
         </Pressable>
       </View>
 
@@ -348,10 +351,8 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   missing: { color: accountColors.muted, fontSize: 15, textAlign: "center" },
-  close: {
-    color: accountColors.accent,
-    fontSize: 16,
-    fontWeight: "600",
+  closeHit: {
+    padding: 2,
   },
   closeBtn: {
     backgroundColor: accountColors.accent,

@@ -8,7 +8,7 @@ import {
   type PressEvent,
   type ViewStateChangeEvent,
 } from "@maplibre/maplibre-react-native";
-import { type Href, useLocalSearchParams, useRouter } from "expo-router";
+import { type Href, useLocalSearchParams, usePathname, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -107,6 +107,7 @@ export default function MapScreen() {
   const { t, formatDateTime, locale } = useTranslation();
   const { confirm, alert } = useConfirm();
   const router = useRouter();
+  const pathname = usePathname();
   const focusParams = useLocalSearchParams<{
     focusLon?: string;
     focusLat?: string;
@@ -228,6 +229,24 @@ export default function MapScreen() {
       onUnauthorized: () => requireSignIn("/"),
     });
   }, [requireSignIn, t]);
+
+  /** Open or replace the single spot form sheet (never stack sheets). */
+  const openSpotDetail = useCallback(
+    (spot: SpotFeature) => {
+      const id = String(spot.id ?? "");
+      if (!id) {
+        return;
+      }
+      setSelected(spot);
+      const href = `/spot/${id}` as Href;
+      if (pathname.startsWith("/spot")) {
+        router.replace(href);
+      } else {
+        router.navigate(href);
+      }
+    },
+    [pathname, router],
+  );
 
   const { collection, featureById, isLoading, error, refetch } = useDiscovery(
     viewport,
@@ -616,8 +635,7 @@ export default function MapScreen() {
             return;
           }
         }
-        setSelected(spot);
-        router.navigate(`/spot/${String(spot.id)}` as Href);
+        openSpotDetail(spot);
         const openExchange =
           !!fromActive ||
           spot.properties.status === "reserved" ||
@@ -627,7 +645,7 @@ export default function MapScreen() {
         }
       })();
     },
-    [featureById, mySpotsById, activeSpot, refreshActiveReservation, router],
+    [featureById, mySpotsById, activeSpot, refreshActiveReservation, openSpotDetail],
   );
 
   const clearSearchHits = useCallback(() => {
@@ -894,7 +912,7 @@ export default function MapScreen() {
           setSelected(spot);
           setMineArmed(true);
           setSpotsArmed(true);
-          router.navigate(`/spot/${spotId}` as Href);
+          openSpotDetail(spot);
         } catch {
           /* camera move is enough */
         }
@@ -910,15 +928,15 @@ export default function MapScreen() {
     focusParams.focusLon,
     focusParams.focusLat,
     focusParams.focusSpot,
+    openSpotDetail,
     router,
   ]);
 
   const afterAnnounce = useCallback(
     async (spot: SpotFeature, message: string) => {
-      setSelected(spot);
       setSpotsArmed(true);
       setMineArmed(true);
-      router.navigate(`/spot/${String(spot.id)}` as Href);
+      openSpotDetail(spot);
       await Promise.all([refetch(), refreshMySpotsOverlay()]);
       await alert({
         title: t("map.alert.announced.title"),
@@ -926,7 +944,7 @@ export default function MapScreen() {
         confirmLabel: t("common.ok"),
       });
     },
-    [alert, refetch, refreshMySpotsOverlay, router, t],
+    [alert, openSpotDetail, refetch, refreshMySpotsOverlay, t],
   );
 
   const openAnnounce = useCallback(
@@ -1302,8 +1320,7 @@ export default function MapScreen() {
           style={[styles.banner, styles.activeBanner, { top: insets.top + 118 }]}
           onPress={() => {
             if (activeSpot) {
-              setSelected(activeSpot);
-              router.navigate(`/spot/${String(activeSpot.id)}` as Href);
+              openSpotDetail(activeSpot);
             }
           }}
           accessibilityRole="button"

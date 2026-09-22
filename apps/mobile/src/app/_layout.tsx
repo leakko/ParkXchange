@@ -86,6 +86,8 @@ export default function RootLayout() {
                   >
                     <Stack.Screen
                       name="spot/[id]"
+                      // One sheet instance — changing id replaces content, no stack of sheets.
+                      getId={() => "spot-detail"}
                       options={{
                         presentation: "formSheet",
                         headerShown: false,
