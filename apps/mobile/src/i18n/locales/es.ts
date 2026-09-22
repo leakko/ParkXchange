@@ -8,7 +8,7 @@ export const es = {
   "location.always.message":
     "Para avisar cuando llegues al punto de intercambio con la app cerrada, elige «Permitir siempre» (o «Permitir todo el tiempo») en la siguiente pantalla. Así la ayuda de llegada funciona bien.",
 
-  "map.search.placeholder": "Calle, sitio o tipo (ej. peluquería)",
+  "map.search.placeholder": "Calle, sitio, etc.",
   "map.search.button": "Buscar",
   "map.search.empty.title": "Sin resultados en esta zona",
   "map.search.empty.message":

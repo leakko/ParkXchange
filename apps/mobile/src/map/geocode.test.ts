@@ -8,6 +8,7 @@ import {
   buildNominatimSearchParams,
   classifySearchQuery,
   ensureMinSearchBox,
+  estimatePositionAlongStreetBBox,
   expandViewBox,
   filterHitsInViewBox,
   matchCategoryPrefix,
@@ -15,7 +16,9 @@ import {
   parseStreetAddressQuery,
   pointInViewBox,
   searchQueryVariants,
+  shouldLiveAutocomplete,
   sortHitsNearToFar,
+  suggestionsPreferringHouseNumber,
 } from "./geocode.ts";
 
 describe("buildNominatimSearchParams", () => {
@@ -96,8 +99,65 @@ describe("parseStreetAddressQuery", () => {
     assert.equal(p!.structuredStreet, "18 Calle Enramadilla");
   });
 
+  it("parses Calle Malvaloca with different numbers", () => {
+    const a = parseStreetAddressQuery("Calle Malvaloca, 1");
+    const b = parseStreetAddressQuery("Calle Malvaloca, 15");
+    assert.equal(a!.houseNumber, "1");
+    assert.equal(b!.houseNumber, "15");
+    assert.equal(a!.street, b!.street);
+  });
+
   it("returns null for brand names", () => {
     assert.equal(parseStreetAddressQuery("Burger King"), null);
+  });
+});
+
+describe("estimatePositionAlongStreetBBox", () => {
+  const malvaloca = ["37.3709384", "37.3722070", "-5.9744544", "-5.9720446"];
+
+  it("puts nº1 and nº15 at different coordinates", () => {
+    const a = estimatePositionAlongStreetBBox(malvaloca, "1");
+    const b = estimatePositionAlongStreetBBox(malvaloca, "15");
+    assert.ok(a && b);
+    assert.notEqual(a!.lon, b!.lon);
+    assert.ok(Math.abs(a!.lon - b!.lon) > 1e-5 || Math.abs(a!.lat - b!.lat) > 1e-5);
+  });
+});
+
+describe("suggestionsPreferringHouseNumber", () => {
+  it("interpolates when OSM has no house_number", () => {
+    const hits = suggestionsPreferringHouseNumber(
+      [
+        {
+          place_id: "1",
+          display_name: "Calle Malvaloca, Sevilla",
+          lat: "37.3718479",
+          lon: "-5.9731456",
+          class: "highway",
+          type: "residential",
+          boundingbox: ["37.3709384", "37.3722070", "-5.9744544", "-5.9720446"],
+          address: { road: "Calle Malvaloca", city: "Seville" },
+        },
+      ],
+      "15",
+      "Calle Malvaloca",
+    );
+    assert.equal(hits.length, 1);
+    assert.match(hits[0]!.label, /15/);
+    assert.notEqual(hits[0]!.lon, -5.9731456);
+  });
+});
+
+describe("shouldLiveAutocomplete", () => {
+  it("skips street and house-number typing", () => {
+    assert.equal(shouldLiveAutocomplete("Calle Malvaloca"), false);
+    assert.equal(shouldLiveAutocomplete("Calle Malvaloca, 15"), false);
+    assert.equal(shouldLiveAutocomplete("peluquería"), false);
+  });
+
+  it("allows brand / POI typeahead", () => {
+    assert.equal(shouldLiveAutocomplete("Burger"), true);
+    assert.equal(shouldLiveAutocomplete("Mercadona"), true);
   });
 });
 

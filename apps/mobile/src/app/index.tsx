@@ -87,6 +87,7 @@ import {
   matchExactCategory,
   searchCategoryNearby,
   searchPlacesDetailed,
+  shouldLiveAutocomplete,
   type AddressSuggestion,
   type CategoryHint,
   type ViewBox,
@@ -97,6 +98,8 @@ import { SpotLayers } from "@/map/SpotLayers";
 import { SpotSheet } from "@/map/SpotSheet";
 
 const DEBOUNCE_MS = 350;
+/** Longer than map pan debounce — typing must not hammer LocationIQ. */
+const SUGGEST_DEBOUNCE_MS = 700;
 const FOCUS_SPOT_ZOOM = 17;
 
 export default function MapScreen() {
@@ -115,6 +118,7 @@ export default function MapScreen() {
   const suggestDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const jumpedToUserRef = useRef(false);
   const lastJumpCoordsRef = useRef<[number, number] | null>(null);
+  const mapViewboxRef = useRef<ViewBox | null>(null);
   const timeWindow = useMemo(() => defaultTimeWindow(), []);
 
   const { ready, signedIn, error: sessionError, retry: retrySession } = useSession();
@@ -150,6 +154,7 @@ export default function MapScreen() {
   const [selectedSearchId, setSelectedSearchId] = useState<string | null>(null);
   const [searchBusy, setSearchBusy] = useState(false);
   const [mapViewbox, setMapViewbox] = useState<ViewBox | null>(null);
+  mapViewboxRef.current = mapViewbox;
 
   const puckReady = locationComponentReady(
     follow.locationGranted,
@@ -640,13 +645,14 @@ export default function MapScreen() {
   }, []);
 
   // Local category hint + debounced LocationIQ autocomplete (no Nearby until tap).
+  // Do not depend on mapViewbox — panning would re-fire autocomplete and burn quota.
   useEffect(() => {
     const q = searchQuery.trim();
     setCategoryHint(matchCategoryPrefix(q, locale));
     if (suggestDebounceRef.current) {
       clearTimeout(suggestDebounceRef.current);
     }
-    if (q.length < 3 || matchExactCategory(q, locale)) {
+    if (!shouldLiveAutocomplete(q)) {
       setSuggestHits([]);
       return;
     }
@@ -654,7 +660,7 @@ export default function MapScreen() {
       void (async () => {
         try {
           const hits = await autocompletePlaces(q, {
-            viewbox: mapViewbox ?? undefined,
+            viewbox: mapViewboxRef.current ?? undefined,
             locale,
             limit: 3,
           });
@@ -663,13 +669,13 @@ export default function MapScreen() {
           setSuggestHits([]);
         }
       })();
-    }, DEBOUNCE_MS);
+    }, SUGGEST_DEBOUNCE_MS);
     return () => {
       if (suggestDebounceRef.current) {
         clearTimeout(suggestDebounceRef.current);
       }
     };
-  }, [searchQuery, locale, mapViewbox]);
+  }, [searchQuery, locale]);
 
   const onPressMap = useCallback(
     (event: NativeSyntheticEvent<PressEvent>) => {
