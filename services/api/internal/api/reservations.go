@@ -9,24 +9,33 @@ import (
 	"github.com/marco/parkxchange/services/api/internal/web"
 )
 
+type reservationSpotSummaryJSON struct {
+	Lon         float64 `json:"lon"`
+	Lat         float64 `json:"lat"`
+	AddressHint string  `json:"address_hint,omitempty"`
+	PriceCents  int     `json:"price_cents"`
+	VehicleID   string  `json:"vehicle_id,omitempty"`
+}
+
 type reservationResponse struct {
-	ID              string              `json:"id"`
-	SpotID          string              `json:"spot_id"`
-	DriverID        string              `json:"driver_id"`
-	OwnerID         string              `json:"owner_id"`
-	OfferID         string              `json:"offer_id,omitempty"`
-	DriverVehicleID string              `json:"driver_vehicle_id,omitempty"`
-	Status          string              `json:"status"`
-	PriceCents      int                 `json:"price_cents"`
-	ExchangeAt      time.Time           `json:"exchange_at"`
-	OwnerEnRouteAt  *time.Time          `json:"owner_en_route_at,omitempty"`
-	DriverEnRouteAt *time.Time          `json:"driver_en_route_at,omitempty"`
-	OwnerReadyAt    *time.Time          `json:"owner_ready_at,omitempty"`
-	DriverReadyAt   *time.Time          `json:"driver_ready_at,omitempty"`
-	CancelReason    string              `json:"cancel_reason,omitempty"`
-	CreatedAt       time.Time           `json:"created_at"`
-	OwnerVehicle    *vehicleSummaryJSON `json:"owner_vehicle,omitempty"`
-	DriverVehicle   *vehicleSummaryJSON `json:"driver_vehicle,omitempty"`
+	ID              string                      `json:"id"`
+	SpotID          string                      `json:"spot_id"`
+	DriverID        string                      `json:"driver_id"`
+	OwnerID         string                      `json:"owner_id"`
+	OfferID         string                      `json:"offer_id,omitempty"`
+	DriverVehicleID string                      `json:"driver_vehicle_id,omitempty"`
+	Status          string                      `json:"status"`
+	PriceCents      int                         `json:"price_cents"`
+	ExchangeAt      time.Time                   `json:"exchange_at"`
+	OwnerEnRouteAt  *time.Time                  `json:"owner_en_route_at,omitempty"`
+	DriverEnRouteAt *time.Time                  `json:"driver_en_route_at,omitempty"`
+	OwnerReadyAt    *time.Time                  `json:"owner_ready_at,omitempty"`
+	DriverReadyAt   *time.Time                  `json:"driver_ready_at,omitempty"`
+	CancelReason    string                      `json:"cancel_reason,omitempty"`
+	CreatedAt       time.Time                   `json:"created_at"`
+	OwnerVehicle    *vehicleSummaryJSON         `json:"owner_vehicle,omitempty"`
+	DriverVehicle   *vehicleSummaryJSON         `json:"driver_vehicle,omitempty"`
+	SpotSummary     *reservationSpotSummaryJSON `json:"spot_summary,omitempty"`
 }
 
 func toReservationResponse(r domain.Reservation) reservationResponse {
@@ -44,17 +53,28 @@ func toReservationResponse(r domain.Reservation) reservationResponse {
 
 func (a *API) enrichReservation(ctx context.Context, r domain.Reservation) reservationResponse {
 	out := toReservationResponse(r)
-	if a.reserves == nil {
-		return out
+	if a.reserves != nil {
+		parties := a.reserves.PartyVehicles(ctx, r)
+		if parties.Owner.ID != "" {
+			v := toVehicleSummary(parties.Owner)
+			out.OwnerVehicle = &v
+		}
+		if parties.Driver.ID != "" {
+			v := toVehicleSummary(parties.Driver)
+			out.DriverVehicle = &v
+		}
 	}
-	parties := a.reserves.PartyVehicles(ctx, r)
-	if parties.Owner.ID != "" {
-		v := toVehicleSummary(parties.Owner)
-		out.OwnerVehicle = &v
-	}
-	if parties.Driver.ID != "" {
-		v := toVehicleSummary(parties.Driver)
-		out.DriverVehicle = &v
+	if a.spots != nil && r.SpotID != "" {
+		sum, err := a.spots.LocationSummary(ctx, r.SpotID)
+		if err == nil {
+			out.SpotSummary = &reservationSpotSummaryJSON{
+				Lon:         sum.Lon,
+				Lat:         sum.Lat,
+				AddressHint: sum.AddressHint,
+				PriceCents:  sum.PriceCents,
+				VehicleID:   sum.VehicleID,
+			}
+		}
 	}
 	return out
 }

@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Href, useRouter } from "expo-router";
 import { useState } from "react";
@@ -11,6 +12,11 @@ import {
 } from "react-native";
 
 import {
+  canReannounceFromReservation,
+  reservationAddressLabel,
+} from "@/account/reservationReannounce";
+import { accountStyles } from "@/account/theme";
+import {
   createOffer,
   fetchActiveReservations,
   fetchReservations,
@@ -20,12 +26,12 @@ import {
   type OfferResponse,
   type ReservationResponse,
 } from "@/api/client";
-import { accountStyles } from "@/account/theme";
 import { AuthScroll } from "@/auth/AuthScroll";
 import { AuthTextInput } from "@/auth/AuthTextInput";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation, type TranslationKey } from "@/i18n";
 import { formatPoints, formatSignedPoints, parsePointsInput } from "@/i18n/formatPoints";
+import { openNavigation } from "@/lib/navigation";
 import { reservationPointsDelta } from "@/map/reservationPoints";
 import { DateTimeField } from "@/ui/DateTimeField";
 
@@ -297,6 +303,21 @@ export default function MyReservationsScreen() {
           res.status === "pending" ||
           res.status === "confirmed" ||
           res.status === "arrived";
+        const summary = res.spot_summary;
+        const canNav =
+          summary != null &&
+          Number.isFinite(summary.lon) &&
+          Number.isFinite(summary.lat);
+        const canReannounce = canReannounceFromReservation({
+          ownerId: res.owner_id,
+          userId,
+          status: res.status,
+          spotSummary: summary,
+        });
+        const address = reservationAddressLabel(
+          summary,
+          t("account.reservations.addressUnknown"),
+        );
         return (
           <Pressable
             key={`r-${res.id}`}
@@ -325,11 +346,68 @@ export default function MyReservationsScreen() {
               {live ? " · " : ""}
               {live ? t("account.reservations.openMap") : ""}
             </Text>
+            <Text style={accountStyles.rowMeta} numberOfLines={2}>
+              {address}
+            </Text>
             <Text style={accountStyles.rowMeta}>
               {t("account.reservations.exchangeAt", {
                 datetime: formatDateTime(res.exchange_at),
               })}
             </Text>
+            {canNav || canReannounce ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  gap: 12,
+                  marginTop: 8,
+                  justifyContent: "flex-end",
+                }}
+              >
+                {canNav ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t("account.reservations.navigateA11y")}
+                    hitSlop={8}
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      void openNavigation(
+                        { lon: summary!.lon, lat: summary!.lat },
+                        {
+                          failedTitle: t("navigation.failed.title"),
+                          failedMessage: t("navigation.failed.message"),
+                        },
+                      );
+                    }}
+                  >
+                    <Ionicons name="navigate" size={22} color="#00BBF9" />
+                  </Pressable>
+                ) : null}
+                {canReannounce ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t("account.reservations.reannounceA11y")}
+                    hitSlop={8}
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      const q = new URLSearchParams({
+                        announceLon: String(summary!.lon),
+                        announceLat: String(summary!.lat),
+                        announcePrice: String(summary!.price_cents),
+                      });
+                      if (summary!.address_hint) {
+                        q.set("announceLabel", summary!.address_hint);
+                      }
+                      if (summary!.vehicle_id) {
+                        q.set("announceVehicle", summary!.vehicle_id);
+                      }
+                      router.push(`/?${q.toString()}` as Href);
+                    }}
+                  >
+                    <Ionicons name="add-circle" size={24} color="#1B9AAA" />
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
           </Pressable>
         );
       })}

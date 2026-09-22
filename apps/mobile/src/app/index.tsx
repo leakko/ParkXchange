@@ -109,6 +109,11 @@ export default function MapScreen() {
     focusLon?: string;
     focusLat?: string;
     focusSpot?: string;
+    announceLon?: string;
+    announceLat?: string;
+    announceLabel?: string;
+    announcePrice?: string;
+    announceVehicle?: string;
   }>();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapRef>(null);
@@ -146,6 +151,12 @@ export default function MapScreen() {
     null,
   );
   const [announceLabel, setAnnounceLabel] = useState<string | null>(null);
+  const [announcePriceCents, setAnnouncePriceCents] = useState<number | null>(
+    null,
+  );
+  const [announceVehicleId, setAnnounceVehicleId] = useState<string | null>(
+    null,
+  );
   const [announcePickMode, setAnnouncePickMode] = useState(false);
   /** Keep form fields when returning from map pick / search. */
   const [announceKeepForm, setAnnounceKeepForm] = useState(false);
@@ -898,6 +909,48 @@ export default function MapScreen() {
     router,
   ]);
 
+  // Deep-link from reservation history “re-announce” → open form prefilled.
+  useEffect(() => {
+    const lon = Number.parseFloat(String(focusParams.announceLon ?? ""));
+    const lat = Number.parseFloat(String(focusParams.announceLat ?? ""));
+    if (!mapReady || !Number.isFinite(lon) || !Number.isFinite(lat)) {
+      return;
+    }
+    const labelRaw = focusParams.announceLabel
+      ? String(focusParams.announceLabel)
+      : "";
+    const priceRaw = Number.parseInt(String(focusParams.announcePrice ?? ""), 10);
+    const vehicleRaw = focusParams.announceVehicle
+      ? String(focusParams.announceVehicle)
+      : "";
+    dispatchFollow({ type: "user_gesture" });
+    cameraRef.current?.easeTo({
+      center: [lon, lat],
+      zoom: FOCUS_SPOT_ZOOM,
+      duration: 500,
+    });
+    void openAnnounce([lon, lat], labelRaw || null, {
+      priceCents: Number.isFinite(priceRaw) && priceRaw > 0 ? priceRaw : null,
+      vehicleId: vehicleRaw || null,
+    });
+    router.setParams({
+      announceLon: undefined,
+      announceLat: undefined,
+      announceLabel: undefined,
+      announcePrice: undefined,
+      announceVehicle: undefined,
+    });
+  }, [
+    mapReady,
+    focusParams.announceLon,
+    focusParams.announceLat,
+    focusParams.announceLabel,
+    focusParams.announcePrice,
+    focusParams.announceVehicle,
+    openAnnounce,
+    router,
+  ]);
+
   const afterAnnounce = useCallback(
     async (spot: SpotFeature, message: string) => {
       setSelected(spot);
@@ -911,7 +964,11 @@ export default function MapScreen() {
   );
 
   const openAnnounce = useCallback(
-    async (coords: [number, number] | null, label: string | null) => {
+    async (
+      coords: [number, number] | null,
+      label: string | null,
+      extras?: { priceCents?: number | null; vehicleId?: string | null },
+    ) => {
       if (!signedIn || !(await getAccessToken())) {
         requireSignIn("/");
         return;
@@ -940,6 +997,8 @@ export default function MapScreen() {
         setAnnounceVehicles(list);
         setAnnounceCoords(coords);
         setAnnounceLabel(label);
+        setAnnouncePriceCents(extras?.priceCents ?? null);
+        setAnnounceVehicleId(extras?.vehicleId ?? null);
         setAnnounceKeepForm(false);
         setAnnouncePickMode(false);
         setAnnounceOpen(true);
@@ -969,10 +1028,13 @@ export default function MapScreen() {
           autoCancelNoShow: values.autoCancelNoShow,
           vehicleId: values.vehicleId,
           notes: t("announce.notes.longPress"),
+          addressHint: values.addressHint,
         });
         setAnnounceOpen(false);
         setAnnounceCoords(null);
         setAnnounceLabel(null);
+        setAnnouncePriceCents(null);
+        setAnnounceVehicleId(null);
         setAnnounceKeepForm(false);
         await afterAnnounce(spot, t("map.alert.announced.message"));
       } catch (err) {
@@ -1484,12 +1546,16 @@ export default function MapScreen() {
         vehicles={announceVehicles}
         initialCoordinates={announceCoords}
         initialAddressLabel={announceLabel}
+        initialGuidePriceCents={announcePriceCents}
+        initialVehicleId={announceVehicleId}
         keepForm={announceKeepForm}
         onCancel={() => {
           setAnnounceOpen(false);
           setAnnouncePickMode(false);
           setAnnounceCoords(null);
           setAnnounceLabel(null);
+          setAnnouncePriceCents(null);
+          setAnnounceVehicleId(null);
           setAnnounceKeepForm(false);
         }}
         onPickOnMap={() => {

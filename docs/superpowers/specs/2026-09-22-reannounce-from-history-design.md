@@ -1,7 +1,7 @@
 # Re-announce from reservation history — design
 
 Date: 2026-09-22  
-Status: approved (product) — pending file review  
+Status: approved  
 Scope: Reservations list UX + small API enrichment + persist `address_hint` on announce  
 Out of scope: New endpoints, driver re-announce, LocationIQ changes, changing live exchange flows
 

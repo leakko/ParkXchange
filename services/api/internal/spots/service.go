@@ -279,6 +279,33 @@ func (s *Service) VehiclePhoto(ctx context.Context, spotID string, viewer domain
 	return photo, contentType, nil
 }
 
+// LocationSummary is the meeting-point snapshot attached to reservations
+// (navigate / re-announce). Exact coordinates — both parties already shared
+// this place during the exchange.
+type LocationSummary struct {
+	Lon         float64
+	Lat         float64
+	AddressHint string
+	PriceCents  int
+	VehicleID   string
+}
+
+// LocationSummary loads geom + listing fields for a spot without applying
+// discovery fuzz. Missing spots return domain.ErrNoRows (caller may omit).
+func (s *Service) LocationSummary(ctx context.Context, spotID string) (LocationSummary, error) {
+	spot, err := s.store.SpotByID(ctx, spotID)
+	if err != nil {
+		return LocationSummary{}, err
+	}
+	return LocationSummary{
+		Lon:         spot.Lon,
+		Lat:         spot.Lat,
+		AddressHint: spot.AddressHint,
+		PriceCents:  spot.PriceCents,
+		VehicleID:   spot.VehicleID,
+	}, nil
+}
+
 // Get returns a single spot as the viewer may see it.
 func (s *Service) Get(ctx context.Context, spotID string, viewer domain.Claims) (VisibleSpot, error) {
 	spot, err := s.store.SpotByID(ctx, spotID)

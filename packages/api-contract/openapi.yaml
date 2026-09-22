@@ -1549,6 +1549,31 @@ components:
         created_at:
           type: string
           format: date-time
+        spot_summary:
+          $ref: "#/components/schemas/ReservationSpotSummary"
+          description: >
+            Spot meeting point for list/detail UX (navigate + re-announce).
+            Exact coords; both reservation parties already shared this place.
+
+    ReservationSpotSummary:
+      type: object
+      required: [lon, lat, price_cents]
+      properties:
+        lon:
+          type: number
+          format: double
+        lat:
+          type: number
+          format: double
+        address_hint:
+          type: string
+        price_cents:
+          type: integer
+          description: Guide price from the original spot listing
+        vehicle_id:
+          type: string
+          format: uuid
+          description: Owner vehicle that was listed on the spot
 
     TicketResponse:
       type: object

@@ -893,6 +893,22 @@ export interface components {
             cancel_reason?: string | null;
             /** Format: date-time */
             created_at: string;
+            /** @description Spot meeting point for list/detail UX (navigate + re-announce). Exact coords; both reservation parties already shared this place. */
+            spot_summary?: components["schemas"]["ReservationSpotSummary"];
+        };
+        ReservationSpotSummary: {
+            /** Format: double */
+            lon: number;
+            /** Format: double */
+            lat: number;
+            address_hint?: string;
+            /** @description Guide price from the original spot listing */
+            price_cents: number;
+            /**
+             * Format: uuid
+             * @description Owner vehicle that was listed on the spot
+             */
+            vehicle_id?: string;
         };
         TicketResponse: {
             ticket: string;

@@ -350,6 +350,7 @@ export async function announceAt(
     autoCancelNoShow: boolean;
     vehicleId: string;
     notes: string;
+    addressHint?: string | null;
   },
 ): Promise<SpotFeature> {
   return createSpot({
@@ -361,5 +362,8 @@ export async function announceAt(
     auto_cancel_no_show: opts.autoCancelNoShow,
     vehicle_id: opts.vehicleId,
     notes: opts.notes,
+    ...(opts.addressHint?.trim()
+      ? { address_hint: opts.addressHint.trim() }
+      : {}),
   });
 }

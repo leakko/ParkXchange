@@ -26,15 +26,20 @@ export type AnnounceValues = {
   vehicleId: string;
   lon: number;
   lat: number;
+  /** Human label for the pin; persisted as spot address_hint when present. */
+  addressHint: string | null;
 };
 
 type Props = {
   visible: boolean;
   busy: boolean;
   vehicles: VehicleResponse[];
-  /** Pre-filled when opening from map pick / long-press. */
+  /** Pre-filled when opening from map pick / long-press / history re-announce. */
   initialCoordinates: [number, number] | null;
   initialAddressLabel: string | null;
+  /** Guide price in euros as display string base (cents → form uses points). */
+  initialGuidePriceCents?: number | null;
+  initialVehicleId?: string | null;
   /**
    * When true (return from “pick on map”), keep price / vehicle / toggles
    * and only refresh the location.
@@ -60,6 +65,8 @@ export function AnnounceModal({
   vehicles,
   initialCoordinates,
   initialAddressLabel,
+  initialGuidePriceCents = null,
+  initialVehicleId = null,
   keepForm = false,
   onCancel,
   onPickOnMap,
@@ -108,10 +115,24 @@ export function AnnounceModal({
     setVehicleOpen(false);
     if (!keepForm) {
       setPreferredTime(defaultPreferred());
-      setPrice("50");
+      if (
+        initialGuidePriceCents != null &&
+        Number.isFinite(initialGuidePriceCents) &&
+        initialGuidePriceCents > 0
+      ) {
+        setPrice(String(Math.round(initialGuidePriceCents)));
+      } else {
+        setPrice("50");
+      }
       setHasPreferredTime(false);
       setAutoCancel(true);
-      setVehicleId(vehicles[0]?.id ?? null);
+      const prefVehicle =
+        (initialVehicleId &&
+          vehicles.some((v) => v.id === initialVehicleId) &&
+          initialVehicleId) ||
+        vehicles[0]?.id ||
+        null;
+      setVehicleId(prefVehicle);
     } else if (!vehicleId && vehicles[0]) {
       setVehicleId(vehicles[0].id);
     }
@@ -128,7 +149,15 @@ export function AnnounceModal({
     }
     // Seed when the modal opens or the map pick changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
-  }, [visible, vehicles, initialCoordinates, initialAddressLabel, keepForm]);
+  }, [
+    visible,
+    vehicles,
+    initialCoordinates,
+    initialAddressLabel,
+    initialGuidePriceCents,
+    initialVehicleId,
+    keepForm,
+  ]);
 
   const selectedVehicle = vehicles.find((v) => v.id === vehicleId) ?? null;
 
@@ -204,6 +233,7 @@ export function AnnounceModal({
       vehicleId,
       lon: coords[0],
       lat: coords[1],
+      addressHint: addressLabel,
     });
   };
 

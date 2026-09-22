@@ -425,7 +425,23 @@ type ReservationResponse struct {
 	OwnerVehicle *VehicleSummary    `json:"owner_vehicle,omitempty"`
 	PriceCents   int                `json:"price_cents"`
 	SpotId       openapi_types.UUID `json:"spot_id"`
-	Status       string             `json:"status"`
+
+	// SpotSummary Spot meeting point for list/detail UX (navigate + re-announce). Exact coords; both reservation parties already shared this place.
+	SpotSummary *ReservationSpotSummary `json:"spot_summary,omitempty"`
+	Status      string                  `json:"status"`
+}
+
+// ReservationSpotSummary defines model for ReservationSpotSummary.
+type ReservationSpotSummary struct {
+	AddressHint *string `json:"address_hint,omitempty"`
+	Lat         float64 `json:"lat"`
+	Lon         float64 `json:"lon"`
+
+	// PriceCents Guide price from the original spot listing
+	PriceCents int `json:"price_cents"`
+
+	// VehicleId Owner vehicle that was listed on the spot
+	VehicleId *openapi_types.UUID `json:"vehicle_id,omitempty"`
 }
 
 // ResetPasswordRequest defines model for ResetPasswordRequest.
