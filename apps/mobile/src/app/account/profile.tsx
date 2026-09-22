@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   Text,
   View,
@@ -21,9 +20,11 @@ import {
   setLocationAssistanceEnabled,
 } from "@/push/settings";
 import { disarmArrivalGeofence } from "@/push/geofence";
+import { useConfirm } from "@/ui/ConfirmModal";
 
 export default function ProfileScreen() {
   const { t, locale, setLocale } = useTranslation();
+  const { alert } = useConfirm();
   const { signedIn } = useSession();
   const queryClient = useQueryClient();
   const me = useQuery({
@@ -54,13 +55,18 @@ export default function ProfileScreen() {
     mutationFn: () => updateMe({ display_name: displayName.trim() }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["me"] });
-      Alert.alert(t("account.profile.saved.title"), t("account.profile.saved.displayName"));
+      await alert({
+        title: t("account.profile.saved.title"),
+        message: t("account.profile.saved.displayName"),
+        confirmLabel: t("common.ok"),
+      });
     },
-    onError: (err) => {
-      Alert.alert(
-        t("account.profile.saveFailed.title"),
-        err instanceof Error ? err.message : t("common.error"),
-      );
+    onError: async (err) => {
+      await alert({
+        title: t("account.profile.saveFailed.title"),
+        message: err instanceof Error ? err.message : t("common.error"),
+        confirmLabel: t("common.ok"),
+      });
     },
   });
 
@@ -68,13 +74,18 @@ export default function ProfileScreen() {
     mutationFn: () => updateMe({ phone: normalizePhoneInput(phone) }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["me"] });
-      Alert.alert(t("account.profile.saved.title"), t("account.profile.saved.phone"));
+      await alert({
+        title: t("account.profile.saved.title"),
+        message: t("account.profile.saved.phone"),
+        confirmLabel: t("common.ok"),
+      });
     },
-    onError: (err) => {
-      Alert.alert(
-        t("account.profile.saveFailed.title"),
-        err instanceof Error ? err.message : t("common.error"),
-      );
+    onError: async (err) => {
+      await alert({
+        title: t("account.profile.saveFailed.title"),
+        message: err instanceof Error ? err.message : t("common.error"),
+        confirmLabel: t("common.ok"),
+      });
     },
   });
 
@@ -88,20 +99,22 @@ export default function ProfileScreen() {
         new_password: newPassword,
       });
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      Alert.alert(
-        t("account.profile.passwordChanged.title"),
-        t("account.profile.passwordChanged.message"),
-      );
+      await alert({
+        title: t("account.profile.passwordChanged.title"),
+        message: t("account.profile.passwordChanged.message"),
+        confirmLabel: t("common.ok"),
+      });
     },
-    onError: (err) => {
-      Alert.alert(
-        t("account.profile.passwordChangeFailed.title"),
-        err instanceof Error ? err.message : t("common.error"),
-      );
+    onError: async (err) => {
+      await alert({
+        title: t("account.profile.passwordChangeFailed.title"),
+        message: err instanceof Error ? err.message : t("common.error"),
+        confirmLabel: t("common.ok"),
+      });
     },
   });
 

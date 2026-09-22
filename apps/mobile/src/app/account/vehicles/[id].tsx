@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ActivityIndicator,
-  Alert,
   Text,
   View,
 } from "react-native";
@@ -22,9 +21,11 @@ import { AuthScroll } from "@/auth/AuthScroll";
 import { useAuthImage } from "@/hooks/useAuthImage";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
+import { useConfirm } from "@/ui/ConfirmModal";
 
 export default function EditVehicleScreen() {
   const { t } = useTranslation();
+  const { confirm, alert } = useConfirm();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { signedIn } = useSession();
@@ -60,16 +61,18 @@ export default function EditVehicleScreen() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["vehicles"] });
-      Alert.alert(
-        t("account.vehicles.edit.saved.title"),
-        t("account.vehicles.edit.saved.message"),
-      );
+      await alert({
+        title: t("account.vehicles.edit.saved.title"),
+        message: t("account.vehicles.edit.saved.message"),
+        confirmLabel: t("common.ok"),
+      });
     },
-    onError: (err) => {
-      Alert.alert(
-        t("account.vehicles.edit.saveFailed.title"),
-        err instanceof Error ? err.message : t("common.error"),
-      );
+    onError: async (err) => {
+      await alert({
+        title: t("account.vehicles.edit.saveFailed.title"),
+        message: err instanceof Error ? err.message : t("common.error"),
+        confirmLabel: t("common.ok"),
+      });
     },
   });
 
@@ -84,11 +87,12 @@ export default function EditVehicleScreen() {
       await queryClient.invalidateQueries({ queryKey: ["vehicles"] });
       router.back();
     },
-    onError: (err) => {
-      Alert.alert(
-        t("account.vehicles.deleteFailed.title"),
-        apiErrorMessage(err, t),
-      );
+    onError: async (err) => {
+      await alert({
+        title: t("account.vehicles.deleteFailed.title"),
+        message: apiErrorMessage(err, t),
+        confirmLabel: t("common.ok"),
+      });
     },
   });
 
@@ -123,19 +127,17 @@ export default function EditVehicleScreen() {
         busy={save.isPending}
         onSubmit={(values, photo) => save.mutate({ values, photo })}
         deleteBusy={remove.isPending}
-        onDelete={() => {
-          Alert.alert(
-            t("account.vehicles.delete.confirmTitle"),
-            t("account.vehicles.delete.confirmMessage"),
-            [
-              { text: t("common.cancel"), style: "cancel" },
-              {
-                text: t("account.vehicles.delete.confirm"),
-                style: "destructive",
-                onPress: () => remove.mutate(),
-              },
-            ],
-          );
+        onDelete={async () => {
+          const ok = await confirm({
+            title: t("account.vehicles.delete.confirmTitle"),
+            message: t("account.vehicles.delete.confirmMessage"),
+            cancelLabel: t("common.cancel"),
+            confirmLabel: t("account.vehicles.delete.confirm"),
+            destructive: true,
+          });
+          if (ok) {
+            remove.mutate();
+          }
         }}
       />
     </AuthScroll>

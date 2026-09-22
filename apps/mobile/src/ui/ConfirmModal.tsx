@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert as RNAlert, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { accountColors, accountStyles } from "@/account/theme";
 
@@ -178,6 +178,46 @@ export function useConfirm(): ConfirmApi {
     throw new Error("useConfirm must be used within ConfirmProvider");
   }
   return ctx;
+}
+
+/** Imperative helpers for modules outside React (fall back to system Alert). */
+export async function appAlert(req: AlertRequest): Promise<void> {
+  const bridge = getConfirmBridge();
+  if (bridge) {
+    await bridge.alert(req);
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    RNAlert.alert(req.title, req.message, [
+      { text: req.confirmLabel, onPress: () => resolve() },
+    ]);
+  });
+}
+
+export async function appConfirm(req: ConfirmRequest): Promise<boolean> {
+  const bridge = getConfirmBridge();
+  if (bridge) {
+    return bridge.confirm(req);
+  }
+  return new Promise((resolve) => {
+    RNAlert.alert(
+      req.title,
+      req.message,
+      [
+        {
+          text: req.cancelLabel,
+          style: "cancel",
+          onPress: () => resolve(false),
+        },
+        {
+          text: req.confirmLabel,
+          style: req.destructive ? "destructive" : "default",
+          onPress: () => resolve(true),
+        },
+      ],
+      { cancelable: true, onDismiss: () => resolve(false) },
+    );
+  });
 }
 
 const styles = StyleSheet.create({

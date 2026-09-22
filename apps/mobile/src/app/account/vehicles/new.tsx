@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Alert, Text } from "react-native";
+import { Text } from "react-native";
 
 import { createVehicle, putVehiclePhoto } from "@/api/client";
 import { apiErrorMessage } from "@/api/errors";
@@ -9,6 +9,7 @@ import type { PickedVehiclePhoto } from "@/account/pickVehiclePhoto";
 import { accountStyles } from "@/account/theme";
 import { AuthScroll } from "@/auth/AuthScroll";
 import { useTranslation } from "@/i18n";
+import { useConfirm } from "@/ui/ConfirmModal";
 
 const empty: VehicleFormValues = {
   plate: "",
@@ -20,6 +21,7 @@ const empty: VehicleFormValues = {
 
 export default function NewVehicleScreen() {
   const { t } = useTranslation();
+  const { alert } = useConfirm();
   const router = useRouter();
   const params = useLocalSearchParams<{ from?: string }>();
   const fromAnnounce = params.from === "announce" || params.from === "offer";
@@ -49,20 +51,22 @@ export default function NewVehicleScreen() {
     onSuccess: async ({ photoFailed }) => {
       await queryClient.invalidateQueries({ queryKey: ["vehicles"] });
       if (photoFailed) {
-        Alert.alert(
-          t("account.vehicles.create.photoFailed.title"),
-          t("account.vehicles.create.photoFailed.message"),
-          [{ text: t("common.ok"), onPress: () => router.back() }],
-        );
+        await alert({
+          title: t("account.vehicles.create.photoFailed.title"),
+          message: t("account.vehicles.create.photoFailed.message"),
+          confirmLabel: t("common.ok"),
+        });
+        router.back();
         return;
       }
       router.back();
     },
-    onError: (err) => {
-      Alert.alert(
-        t("account.vehicles.createFailed.title"),
-        apiErrorMessage(err, t),
-      );
+    onError: async (err) => {
+      await alert({
+        title: t("account.vehicles.createFailed.title"),
+        message: apiErrorMessage(err, t),
+        confirmLabel: t("common.ok"),
+      });
     },
   });
 

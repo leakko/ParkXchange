@@ -1,4 +1,6 @@
-import { Alert, Linking, Platform } from "react-native";
+import { Linking, Platform } from "react-native";
+
+import { appAlert } from "@/ui/ConfirmModal";
 
 export type NavTarget = { lat: number; lon: number; label?: string };
 
@@ -44,5 +46,9 @@ export async function openNavigation(
       // try the next candidate
     }
   }
-  Alert.alert(copy.failedTitle, copy.failedMessage);
+  await appAlert({
+    title: copy.failedTitle,
+    message: copy.failedMessage,
+    confirmLabel: "OK",
+  });
 }

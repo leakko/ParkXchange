@@ -1,15 +1,17 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import { confirmEmail } from "@/api/client";
 import { apiErrorMessage } from "@/api/errors";
 import { AuthScroll } from "@/auth/AuthScroll";
 import { accountColors } from "@/account/theme";
 import { useTranslation } from "@/i18n";
+import { useConfirm } from "@/ui/ConfirmModal";
 
 export default function VerifyEmailScreen() {
   const { t } = useTranslation();
+  const { alert } = useConfirm();
   const router = useRouter();
   const { token } = useLocalSearchParams<{ token?: string }>();
   const [busy, setBusy] = useState(true);
@@ -23,26 +25,37 @@ export default function VerifyEmailScreen() {
     const raw = typeof token === "string" ? token.trim() : "";
     if (!raw) {
       setBusy(false);
-      Alert.alert(t("common.error"), t("auth.error.resetTokenInvalid"), [
-        { text: t("common.ok"), onPress: () => router.replace("/auth/login" as never) },
-      ]);
+      void (async () => {
+        await alert({
+          title: t("common.error"),
+          message: t("auth.error.resetTokenInvalid"),
+          confirmLabel: t("common.ok"),
+        });
+        router.replace("/auth/login" as never);
+      })();
       return;
     }
     void (async () => {
       try {
         await confirmEmail(raw);
-        Alert.alert(t("auth.verify.success"), t("auth.verify.successBody"), [
-          { text: t("common.ok"), onPress: () => router.replace("/" as never) },
-        ]);
+        await alert({
+          title: t("auth.verify.success"),
+          message: t("auth.verify.successBody"),
+          confirmLabel: t("common.ok"),
+        });
+        router.replace("/" as never);
       } catch (err) {
-        Alert.alert(t("common.error"), apiErrorMessage(err, t), [
-          { text: t("common.ok"), onPress: () => router.replace("/auth/login" as never) },
-        ]);
+        await alert({
+          title: t("common.error"),
+          message: apiErrorMessage(err, t),
+          confirmLabel: t("common.ok"),
+        });
+        router.replace("/auth/login" as never);
       } finally {
         setBusy(false);
       }
     })();
-  }, [router, t, token]);
+  }, [alert, router, t, token]);
 
   return (
     <AuthScroll>

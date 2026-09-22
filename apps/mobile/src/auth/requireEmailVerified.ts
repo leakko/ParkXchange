@@ -1,8 +1,7 @@
-import { Alert } from "react-native";
-
 import { ApiError, getMe, resendEmailVerification } from "@/api/client";
 import { apiErrorMessage } from "@/api/errors";
 import type { TranslationKey } from "@/i18n";
+import { appAlert, appConfirm } from "@/ui/ConfirmModal";
 
 type Translate = (
   key: TranslationKey,
@@ -29,25 +28,35 @@ export async function ensureEmailVerified({
       onUnauthorized?.();
       return false;
     }
-    Alert.alert(t("common.error"), apiErrorMessage(err, t));
+    await appAlert({
+      title: t("common.error"),
+      message: apiErrorMessage(err, t),
+      confirmLabel: t("common.ok"),
+    });
     return false;
   }
 
-  Alert.alert(t("auth.verify.title"), t("auth.verify.body"), [
-    { text: t("common.cancel"), style: "cancel" },
-    {
-      text: t("auth.verify.resend"),
-      onPress: () => {
-        void (async () => {
-          try {
-            await resendEmailVerification();
-            Alert.alert(t("auth.verify.title"), t("auth.verify.sent"));
-          } catch (err) {
-            Alert.alert(t("common.error"), apiErrorMessage(err, t));
-          }
-        })();
-      },
-    },
-  ]);
+  const resend = await appConfirm({
+    title: t("auth.verify.title"),
+    message: t("auth.verify.body"),
+    cancelLabel: t("common.cancel"),
+    confirmLabel: t("auth.verify.resend"),
+  });
+  if (resend) {
+    try {
+      await resendEmailVerification();
+      await appAlert({
+        title: t("auth.verify.title"),
+        message: t("auth.verify.sent"),
+        confirmLabel: t("common.ok"),
+      });
+    } catch (err) {
+      await appAlert({
+        title: t("common.error"),
+        message: apiErrorMessage(err, t),
+        confirmLabel: t("common.ok"),
+      });
+    }
+  }
   return false;
 }

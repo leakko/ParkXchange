@@ -2,7 +2,6 @@ import * as Location from "expo-location";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   StyleSheet,
@@ -18,6 +17,7 @@ import { useTranslation } from "@/i18n";
 import { sizeClassLabel } from "@/i18n/catalogLabels";
 import { parsePointsInput } from "@/i18n/formatPoints";
 import { reverseGeocode } from "@/map/geocode";
+import { useConfirm } from "@/ui/ConfirmModal";
 import { DateTimeField } from "@/ui/DateTimeField";
 
 export type AnnounceValues = {
@@ -74,6 +74,7 @@ export function AnnounceModal({
   onSubmit,
 }: Props) {
   const { t, locale } = useTranslation();
+  const { alert } = useConfirm();
   const [price, setPrice] = useState("50");
   const [hasPreferredTime, setHasPreferredTime] = useState(false);
   const [preferredTime, setPreferredTime] = useState(defaultPreferred);
@@ -167,10 +168,11 @@ export function AnnounceModal({
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert(
-          t("map.alert.announceFailed.title"),
-          t("exchange.locationPermissionRequired"),
-        );
+        await alert({
+          title: t("map.alert.announceFailed.title"),
+          message: t("exchange.locationPermissionRequired"),
+          confirmLabel: t("common.ok"),
+        });
         return;
       }
       const position = await Location.getCurrentPositionAsync({
@@ -182,7 +184,11 @@ export function AnnounceModal({
         null,
       );
     } catch {
-      Alert.alert(t("map.alert.announceFailed.title"), t("common.error"));
+      await alert({
+        title: t("map.alert.announceFailed.title"),
+        message: t("common.error"),
+        confirmLabel: t("common.ok"),
+      });
     } finally {
       setLocating(false);
     }
@@ -190,39 +196,44 @@ export function AnnounceModal({
 
   const submit = async () => {
     if (!vehicleId) {
-      Alert.alert(
-        t("announce.needVehicle.title"),
-        t("announce.needVehicle.message"),
-      );
+      await alert({
+        title: t("announce.needVehicle.title"),
+        message: t("announce.needVehicle.message"),
+        confirmLabel: t("common.ok"),
+      });
       return;
     }
     if (!coords) {
-      Alert.alert(
-        t("announce.location.required.title"),
-        t("announce.location.required.message"),
-      );
+      await alert({
+        title: t("announce.location.required.title"),
+        message: t("announce.location.required.message"),
+        confirmLabel: t("common.ok"),
+      });
       return;
     }
     const points = parsePointsInput(price);
     if (points == null) {
-      Alert.alert(
-        t("announce.alert.invalidPrice.title"),
-        t("announce.alert.invalidPrice.message"),
-      );
+      await alert({
+        title: t("announce.alert.invalidPrice.title"),
+        message: t("announce.alert.invalidPrice.message"),
+        confirmLabel: t("common.ok"),
+      });
       return;
     }
     if (hasPreferredTime && !Number.isFinite(preferredTime.getTime())) {
-      Alert.alert(
-        t("announce.alert.invalidDate.title"),
-        t("announce.alert.invalidDate.message"),
-      );
+      await alert({
+        title: t("announce.alert.invalidDate.title"),
+        message: t("announce.alert.invalidDate.message"),
+        confirmLabel: t("common.ok"),
+      });
       return;
     }
     if (hasPreferredTime && preferredTime.getTime() <= Date.now()) {
-      Alert.alert(
-        t("announce.alert.dateInPast.title"),
-        t("announce.alert.dateInPast.message"),
-      );
+      await alert({
+        title: t("announce.alert.dateInPast.title"),
+        message: t("announce.alert.dateInPast.message"),
+        confirmLabel: t("common.ok"),
+      });
       return;
     }
     await onSubmit({

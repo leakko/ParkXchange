@@ -4,7 +4,6 @@ import { type Href, useRouter } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   RefreshControl,
   Text,
@@ -36,6 +35,7 @@ import {
 } from "@/i18n/catalogLabels";
 import { formatPoints, formatSignedPoints, parsePointsInput } from "@/i18n/formatPoints";
 import { reservationPointsDelta } from "@/map/reservationPoints";
+import { useConfirm } from "@/ui/ConfirmModal";
 import { DateTimeField } from "@/ui/DateTimeField";
 
 function mergeReservations(
@@ -56,6 +56,7 @@ function mergeReservations(
 
 export default function MyReservationsScreen() {
   const { t, formatDateTime } = useTranslation();
+  const { alert } = useConfirm();
   const router = useRouter();
   const { signedIn } = useSession();
   const queryClient = useQueryClient();
@@ -88,11 +89,12 @@ export default function MyReservationsScreen() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["offers", "mine"] });
     },
-    onError: (err) => {
-      Alert.alert(
-        t("account.reservations.withdrawOfferFailed"),
-        err instanceof Error ? err.message : t("common.error"),
-      );
+    onError: async (err) => {
+      await alert({
+        title: t("account.reservations.withdrawOfferFailed"),
+        message: err instanceof Error ? err.message : t("common.error"),
+        confirmLabel: t("common.ok"),
+      });
     },
   });
 
@@ -110,7 +112,11 @@ export default function MyReservationsScreen() {
   const saveEditedOffer = async (offer: OfferResponse) => {
     const points = parsePointsInput(editAmount);
     if (points == null || !Number.isFinite(editExchangeAt.getTime())) {
-      Alert.alert(t("announce.alert.invalidPrice.title"), t("announce.alert.invalidPrice.message"));
+      await alert({
+        title: t("announce.alert.invalidPrice.title"),
+        message: t("announce.alert.invalidPrice.message"),
+        confirmLabel: t("common.ok"),
+      });
       return;
     }
     setEditBusy(true);
@@ -124,10 +130,11 @@ export default function MyReservationsScreen() {
       setEditingOfferId(null);
       await queryClient.invalidateQueries({ queryKey: ["offers", "mine"] });
     } catch (err) {
-      Alert.alert(
-        t("account.reservations.editOfferFailed"),
-        err instanceof Error ? err.message : t("common.error"),
-      );
+      await alert({
+        title: t("account.reservations.editOfferFailed"),
+        message: err instanceof Error ? err.message : t("common.error"),
+        confirmLabel: t("common.ok"),
+      });
     } finally {
       setEditBusy(false);
     }

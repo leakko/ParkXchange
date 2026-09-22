@@ -5,7 +5,6 @@ import BottomSheet, {
 import { forwardRef, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Pressable,
   StyleSheet,
@@ -90,7 +89,7 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
   ref,
 ) {
   const { t, formatDateTime } = useTranslation();
-  const { confirm } = useConfirm();
+  const { confirm, alert } = useConfirm();
   const insets = useSafeAreaInsets();
   const snapPoints = useMemo(() => ["36%", "82%"], []);
   const scrollRef = useRef<ComponentRef<typeof BottomSheetScrollView>>(null);
@@ -160,12 +159,17 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
     };
   }, [spot?.id, spot?.properties.is_mine, spot?.properties.status]);
 
-  const beginOffer = () => {
+  const beginOffer = async () => {
     if (vehicles.length === 0) {
-      Alert.alert(t("spotSheet.offer.needVehicle.title"), t("spotSheet.offer.needVehicle.message"), [
-        { text: t("common.cancel"), style: "cancel" },
-        { text: t("spotSheet.offer.needVehicle.add"), onPress: onAddVehicle },
-      ]);
+      const add = await confirm({
+        title: t("spotSheet.offer.needVehicle.title"),
+        message: t("spotSheet.offer.needVehicle.message"),
+        cancelLabel: t("common.cancel"),
+        confirmLabel: t("spotSheet.offer.needVehicle.add"),
+      });
+      if (add) {
+        onAddVehicle();
+      }
       return;
     }
     setMakingOffer(true);
@@ -177,15 +181,20 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
     });
   };
 
-  const beginEditOffer = () => {
+  const beginEditOffer = async () => {
     if (!pendingOffer) {
       return;
     }
     if (vehicles.length === 0) {
-      Alert.alert(t("spotSheet.offer.needVehicle.title"), t("spotSheet.offer.needVehicle.message"), [
-        { text: t("common.cancel"), style: "cancel" },
-        { text: t("spotSheet.offer.needVehicle.add"), onPress: onAddVehicle },
-      ]);
+      const add = await confirm({
+        title: t("spotSheet.offer.needVehicle.title"),
+        message: t("spotSheet.offer.needVehicle.message"),
+        cancelLabel: t("common.cancel"),
+        confirmLabel: t("spotSheet.offer.needVehicle.add"),
+      });
+      if (add) {
+        onAddVehicle();
+      }
       return;
     }
     setVehicleId(pendingOffer.vehicle_id);
@@ -204,36 +213,40 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
       return;
     }
     if (!vehicleId) {
-      Alert.alert(
-        t("spotSheet.offer.needVehicle.title"),
-        t("spotSheet.offer.needVehicle.message"),
-        [
-          { text: t("common.cancel"), style: "cancel" },
-          { text: t("spotSheet.offer.needVehicle.add"), onPress: onAddVehicle },
-        ],
-      );
+      const add = await confirm({
+        title: t("spotSheet.offer.needVehicle.title"),
+        message: t("spotSheet.offer.needVehicle.message"),
+        cancelLabel: t("common.cancel"),
+        confirmLabel: t("spotSheet.offer.needVehicle.add"),
+      });
+      if (add) {
+        onAddVehicle();
+      }
       return;
     }
     const offerPoints = parsePointsInput(amount);
     if (!Number.isFinite(exchangeAt.getTime())) {
-      Alert.alert(
-        t("announce.alert.invalidDate.title"),
-        t("announce.alert.invalidDate.message"),
-      );
+      await alert({
+        title: t("announce.alert.invalidDate.title"),
+        message: t("announce.alert.invalidDate.message"),
+        confirmLabel: t("common.ok"),
+      });
       return;
     }
     if (exchangeAt.getTime() <= Date.now()) {
-      Alert.alert(
-        t("spotSheet.offer.exchangeInPast.title"),
-        t("spotSheet.offer.exchangeInPast.message"),
-      );
+      await alert({
+        title: t("spotSheet.offer.exchangeInPast.title"),
+        message: t("spotSheet.offer.exchangeInPast.message"),
+        confirmLabel: t("common.ok"),
+      });
       return;
     }
     if (offerPoints == null) {
-      Alert.alert(
-        t("announce.alert.invalidPrice.title"),
-        t("announce.alert.invalidPrice.message"),
-      );
+      await alert({
+        title: t("announce.alert.invalidPrice.title"),
+        message: t("announce.alert.invalidPrice.message"),
+        confirmLabel: t("common.ok"),
+      });
       return;
     }
     if (pendingOffer) {

@@ -18,12 +18,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { type Href, useRouter } from "expo-router";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   Text,
   View,
 } from "react-native";
+
+import { useConfirm } from "@/ui/ConfirmModal";
 
 function isLiveReservation(status: string): boolean {
   return status === "pending" || status === "confirmed" || status === "arrived";
@@ -40,6 +41,7 @@ function reservationForSpot(
 
 export default function MySpotsScreen() {
   const { t, formatDateTime } = useTranslation();
+  const { confirm, alert } = useConfirm();
   const router = useRouter();
   const { signedIn } = useSession();
   const queryClient = useQueryClient();
@@ -83,11 +85,12 @@ export default function MySpotsScreen() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["spots", "mine"] });
     },
-    onError: (err) => {
-      Alert.alert(
-        t("account.spots.withdrawFailed.title"),
-        err instanceof Error ? err.message : t("common.error"),
-      );
+    onError: async (err) => {
+      await alert({
+        title: t("account.spots.withdrawFailed.title"),
+        message: err instanceof Error ? err.message : t("common.error"),
+        confirmLabel: t("common.ok"),
+      });
     },
   });
 
@@ -258,19 +261,17 @@ export default function MySpotsScreen() {
                     <Pressable
                       style={[accountStyles.danger, { flexGrow: 1, minWidth: "45%" }]}
                       disabled={withdraw.isPending}
-                      onPress={() => {
-                        Alert.alert(
-                          t("account.spots.withdraw.confirmTitle"),
-                          t("account.spots.withdraw.confirmMessage"),
-                          [
-                            { text: t("common.cancel"), style: "cancel" },
-                            {
-                              text: t("account.spots.withdraw.action"),
-                              style: "destructive",
-                              onPress: () => withdraw.mutate(id),
-                            },
-                          ],
-                        );
+                      onPress={async () => {
+                        const ok = await confirm({
+                          title: t("account.spots.withdraw.confirmTitle"),
+                          message: t("account.spots.withdraw.confirmMessage"),
+                          cancelLabel: t("common.cancel"),
+                          confirmLabel: t("account.spots.withdraw.action"),
+                          destructive: true,
+                        });
+                        if (ok) {
+                          withdraw.mutate(id);
+                        }
                       }}
                     >
                       <Text style={accountStyles.dangerText}>

@@ -13,7 +13,6 @@ import { type Href, useFocusEffect, useLocalSearchParams, useRouter } from "expo
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -59,6 +58,7 @@ import { useSession } from "@/hooks/useSession";
 import { useMapLocation } from "@/hooks/useMapLocation";
 import { announceAt, useActiveReservation } from "@/hooks/useSpotActions";
 import { useTranslation } from "@/i18n";
+import { useConfirm } from "@/ui/ConfirmModal";
 import {
   followReducer,
   initialFollowState,
@@ -111,6 +111,7 @@ const FOCUS_SPOT_ZOOM = 17;
 
 export default function MapScreen() {
   const { t, formatDateTime, locale } = useTranslation();
+  const { confirm, alert } = useConfirm();
   const router = useRouter();
   const focusParams = useLocalSearchParams<{
     focusLon?: string;
@@ -802,7 +803,11 @@ export default function MapScreen() {
       setSuggestHits([]);
       setSelectedSearchId(null);
       if (hits.length === 0) {
-        Alert.alert(t("map.search.empty.title"), t("map.search.empty.message"));
+        void alert({
+          title: t("map.search.empty.title"),
+          message: t("map.search.empty.message"),
+          confirmLabel: t("common.ok"),
+        });
         return;
       }
       dispatchFollow({ type: "claim_camera" });
@@ -822,7 +827,7 @@ export default function MapScreen() {
         setSelectedSearchId(hits[0]!.id);
       }
     },
-    [t],
+    [alert, t],
   );
 
   const resolveViewbox = useCallback(async (): Promise<ViewBox | undefined> => {
@@ -857,11 +862,15 @@ export default function MapScreen() {
         err instanceof Error && err.message.trim()
           ? err.message
           : t("common.error");
-      Alert.alert(t("map.search.failed"), detail);
+      await alert({
+        title: t("map.search.failed"),
+        message: detail,
+        confirmLabel: t("common.ok"),
+      });
     } finally {
       setSearchBusy(false);
     }
-  }, [searchQuery, locale, resolveViewbox, applySearchResult, t]);
+  }, [searchQuery, locale, resolveViewbox, applySearchResult, alert, t]);
 
   const runCategoryHintSearch = useCallback(
     async (hint: CategoryHint) => {
@@ -879,12 +888,16 @@ export default function MapScreen() {
           err instanceof Error && err.message.trim()
             ? err.message
             : t("common.error");
-        Alert.alert(t("map.search.failed"), detail);
+        await alert({
+          title: t("map.search.failed"),
+          message: detail,
+          confirmLabel: t("common.ok"),
+        });
       } finally {
         setSearchBusy(false);
       }
     },
-    [resolveViewbox, locale, applySearchResult, t],
+    [resolveViewbox, locale, applySearchResult, alert, t],
   );
 
   const onPressSuggestHit = useCallback(
@@ -979,9 +992,13 @@ export default function MapScreen() {
       setMineArmed(true);
       sheetRef.current?.snapToIndex(0);
       await Promise.all([refetch(), refreshMySpotsOverlay()]);
-      Alert.alert(t("map.alert.announced.title"), message);
+      await alert({
+        title: t("map.alert.announced.title"),
+        message,
+        confirmLabel: t("common.ok"),
+      });
     },
-    [refetch, refreshMySpotsOverlay, t],
+    [alert, refetch, refreshMySpotsOverlay, t],
   );
 
   const openAnnounce = useCallback(
@@ -1001,18 +1018,15 @@ export default function MapScreen() {
       try {
         const list = await listVehicles();
         if (list.length === 0) {
-          Alert.alert(
-            t("announce.needVehicle.title"),
-            t("announce.needVehicle.message"),
-            [
-              { text: t("common.cancel"), style: "cancel" },
-              {
-                text: t("announce.needVehicle.add"),
-                onPress: () =>
-                  router.push("/account/vehicles/new?from=announce" as Href),
-              },
-            ],
-          );
+          const add = await confirm({
+            title: t("announce.needVehicle.title"),
+            message: t("announce.needVehicle.message"),
+            cancelLabel: t("common.cancel"),
+            confirmLabel: t("announce.needVehicle.add"),
+          });
+          if (add) {
+            router.push("/account/vehicles/new?from=announce" as Href);
+          }
           return;
         }
         setAnnounceVehicles(list);
@@ -1028,15 +1042,16 @@ export default function MapScreen() {
           requireSignIn("/");
           return;
         }
-        Alert.alert(
-          t("map.alert.announceFailed.title"),
-          apiErrorMessage(err, t),
-        );
+        await alert({
+          title: t("map.alert.announceFailed.title"),
+          message: apiErrorMessage(err, t),
+          confirmLabel: t("common.ok"),
+        });
       } finally {
         setAnnouncing(false);
       }
     },
-    [requireEmailVerified, requireSignIn, router, signedIn, t],
+    [alert, confirm, requireEmailVerified, requireSignIn, router, signedIn, t],
   );
 
   // Deep-link from reservation history “re-announce” → open form prefilled.
@@ -1101,44 +1116,43 @@ export default function MapScreen() {
         setAnnounceKeepForm(false);
         await afterAnnounce(spot, t("map.alert.announced.message"));
       } catch (err) {
-        Alert.alert(
-          t("map.alert.announceFailed.title"),
-          apiErrorMessage(err, t),
-        );
+        await alert({
+          title: t("map.alert.announceFailed.title"),
+          message: apiErrorMessage(err, t),
+          confirmLabel: t("common.ok"),
+        });
       } finally {
         setAnnouncing(false);
       }
     },
-    [afterAnnounce, t],
+    [afterAnnounce, alert, t],
   );
 
   const onLongPress = useCallback(
     (event: NativeSyntheticEvent<PressEvent>) => {
       const [lon, lat] = event.nativeEvent.lngLat;
-      Alert.alert(
-        t("map.alert.announceHere.title"),
-        t("map.alert.announceHere.message", {
-          lat: lat.toFixed(5),
-          lon: lon.toFixed(5),
-        }),
-        [
-          { text: t("common.cancel"), style: "cancel" },
-          {
-            text: t("map.alert.announceHere.confirm"),
-            onPress: () => {
-              void openAnnounce(
-                [lon, lat],
-                t("announce.location.coords", {
-                  lat: lat.toFixed(5),
-                  lon: lon.toFixed(5),
-                }),
-              );
-            },
-          },
-        ],
-      );
+      void (async () => {
+        const ok = await confirm({
+          title: t("map.alert.announceHere.title"),
+          message: t("map.alert.announceHere.message", {
+            lat: lat.toFixed(5),
+            lon: lon.toFixed(5),
+          }),
+          cancelLabel: t("common.cancel"),
+          confirmLabel: t("map.alert.announceHere.confirm"),
+        });
+        if (ok) {
+          await openAnnounce(
+            [lon, lat],
+            t("announce.location.coords", {
+              lat: lat.toFixed(5),
+              lon: lon.toFixed(5),
+            }),
+          );
+        }
+      })();
     },
-    [openAnnounce, t],
+    [confirm, openAnnounce, t],
   );
 
   const onEditSpot = useCallback(
@@ -1158,34 +1172,32 @@ export default function MapScreen() {
       if (!id) {
         return;
       }
-      Alert.alert(
-        t("map.alert.withdrawListing.title"),
-        t("map.alert.withdrawListing.message"),
-        [
-          { text: t("common.cancel"), style: "cancel" },
-          {
-            text: t("map.alert.withdraw.confirm"),
-            style: "destructive",
-            onPress: () => {
-              void (async () => {
-                try {
-                  await withdrawSpot(id);
-                  setSelected(null);
-                  sheetRef.current?.close();
-                  await Promise.all([refetch(), refreshMySpotsOverlay()]);
-                } catch (err) {
-                  Alert.alert(
-                    t("map.alert.withdrawFailed.title"),
-                    err instanceof Error ? err.message : t("common.error"),
-                  );
-                }
-              })();
-            },
-          },
-        ],
-      );
+      void (async () => {
+        const ok = await confirm({
+          title: t("map.alert.withdrawListing.title"),
+          message: t("map.alert.withdrawListing.message"),
+          cancelLabel: t("common.cancel"),
+          confirmLabel: t("map.alert.withdraw.confirm"),
+          destructive: true,
+        });
+        if (!ok) {
+          return;
+        }
+        try {
+          await withdrawSpot(id);
+          setSelected(null);
+          sheetRef.current?.close();
+          await Promise.all([refetch(), refreshMySpotsOverlay()]);
+        } catch (err) {
+          await alert({
+            title: t("map.alert.withdrawFailed.title"),
+            message: err instanceof Error ? err.message : t("common.error"),
+            confirmLabel: t("common.ok"),
+          });
+        }
+      })();
     },
-    [refetch, t],
+    [alert, confirm, refetch, refreshMySpotsOverlay, t],
   );
 
   return (
@@ -1287,6 +1299,7 @@ export default function MapScreen() {
         ) : (
           <View style={styles.spotCountPlaceholder} />
         )}
+        <View style={styles.searchCluster}>
         <View style={styles.searchBar}>
           <TextInput
             style={styles.searchInput}
@@ -1378,6 +1391,7 @@ export default function MapScreen() {
             </Text>
           </ScrollView>
         ) : null}
+        </View>
         {announcePickMode ? (
           <View style={styles.pickBanner}>
             <Text style={styles.pickBannerText}>
@@ -1542,7 +1556,11 @@ export default function MapScreen() {
               exchange_at: exchangeAt,
               amount_cents: amountCents,
             });
-            Alert.alert(t("map.alert.offerSent.title"), t("map.alert.offerSent.message"));
+            await alert({
+              title: t("map.alert.offerSent.title"),
+              message: t("map.alert.offerSent.message"),
+              confirmLabel: t("common.ok"),
+            });
             await Promise.all([
               refetch(),
               refreshMyOffers(),
@@ -1550,7 +1568,11 @@ export default function MapScreen() {
               refreshActiveReservation(),
             ]);
           } catch (err) {
-            Alert.alert(t("map.alert.offerFailed.title"), apiErrorMessage(err, t));
+            await alert({
+              title: t("map.alert.offerFailed.title"),
+              message: apiErrorMessage(err, t),
+              confirmLabel: t("common.ok"),
+            });
           } finally {
             setOfferBusy(false);
           }
@@ -1561,10 +1583,11 @@ export default function MapScreen() {
             await withdrawOffer(offer.id);
             await Promise.all([refreshMyOffers(), refreshMySpotsOverlay()]);
           } catch (err) {
-            Alert.alert(
-              t("spotSheet.offer.withdrawFailed.title"),
-              apiErrorMessage(err, t),
-            );
+            await alert({
+              title: t("spotSheet.offer.withdrawFailed.title"),
+              message: apiErrorMessage(err, t),
+              confirmLabel: t("common.ok"),
+            });
             throw err;
           } finally {
             setOfferBusy(false);
@@ -1658,7 +1681,10 @@ const styles = StyleSheet.create({
     left: 12,
     right: 12,
     zIndex: 20,
-    gap: 12,
+    gap: 8,
+  },
+  searchCluster: {
+    gap: 4,
   },
   spotCountChip: {
     alignSelf: "center",

@@ -3,7 +3,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   Switch,
   Text,
@@ -29,6 +28,7 @@ import { useTranslation } from "@/i18n";
 import { spotStatusLabel } from "@/i18n/catalogLabels";
 import { formatPoints, parsePointsInput } from "@/i18n/formatPoints";
 import { matchesPreferredMinute } from "@/map/exchange";
+import { useConfirm } from "@/ui/ConfirmModal";
 import { DateTimeField } from "@/ui/DateTimeField";
 
 function defaultPreferred(): Date {
@@ -37,6 +37,7 @@ function defaultPreferred(): Date {
 
 export default function EditSpotScreen() {
   const { t, formatDateTime } = useTranslation();
+  const { confirm, alert } = useConfirm();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { signedIn } = useSession();
@@ -115,15 +116,19 @@ export default function EditSpotScreen() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["spots", "mine"] });
-      Alert.alert(t("account.spots.edit.saved.title"), t("account.spots.edit.saved.message"), [
-        { text: t("common.ok"), onPress: () => router.back() },
-      ]);
+      await alert({
+        title: t("account.spots.edit.saved.title"),
+        message: t("account.spots.edit.saved.message"),
+        confirmLabel: t("common.ok"),
+      });
+      router.back();
     },
-    onError: (err) => {
-      Alert.alert(
-        t("account.spots.edit.saveFailed.title"),
-        err instanceof Error ? err.message : t("common.error"),
-      );
+    onError: async (err) => {
+      await alert({
+        title: t("account.spots.edit.saveFailed.title"),
+        message: err instanceof Error ? err.message : t("common.error"),
+        confirmLabel: t("common.ok"),
+      });
     },
   });
 
@@ -141,17 +146,19 @@ export default function EditSpotScreen() {
         queryClient.invalidateQueries({ queryKey: ["spots", "mine"] }),
       ]);
       if (variables.accept) {
-        Alert.alert(
-          t("account.spots.offer.accepted.title"),
-          t("account.spots.offer.accepted.message"),
-        );
+        await alert({
+          title: t("account.spots.offer.accepted.title"),
+          message: t("account.spots.offer.accepted.message"),
+          confirmLabel: t("common.ok"),
+        });
       }
     },
-    onError: (err) => {
-      Alert.alert(
-        t("account.spots.offer.updateFailed.title"),
-        apiErrorMessage(err, t),
-      );
+    onError: async (err) => {
+      await alert({
+        title: t("account.spots.offer.updateFailed.title"),
+        message: apiErrorMessage(err, t),
+        confirmLabel: t("common.ok"),
+      });
     },
   });
 
@@ -166,11 +173,12 @@ export default function EditSpotScreen() {
       await queryClient.invalidateQueries({ queryKey: ["spots", "mine"] });
       router.back();
     },
-    onError: (err) => {
-      Alert.alert(
-        t("account.spots.withdrawFailed.title"),
-        err instanceof Error ? err.message : t("common.error"),
-      );
+    onError: async (err) => {
+      await alert({
+        title: t("account.spots.withdrawFailed.title"),
+        message: err instanceof Error ? err.message : t("common.error"),
+        confirmLabel: t("common.ok"),
+      });
     },
   });
 
@@ -200,19 +208,17 @@ export default function EditSpotScreen() {
         </Text>
         <Pressable
           style={[accountStyles.danger, { marginTop: 16 }]}
-          onPress={() => {
-            Alert.alert(
-              t("account.spots.withdraw.confirmTitle"),
-              t("account.spots.withdraw.confirmMessage"),
-              [
-                { text: t("common.cancel"), style: "cancel" },
-                {
-                  text: t("account.spots.withdraw.action"),
-                  style: "destructive",
-                  onPress: () => withdraw.mutate(),
-                },
-              ],
-            );
+          onPress={async () => {
+            const ok = await confirm({
+              title: t("account.spots.withdraw.confirmTitle"),
+              message: t("account.spots.withdraw.confirmMessage"),
+              cancelLabel: t("common.cancel"),
+              confirmLabel: t("account.spots.withdraw.action"),
+              destructive: true,
+            });
+            if (ok) {
+              withdraw.mutate();
+            }
           }}
         >
           <Text style={accountStyles.dangerText}>{t("account.spots.withdraw.action")}</Text>
@@ -369,19 +375,17 @@ export default function EditSpotScreen() {
       <Pressable
         style={[accountStyles.danger, { marginTop: 8 }]}
         disabled={withdraw.isPending}
-        onPress={() => {
-          Alert.alert(
-            t("account.spots.withdraw.confirmTitle"),
-            t("account.spots.withdraw.confirmMessage"),
-            [
-              { text: t("common.cancel"), style: "cancel" },
-              {
-                text: t("account.spots.withdraw.action"),
-                style: "destructive",
-                onPress: () => withdraw.mutate(),
-              },
-            ],
-          );
+        onPress={async () => {
+          const ok = await confirm({
+            title: t("account.spots.withdraw.confirmTitle"),
+            message: t("account.spots.withdraw.confirmMessage"),
+            cancelLabel: t("common.cancel"),
+            confirmLabel: t("account.spots.withdraw.action"),
+            destructive: true,
+          });
+          if (ok) {
+            withdraw.mutate();
+          }
         }}
       >
         {withdraw.isPending ? (
