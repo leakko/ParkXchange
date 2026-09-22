@@ -10,7 +10,10 @@ export type FollowState = {
 export type FollowAction =
   | { type: "location_granted" }
   | { type: "location_denied" }
+  /** Finger pan / map interaction — does not consume the cold-start GPS jump. */
   | { type: "user_gesture" }
+  /** Search, deep-link, pick mode, etc. — owns the camera; skips late GPS jump. */
+  | { type: "claim_camera" }
   | { type: "recenter" };
 
 /**
@@ -47,6 +50,11 @@ export function followReducer(
     case "location_denied":
       return { followUser: false, locationGranted: false };
     case "user_gesture":
+      // Do not mark session centered: a pan while waiting for the first GPS fix
+      // must not cancel the cold-start jump (Sevilla fallback → real coords).
+      // Pending locate is cancelled separately via locateGenRef in the map screen.
+      return state.followUser ? { ...state, followUser: false } : state;
+    case "claim_camera":
       markSessionCameraCentered();
       return state.followUser ? { ...state, followUser: false } : state;
     case "recenter":

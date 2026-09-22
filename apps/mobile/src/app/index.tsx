@@ -46,21 +46,15 @@ import {
   userZoom,
 } from "@/config";
 import {
+  loadPersistedMapCenter,
+  resolveBootstrapCenter,
+  shouldAnimateInitialCenter,
+} from "@/map/mapHomeCenter";
+import {
   defaultTimeWindow,
   useDiscovery,
   type Viewport,
 } from "@/hooks/useDiscovery";
-
-/** Fields the open sheet cares about — ignore referential churn from polls/WS. */
-function sheetSpotDrifted(current: SpotFeature, next: SpotFeature): boolean {
-  return (
-    current.properties.status !== next.properties.status ||
-    current.properties.exact_location !== next.properties.exact_location ||
-    current.properties.price_cents !== next.properties.price_cents ||
-    current.geometry.coordinates[0] !== next.geometry.coordinates[0] ||
-    current.geometry.coordinates[1] !== next.geometry.coordinates[1]
-  );
-}
 import { useSession } from "@/hooks/useSession";
 import { useMapLocation } from "@/hooks/useMapLocation";
 import { announceAt, useActiveReservation } from "@/hooks/useSpotActions";
@@ -72,6 +66,17 @@ import {
   markSessionCameraCentered,
   shouldInitialCenterCamera,
 } from "@/map/followUser";
+
+/** Fields the open sheet cares about — ignore referential churn from polls/WS. */
+function sheetSpotDrifted(current: SpotFeature, next: SpotFeature): boolean {
+  return (
+    current.properties.status !== next.properties.status ||
+    current.properties.exact_location !== next.properties.exact_location ||
+    current.properties.price_cents !== next.properties.price_cents ||
+    current.geometry.coordinates[0] !== next.geometry.coordinates[0] ||
+    current.geometry.coordinates[1] !== next.geometry.coordinates[1]
+  );
+}
 import { ExchangeLayers } from "@/map/ExchangeLayers";
 import { AnnounceDraftLayers } from "@/map/AnnounceDraftLayers";
 import { MySpotLayers } from "@/map/MySpotLayers";
@@ -132,6 +137,17 @@ export default function MapScreen() {
 
   const { ready, signedIn, error: sessionError, retry: retrySession } = useSession();
   const location = useMapLocation();
+  /**
+   * undefined = AsyncStorage still loading; null = nothing saved.
+   * Map mounts only after storage + location.ready so first paint can use
+   * OS last-known (or persisted) instead of flashing Sevilla.
+   */
+  const [persistedHome, setPersistedHome] = useState<
+    [number, number] | null | undefined
+  >(undefined);
+  const [homeCenter, setHomeCenter] = useState<[number, number] | null>(null);
+  const [homeZoom, setHomeZoom] = useState(fallbackZoom);
+  const homeCenterRef = useRef<[number, number] | null>(null);
   const [follow, dispatchFollow] = useReducer(
     followReducer,
     undefined,
@@ -178,6 +194,31 @@ export default function MapScreen() {
 
   // Foreground location is requested by useMapLocation (policy case A).
   // Background / “always” is only requested after «Voy de camino» (geofence).
+
+  useEffect(() => {
+    void loadPersistedMapCenter().then((persisted) => {
+      setPersistedHome(persisted);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (homeCenter != null) {
+      return;
+    }
+    if (persistedHome === undefined || !location.ready) {
+      return;
+    }
+    const center = resolveBootstrapCenter({
+      osLastKnown: location.coords,
+      persisted: persistedHome,
+      fallback: defaultMapCenter,
+    });
+    homeCenterRef.current = center;
+    setHomeCenter(center);
+    setHomeZoom(
+      location.coords != null || persistedHome != null ? userZoom : fallbackZoom,
+    );
+  }, [homeCenter, persistedHome, location.ready, location.coords]);
 
   const requireSignIn = useCallback(
     (returnTo: string = "/") => {
@@ -569,21 +610,27 @@ export default function MapScreen() {
       markSessionCameraCentered();
       return;
     }
-    // One jump per JS process when map + GPS are ready — never continuous follow.
-    // Module flag survives MapScreen remount (blur/reconnect) so resume ≠ recenter.
+    // One decision per JS process when map + GPS are ready — never continuous
+    // follow. Jump only if the bootstrap center is far from the fix (avoids
+    // Sevilla→Bilbao teleports when lastKnown/persisted already put us nearby).
     if (
       !shouldInitialCenterCamera({
         mapReady,
         coords: location.coords,
         announcePickMode,
       }) ||
-      !location.coords
+      !location.coords ||
+      homeCenter == null
     ) {
       return;
     }
-    cameraRef.current?.jumpTo({ center: location.coords, zoom: userZoom });
+    if (shouldAnimateInitialCenter(homeCenterRef.current, location.coords)) {
+      cameraRef.current?.jumpTo({ center: location.coords, zoom: userZoom });
+      homeCenterRef.current = location.coords;
+      setHomeCenter(location.coords);
+    }
     markSessionCameraCentered();
-  }, [location.coords, announcePickMode, userZoom, mapReady]);
+  }, [location.coords, announcePickMode, userZoom, mapReady, homeCenter]);
 
   const publishViewport = useCallback(async () => {
     const map = mapRef.current;
@@ -733,7 +780,7 @@ export default function MapScreen() {
       }
       // Preview on the map; exact car position is chosen with announce pick / map.
       setSelectedSearchId(id);
-      dispatchFollow({ type: "user_gesture" });
+      dispatchFollow({ type: "claim_camera" });
       cameraRef.current?.easeTo({
         center: [hit.lon, hit.lat],
         zoom: Math.max(userZoom, 15),
@@ -758,7 +805,7 @@ export default function MapScreen() {
         Alert.alert(t("map.search.empty.title"), t("map.search.empty.message"));
         return;
       }
-      dispatchFollow({ type: "user_gesture" });
+      dispatchFollow({ type: "claim_camera" });
       if (shouldZoomOut) {
         const fit = boundsForHits(hits.slice(0, 8));
         if (fit) {
@@ -845,7 +892,7 @@ export default function MapScreen() {
       applySearchResult([hit], [hit], false, hit.label);
       setSearchQuery(hit.label);
       setSelectedSearchId(hit.id);
-      dispatchFollow({ type: "user_gesture" });
+      dispatchFollow({ type: "claim_camera" });
       cameraRef.current?.easeTo({
         center: [hit.lon, hit.lat],
         zoom: Math.max(userZoom, 15),
@@ -890,7 +937,7 @@ export default function MapScreen() {
     if (!mapReady || !Number.isFinite(lon) || !Number.isFinite(lat)) {
       return;
     }
-    dispatchFollow({ type: "user_gesture" });
+    dispatchFollow({ type: "claim_camera" });
     cameraRef.current?.easeTo({
       center: [lon, lat],
       zoom: FOCUS_SPOT_ZOOM,
@@ -1006,7 +1053,7 @@ export default function MapScreen() {
     const vehicleRaw = focusParams.announceVehicle
       ? String(focusParams.announceVehicle)
       : "";
-    dispatchFollow({ type: "user_gesture" });
+    dispatchFollow({ type: "claim_camera" });
     cameraRef.current?.easeTo({
       center: [lon, lat],
       zoom: FOCUS_SPOT_ZOOM,
@@ -1143,6 +1190,11 @@ export default function MapScreen() {
 
   return (
     <View style={styles.fill}>
+      {homeCenter == null ? (
+        <View style={[styles.fill, styles.homeBoot]}>
+          <ActivityIndicator color="#7EC8E3" />
+        </View>
+      ) : (
       <MapView
         ref={mapRef}
         style={styles.fill}
@@ -1158,8 +1210,8 @@ export default function MapScreen() {
         <Camera
           ref={cameraRef}
           initialViewState={{
-            center: defaultMapCenter,
-            zoom: fallbackZoom,
+            center: homeCenter,
+            zoom: homeZoom,
           }}
         />
         {puckReady ? (
@@ -1204,6 +1256,7 @@ export default function MapScreen() {
           />
         ) : null}
       </MapView>
+      )}
 
       {!ready ? (
         <View
@@ -1578,7 +1631,7 @@ export default function MapScreen() {
           setAnnounceKeepForm(true);
           setAnnounceOpen(false);
           setAnnouncePickMode(true);
-          dispatchFollow({ type: "user_gesture" });
+          dispatchFollow({ type: "claim_camera" });
           if (announceCoords) {
             cameraRef.current?.easeTo({
               center: announceCoords,
@@ -1595,6 +1648,11 @@ export default function MapScreen() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  homeBoot: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0B1F33",
+  },
   topChrome: {
     position: "absolute",
     left: 12,

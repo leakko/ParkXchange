@@ -48,9 +48,19 @@ describe("followReducer", () => {
     }), false);
   });
 
-  it("user_gesture stays idle when not following and marks session centered", () => {
+  it("user_gesture does not consume the cold-start GPS one-shot", () => {
     const granted = followReducer(initialFollowState(), { type: "location_granted" });
     assert.deepEqual(followReducer(granted, { type: "user_gesture" }), granted);
+    assert.equal(shouldInitialCenterCamera({
+      mapReady: true,
+      coords: [2, 41],
+      announcePickMode: false,
+    }), true);
+  });
+
+  it("claim_camera owns the camera and skips late GPS jump", () => {
+    const granted = followReducer(initialFollowState(), { type: "location_granted" });
+    assert.deepEqual(followReducer(granted, { type: "claim_camera" }), granted);
     assert.equal(shouldInitialCenterCamera({
       mapReady: true,
       coords: [2, 41],

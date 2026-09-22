@@ -2,6 +2,7 @@ import * as Location from "expo-location";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 
+import { savePersistedMapCenter } from "@/map/mapHomeCenter";
 import { getFreshPosition } from "@/push/locationPermissions";
 
 export type LonLat = [number, number];
@@ -32,6 +33,8 @@ type MapLocation = {
 
 const RETRY_DELAY_MS = 2500;
 const MAX_FIX_ATTEMPTS = 8;
+/** Ignore fused fixes older than a week (vacation leftovers). */
+const LAST_KNOWN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function toLonLat(position: Location.LocationObject): LonLat {
   return [position.coords.longitude, position.coords.latitude];
@@ -41,15 +44,17 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function remember(coords: LonLat): void {
+  void savePersistedMapCenter(coords);
+}
+
 /**
  * Requests foreground location for the map screen and keeps coords updated.
  * The live puck is still owned by MapLibre's NativeUserLocation.
  *
- * Prefer high-accuracy / fresh timestamps so an upgrade to “always” does not
- * leave the puck stuck on a stale fused last-known (e.g. home).
- *
- * Camera follow is owned by the map screen — this hook never moves the camera.
- * Arrival geofencing lives in `@/push/geofence` and is independent.
+ * Prefers an OS last-known fix immediately, then warms a fresh high-accuracy
+ * position. Camera follow is owned by the map screen — this hook never moves
+ * the camera. Arrival geofencing lives in `@/push/geofence` and is independent.
  */
 export function useMapLocation(): MapLocation {
   const [ready, setReady] = useState(false);
@@ -59,6 +64,11 @@ export function useMapLocation(): MapLocation {
   const watchRef = useRef<Location.LocationSubscription | null>(null);
   const cancelledRef = useRef(false);
 
+  const applyCoords = useCallback((next: LonLat) => {
+    setCoords(next);
+    remember(next);
+  }, []);
+
   const readFix = useCallback(async (): Promise<LonLat | null> => {
     try {
       const position = await getFreshPosition(Location.Accuracy.High);
@@ -66,12 +76,12 @@ export function useMapLocation(): MapLocation {
         return null;
       }
       const next = toLonLat(position);
-      setCoords(next);
+      applyCoords(next);
       return next;
     } catch {
       return null;
     }
-  }, []);
+  }, [applyCoords]);
 
   const startWatch = useCallback(async () => {
     if (cancelledRef.current || watchRef.current) {
@@ -88,13 +98,13 @@ export function useMapLocation(): MapLocation {
           timeInterval: 2000,
         },
         (position) => {
-          setCoords(toLonLat(position));
+          applyCoords(toLonLat(position));
         },
       );
     } catch {
       /* GPS may still be warming; AppState resume retries. */
     }
-  }, []);
+  }, [applyCoords]);
 
   const refresh = useCallback(
     async (opts?: RefreshOpts) => {
@@ -123,6 +133,23 @@ export function useMapLocation(): MapLocation {
         }
         setGranted(true);
 
+        try {
+          const last = await Location.getLastKnownPositionAsync({
+            maxAge: LAST_KNOWN_MAX_AGE_MS,
+          });
+          if (!cancelledRef.current && last) {
+            applyCoords(toLonLat(last));
+          }
+        } catch {
+          /* continue to fresh fix */
+        }
+
+        // Map may bootstrap on last-known / persisted; do not block UI on a
+        // fresh high-accuracy fix (can take several seconds).
+        if (!cancelledRef.current) {
+          setReady(true);
+        }
+
         let fix = await readFix();
         for (
           let attempt = 1;
@@ -140,7 +167,7 @@ export function useMapLocation(): MapLocation {
         }
 
         await startWatch();
-      } finally {
+      } catch {
         if (!cancelledRef.current) {
           setReady(true);
         }
@@ -152,7 +179,7 @@ export function useMapLocation(): MapLocation {
       watchRef.current?.remove();
       watchRef.current = null;
     };
-  }, [readFix, startWatch]);
+  }, [applyCoords, readFix, startWatch]);
 
   // Resume: refresh coords and restart the watch if GPS was off at mount.
   // Never remount the puck here — that would make the blue dot vanish.
