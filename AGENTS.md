@@ -84,6 +84,8 @@ domain  <-  accounts, spots, reservations (use cases)  <-  postgres, api, realti
 - `task` is the entry point for everything: `task doctor`, `task db:up`,
   `task api:run`, `task api:test`, `task test`. Do not invent parallel scripts.
 - Commit messages explain the reasoning behind a change, not a list of files.
+- Production ops (Dozzle logs, DB tunnel, metrics SQL): `deploy/hetzner/` —
+  see that README and `ops-queries.sql`. Never commit secrets or real host IPs.
 
 ## Before you claim something works
 

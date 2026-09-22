@@ -6,7 +6,14 @@
 # GitHub Actions builds the API image, pushes it to GHCR, SSHs here and runs:
 #   docker compose pull api && docker compose up -d
 #
-# Postgres is not published to the host. Only Caddy listens on 80/443.
+# Public ports: Caddy 80/443 only.
+# Loopback-only: Postgres 5432 and Dozzle 8888 (SSH tunnels from your laptop).
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "7"
 
 services:
   postgres:
@@ -19,6 +26,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres-data:/var/lib/postgresql
+    # Bound to loopback so TablePlus can SSH-tunnel in. Never publish 0.0.0.0:5432.
+    ports:
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test:
         [
@@ -29,6 +39,7 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+    logging: *default-logging
 
   api:
     # Set API_IMAGE in .env (Actions writes it). Fallback builds from the repo.
@@ -67,6 +78,7 @@ services:
       GOOGLE_WEB_CLIENT_ID: ${GOOGLE_WEB_CLIENT_ID:-}
     expose:
       - "8080"
+    logging: *default-logging
 
   caddy:
     image: caddy:2.10-alpine
@@ -83,6 +95,22 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
+    logging: *default-logging
+
+  # Log UI over SSH tunnel only (127.0.0.1:8888 → http://127.0.0.1:8888 on laptop).
+  dozzle:
+    image: amir20/dozzle:v8.14.5
+    container_name: parkxchange-dozzle
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "127.0.0.1:8888:8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres-data:

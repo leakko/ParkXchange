@@ -21,13 +21,15 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** LocationIQ geocode + search UX (plan
-  `2026-09-21-geocode-locationiq-early-phase`); set `EXPO_PUBLIC_LOCATIONIQ_KEY`
-  before device smoke.
+- **Phase in progress:** Ops handoff smoke on the VPS (Dozzle + TablePlus
+  tunnels) after deploy of `deploy/hetzner` changes. LocationIQ geocode still
+  needs a Free key before device smoke.
 - **Also open:** Play Console identity verification; payments deferred.
 - **Last updated:** 2026-09-22
 - **Phases complete:** 12 of 12 (MVP) + handshake + push coaching + cancel-actor fix
-  + map search pins / push / GPS (prior); geocode LocationIQ wired in mobile.
+  + map search pins / push / GPS (prior); geocode LocationIQ wired in mobile;
+  ops handoff **code/docs landed** (compose Dozzle + loopback Postgres +
+  `ops-queries.sql` + README) — awaiting operator deploy/smoke.
 - **Blockers:** Play Console identity verification still pending for public
   listing; payments deferred until after email gate. Map search needs a
   LocationIQ Free key in env/EAS.
@@ -36,15 +38,17 @@ If that test fails, fix the code, not the test.
 
 ## Next immediate step
 
-1. Create LocationIQ Free key; put in `apps/mobile/.env.development` /
+1. **Ops smoke (this handoff):** deploy `main` (or pull + `docker compose up -d`
+   on the VPS). Confirm `127.0.0.1:8888` / `:5432` only. Tunnel Dozzle +
+   TablePlus; run `deploy/hetzner/ops-queries.sql` block 1. Open Hetzner
+   Graphs once. Spec/plan:
+   [`docs/superpowers/specs/2026-09-22-ops-handoff-design.md`](docs/superpowers/specs/2026-09-22-ops-handoff-design.md),
+   [`docs/superpowers/plans/2026-09-22-ops-handoff.md`](docs/superpowers/plans/2026-09-22-ops-handoff.md).
+2. Create LocationIQ Free key; put in `apps/mobile/.env.development` /
    EAS secrets as `EXPO_PUBLIC_LOCATIONIQ_KEY`.
-2. Smoke: street+number, category row (peluquería), brand autocomplete, reverse
+3. Smoke: street+number, category row (peluquería), brand autocomplete, reverse
    on announce.
-3. Push `main` + preview APK when smoke is green.
-4. Confirm GitHub Actions deploy + `curl …/healthz`.
-
-Plan:
-[`docs/superpowers/plans/2026-09-21-geocode-locationiq-early-phase.md`](docs/superpowers/plans/2026-09-21-geocode-locationiq-early-phase.md).
+4. Push preview APK when geocode smoke is green; confirm `curl …/healthz`.
 
 ---
 

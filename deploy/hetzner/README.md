@@ -69,7 +69,64 @@ then run the workflow (**Actions → deploy → Run workflow**) or push to `main
 curl -sS https://DEPLOY_DOMAIN/healthz
 ```
 
-Postgres stays on the Docker network only (no public `5432`).
+Postgres and Dozzle bind to **loopback only** on the VPS (`127.0.0.1:5432` /
+`127.0.0.1:8888`). They are not reachable from the public internet; use SSH
+tunnels from your laptop (below).
+
+## Day-to-day ops
+
+**Never commit** real host IPs, passwords, or the VPS `.env`. Read credentials
+from GitHub Actions secrets (`DEPLOY_*`) or from `deploy/hetzner/.env` **on the
+server**. Docs in this repo use placeholders only.
+
+### Logs (Dozzle)
+
+Dozzle is a browser UI over Docker logs. It shows whatever the `json-file`
+driver still retains (compose caps ~50 MB × 7 files per service) — typically
+several days, not an infinite archive.
+
+```bash
+ssh -L 8888:127.0.0.1:8888 DEPLOY_USER@DEPLOY_HOST
+```
+
+Leave that session open, then open [http://127.0.0.1:8888](http://127.0.0.1:8888)
+on the laptop. Pick `parkxchange-api` (or others) to scroll history and follow
+live output.
+
+### Database (TablePlus)
+
+```bash
+ssh -L 5433:127.0.0.1:5432 DEPLOY_USER@DEPLOY_HOST
+```
+
+In TablePlus (PostgreSQL):
+
+| Field | Value |
+| --- | --- |
+| Host | `127.0.0.1` |
+| Port | `5433` (local tunnel) |
+| User | `DEPLOY_POSTGRES_USER` / `POSTGRES_USER` on the VPS |
+| Password | `DEPLOY_POSTGRES_PASSWORD` / `POSTGRES_PASSWORD` on the VPS |
+| Database | `DEPLOY_POSTGRES_DB` / `POSTGRES_DB` on the VPS |
+
+Product metrics SQL lives in [`ops-queries.sql`](ops-queries.sql). Suggested
+order: **1 → 5** (registrations, logged-in actives, product actives, city
+zones, recent spot detail).
+
+### Host metrics (Hetzner)
+
+Hetzner Cloud Console → your project → the VPS → **Graphs** (CPU, RAM, disk,
+network). No extra agent in this stack.
+
+### After a deploy that adds Dozzle
+
+On the VPS (or via Actions `docker compose up -d`), confirm listeners are
+loopback-only:
+
+```bash
+ss -lntp | grep -E '5432|8888'
+docker ps --format '{{.Names}} {{.Ports}}' | grep -E 'dozzle|postgres'
+```
 
 ## Without a domain yet
 
