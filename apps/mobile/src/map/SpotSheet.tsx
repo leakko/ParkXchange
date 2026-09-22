@@ -250,6 +250,9 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
       keyboardBehavior="extend"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
+      // Above map top chrome (search / spot count); otherwise a full-height
+      // drag tucks the sheet under those absolute overlays.
+      containerStyle={styles.sheetContainer}
       backgroundStyle={styles.sheet}
       handleIndicatorStyle={styles.handle}
     >
@@ -703,6 +706,10 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
 });
 
 const styles = StyleSheet.create({
+  sheetContainer: {
+    zIndex: 40,
+    elevation: 40,
+  },
   sheet: { backgroundColor: "#0B1F33" },
   handle: { backgroundColor: "#5B7A8C" },
   body: { paddingHorizontal: 20, paddingBottom: 28, gap: 6 },
