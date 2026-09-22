@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   defaultMapFilter,
   isDefaultMapFilter,
+  isValidMapFilterDayRange,
   mapFilterFromDayRange,
 } from "./mapFilter.ts";
 
@@ -34,22 +35,32 @@ describe("mapFilterFromDayRange", () => {
   });
 });
 
+describe("isValidMapFilterDayRange", () => {
+  it("accepts only a range whose local end is after its start", () => {
+    const day = new Date(2026, 8, 24);
+
+    assert.equal(isValidMapFilterDayRange(day, 9, 15, 17, 30), true);
+    assert.equal(isValidMapFilterDayRange(day, 17, 30, 17, 30), false);
+    assert.equal(isValidMapFilterDayRange(day, 18, 0, 17, 30), false);
+  });
+});
+
 describe("isDefaultMapFilter", () => {
   it("recognizes only the default window and flags", () => {
     const now = new Date("2026-09-22T12:30:00.000Z");
     const filter = defaultMapFilter(now);
 
     assert.equal(isDefaultMapFilter(filter, now), true);
-    assert.equal(
-      isDefaultMapFilter({ ...filter, includeFlexible: false }, now),
-      false,
-    );
+    assert.equal(isDefaultMapFilter({ ...filter, includeFlexible: false }, now), false);
     assert.equal(isDefaultMapFilter({ ...filter, isCustom: true }, now), false);
     assert.equal(
-      isDefaultMapFilter({
-        ...filter,
-        to: "2026-09-22T15:30:00.000Z",
-      }, now),
+      isDefaultMapFilter(
+        {
+          ...filter,
+          to: "2026-09-22T15:30:00.000Z",
+        },
+        now,
+      ),
       false,
     );
   });

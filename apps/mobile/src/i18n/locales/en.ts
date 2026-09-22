@@ -23,6 +23,16 @@ export const en: Record<TranslationKey, string> = {
   "map.search.categoryNear": "Search {category} nearby",
   "map.search.suggestionsTitle": "Suggestions",
   "map.search.attribution": "Search by LocationIQ.com",
+  "map.filter.title": "Filter by departure",
+  "map.filter.soon": "Leaving soon",
+  "map.filter.day": "Day",
+  "map.filter.from": "From",
+  "map.filter.to": "To",
+  "map.filter.includeFlexible": "Include flexible",
+  "map.filter.apply": "Apply",
+  "map.filter.reset": "Reset",
+  "map.filter.fab": "Filter departures",
+  "map.filter.fabHint": "A custom filter is active",
 
   "offline.title": "No connection",
   "offline.body": "You’re offline. Connect to the internet to use ParkXchange.",
@@ -59,8 +69,7 @@ export const en: Record<TranslationKey, string> = {
   "auth.register.submit": "Create account",
   "auth.register.toLogin": "I already have an account",
   "auth.forgot.title": "Reset password",
-  "auth.forgot.subtitle":
-    "If an account exists for that email, we will send a reset link.",
+  "auth.forgot.subtitle": "If an account exists for that email, we will send a reset link.",
   "auth.forgot.submit": "Send link",
   "auth.forgot.sent":
     "If the account exists, you will get an email (in development the link is logged by the API).",
@@ -86,14 +95,12 @@ export const en: Record<TranslationKey, string> = {
   "auth.verify.resendTooSoon": "Wait a moment before requesting another email",
   "auth.verify.success": "Email confirmed",
   "auth.verify.successBody": "You can now announce spots and make offers.",
-  "auth.verify.note":
-    "We will email you a confirmation link before you can announce or reserve.",
+  "auth.verify.note": "We will email you a confirmation link before you can announce or reserve.",
   "auth.verify.openTitle": "Confirm email",
 
   "account.signIn": "Sign in",
   "account.signedOut.title": "Signed out",
-  "account.signedOut.message":
-    "Sign in to manage your profile, vehicles, and spots.",
+  "account.signedOut.message": "Sign in to manage your profile, vehicles, and spots.",
   "account.loadFailed": "Failed to load account",
   "account.rating.withScore": "{score} · {count} ratings",
   "account.rating.countOnly": "{count} ratings",
@@ -235,8 +242,7 @@ export const en: Record<TranslationKey, string> = {
   "account.reservations.withdrawOfferFailed": "Could not withdraw",
 
   "account.vehicles.add": "Add vehicle",
-  "account.vehicles.empty":
-    "No vehicles yet. Add one to announce that you are leaving.",
+  "account.vehicles.empty": "No vehicles yet. Add one to announce that you are leaving.",
   "account.vehicles.hasPhoto": " · photo",
   "account.vehicles.edit": "Edit",
   "account.vehicles.loadFailed": "Failed to load",
@@ -371,14 +377,17 @@ export const en: Record<TranslationKey, string> = {
   "spotSheet.exchange.driverArrivedOn":
     "You've marked that you're here. Waiting for the person freeing the spot to leave.",
   "spotSheet.exchange.waitingDriver": "Waiting for the person who reserved to arrive",
-  "spotSheet.exchange.waitingDriverReady": "Waiting for the person who reserved to be ready to enter",
+  "spotSheet.exchange.waitingDriverReady":
+    "Waiting for the person who reserved to be ready to enter",
   "spotSheet.exchange.driverIsHere": "The person who reserved is at the spot",
   "spotSheet.exchange.driverReady": "Ready to enter",
   "spotSheet.exchange.driverReadyConfirm.title": "Ready to enter?",
   "spotSheet.exchange.driverReadyConfirm.message":
     "We'll notify the person freeing the spot to leave. Only do this when you're at the spot and ready.",
-  "spotSheet.exchange.driverReadyOn": "You're ready. Waiting for the person freeing the spot to leave.",
-  "spotSheet.exchange.ownerLeavingSoon": "The person who reserved is ready. Leave before {datetime}.",
+  "spotSheet.exchange.driverReadyOn":
+    "You're ready. Waiting for the person freeing the spot to leave.",
+  "spotSheet.exchange.ownerLeavingSoon":
+    "The person who reserved is ready. Leave before {datetime}.",
   "spotSheet.exchange.stallConfirmEntered": "I got in (owner forgot to tap)",
   "spotSheet.exchange.stallReportNoShow": "The person freeing the spot never left",
   "spotSheet.exchange.stallHelp":
@@ -423,11 +432,9 @@ export const en: Record<TranslationKey, string> = {
   "announce.location.coords": "{lat}, {lon}",
   "announce.location.edit": "Edit location",
   "announce.location.keepSelection": "Keep this location",
-  "announce.location.noneYet":
-    "Use GPS or pick a point on the map (you can search places there).",
+  "announce.location.noneYet": "Use GPS or pick a point on the map (you can search places there).",
   "announce.location.required.title": "Location required",
-  "announce.location.required.message":
-    "Set the spot with GPS or by picking a point on the map.",
+  "announce.location.required.message": "Set the spot with GPS or by picking a point on the map.",
 
   "exchange.farAway.title": "Leaving from the spot?",
   "exchange.farAway.message":
@@ -465,8 +472,7 @@ export const en: Record<TranslationKey, string> = {
   "exchange.statusPanel.themDriver.en_route": "Already on the way",
   "exchange.statusPanel.themDriver.ready": "Already at the spot",
   "exchange.driverReady.title": "The person who reserved is ready at the spot",
-  "exchange.driverReady.message":
-    "Confirm you are in your car ready to leave when they pull in.",
+  "exchange.driverReady.message": "Confirm you are in your car ready to leave when they pull in.",
   "exchange.confirm.title": "Are you sure?",
   "exchange.confirm.ownerReady":
     "Are you sure you are in your car, ready to leave as soon as the person who reserved arrives?",
@@ -494,13 +500,16 @@ export const en: Record<TranslationKey, string> = {
   "exchange.status.myReady.D": "You're ready — very late; finish or cancel.",
   "exchange.status.ownerEnRoute": "The person freeing the spot is on the way.",
   "exchange.status.driverEnRoute": "The person who reserved is on the way.",
-  "exchange.status.ownerReady.A": "The person freeing the spot is ready in the car (still have time).",
+  "exchange.status.ownerReady.A":
+    "The person freeing the spot is ready in the car (still have time).",
   "exchange.status.ownerReady.B": "The person freeing the spot is ready — hurry.",
-  "exchange.status.ownerReady.C": "The person freeing the spot is ready — confirm yours before the limit.",
+  "exchange.status.ownerReady.C":
+    "The person freeing the spot is ready — confirm yours before the limit.",
   "exchange.status.ownerReady.D": "The person freeing the spot is ready — very late; act now.",
   "exchange.status.driverReady.A": "The person who reserved is at the spot — come and confirm.",
   "exchange.status.driverReady.B": "The person who reserved is at the spot — hurry.",
-  "exchange.status.driverReady.C": "The person who reserved is at the spot — confirm before the limit.",
+  "exchange.status.driverReady.C":
+    "The person who reserved is at the spot — confirm before the limit.",
   "exchange.status.driverReady.D": "The person who reserved has been waiting — confirm now.",
   "exchange.cancel.owner.release":
     "Canceling returns the deposit to the person who reserved and removes the listing.",
@@ -525,8 +534,7 @@ export const en: Record<TranslationKey, string> = {
   "exchange.notif.driverEnRoute.B": "The person who reserved is on the way (under 30 min left).",
   "exchange.notif.driverEnRoute.C": "The person who reserved is on the way (past the hour).",
   "exchange.notif.driverEnRoute.D": "The person who reserved is on the way — very late.",
-  "exchange.notif.ownerReady.A":
-    "The person freeing the spot is ready to leave; no need to rush.",
+  "exchange.notif.ownerReady.A": "The person freeing the spot is ready to leave; no need to rush.",
   "exchange.notif.ownerReady.B":
     "The person freeing the spot is ready — hurry (if you confirm ready too, the exchange closes).",
   "exchange.notif.ownerReady.C":
@@ -534,17 +542,18 @@ export const en: Record<TranslationKey, string> = {
   "exchange.notif.ownerReady.D": "The person freeing the spot is ready — very late; act now.",
   "exchange.notif.driverReady.A":
     "The person who reserved is at the spot — come and confirm you're ready.",
-  "exchange.notif.driverReady.B":
-    "The person who reserved is at the spot — hurry.",
+  "exchange.notif.driverReady.B": "The person who reserved is at the spot — hurry.",
   "exchange.notif.driverReady.C":
     "The person who reserved is at the spot — confirm before the limit.",
   "exchange.notif.driverReady.D": "The person who reserved is at the spot — very late.",
   "exchange.notif.ownerUnready": "The person freeing the spot is no longer ready to leave.",
   "exchange.notif.driverUnready": "The person who reserved is no longer ready to park.",
   "exchange.notif.cancelled.generic": "The exchange was cancelled.",
-  "exchange.notif.ownerCancelled.release": "The person freeing the spot canceled — your deposit is returned.",
+  "exchange.notif.ownerCancelled.release":
+    "The person freeing the spot canceled — your deposit is returned.",
   "exchange.notif.driverCancelled.release": "The person who reserved canceled — deposit released.",
-  "exchange.notif.driverCancelled.late": "The person who reserved canceled late — you get the deposit.",
+  "exchange.notif.driverCancelled.late":
+    "The person who reserved canceled late — you get the deposit.",
   "exchange.stall.confirmTitle": "Confirm you got in?",
   "exchange.stall.confirmMessage":
     "This closes the exchange and pays the person freeing the spot. They'll be told they forgot to tap.",

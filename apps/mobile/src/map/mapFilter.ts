@@ -37,10 +37,18 @@ export function mapFilterFromDayRange(
   };
 }
 
-export function isDefaultMapFilter(
-  filter: MapFilterState,
-  now = new Date(),
+export function isValidMapFilterDayRange(
+  dayLocal: Date,
+  startHour: number,
+  startMinute: number,
+  endHour: number,
+  endMinute: number,
 ): boolean {
+  const filter = mapFilterFromDayRange(dayLocal, startHour, startMinute, endHour, endMinute, true);
+  return Date.parse(filter.to) > Date.parse(filter.from);
+}
+
+export function isDefaultMapFilter(filter: MapFilterState, now = new Date()): boolean {
   const expected = defaultMapFilter(now);
   return (
     !filter.isCustom &&

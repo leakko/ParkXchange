@@ -21,6 +21,16 @@ export const es = {
   "map.search.categoryNear": "Buscar {category} cerca",
   "map.search.suggestionsTitle": "Sugerencias",
   "map.search.attribution": "Search by LocationIQ.com",
+  "map.filter.title": "Filtrar por salida",
+  "map.filter.soon": "Salida próxima",
+  "map.filter.day": "Día",
+  "map.filter.from": "Desde",
+  "map.filter.to": "Hasta",
+  "map.filter.includeFlexible": "Incluir flexibles",
+  "map.filter.apply": "Aplicar",
+  "map.filter.reset": "Restablecer",
+  "map.filter.fab": "Filtrar salidas",
+  "map.filter.fabHint": "Hay un filtro personalizado activo",
 
   "offline.title": "Sin conexión",
   "offline.body": "No tienes internet. Conéctate para usar ParkXchange.",
@@ -90,8 +100,7 @@ export const es = {
 
   "account.signIn": "Iniciar sesión",
   "account.signedOut.title": "Sesión cerrada",
-  "account.signedOut.message":
-    "Inicia sesión para gestionar tu perfil, vehículos y plazas.",
+  "account.signedOut.message": "Inicia sesión para gestionar tu perfil, vehículos y plazas.",
   "account.loadFailed": "No se pudo cargar la cuenta",
   "account.rating.withScore": "{score} · {count} valoraciones",
   "account.rating.countOnly": "{count} valoraciones",
@@ -136,7 +145,8 @@ export const es = {
   "account.profile.saveFailed.title": "Error al guardar",
   "account.profile.passwordMismatch": "La nueva contraseña y la confirmación no coinciden",
   "account.profile.passwordChanged.title": "Contraseña cambiada",
-  "account.profile.passwordChanged.message": "Usa la nueva contraseña la próxima vez que inicies sesión.",
+  "account.profile.passwordChanged.message":
+    "Usa la nueva contraseña la próxima vez que inicies sesión.",
   "account.profile.passwordChangeFailed.title": "Error al cambiar la contraseña",
   "account.profile.displayName.section": "Nombre visible",
   "account.profile.displayName.label": "Nombre",
@@ -168,7 +178,8 @@ export const es = {
   "account.spots.loadFailed": "Error al cargar",
   "account.spots.edit.missingId": "Falta el id de la plaza",
   "account.spots.edit.invalidPrice": "Introduce un número de puntos válido",
-  "account.spots.edit.invalidPreferredTime": "Introduce una fecha y hora de salida preferida válidas",
+  "account.spots.edit.invalidPreferredTime":
+    "Introduce una fecha y hora de salida preferida válidas",
   "account.spots.edit.saved.title": "Guardado",
   "account.spots.edit.saved.message": "Plaza actualizada.",
   "account.spots.edit.saveFailed.title": "Error al guardar",
@@ -233,8 +244,7 @@ export const es = {
   "account.reservations.withdrawOfferFailed": "No se pudo retirar",
 
   "account.vehicles.add": "Añadir vehículo",
-  "account.vehicles.empty":
-    "Aún no hay vehículos. Añade uno para poder anunciar que te vas.",
+  "account.vehicles.empty": "Aún no hay vehículos. Añade uno para poder anunciar que te vas.",
   "account.vehicles.hasPhoto": " · foto",
   "account.vehicles.edit": "Editar",
   "account.vehicles.loadFailed": "Error al cargar",
@@ -375,7 +385,8 @@ export const es = {
   "spotSheet.exchange.driverReadyConfirm.title": "¿Listo para aparcar?",
   "spotSheet.exchange.driverReadyConfirm.message":
     "Avisaremos a quien deja el hueco para que salga. Solo pulsa esto cuando estés en el punto y preparado.",
-  "spotSheet.exchange.driverReadyOn": "Has marcado que estás listo. Esperando a que quien deja el hueco salga.",
+  "spotSheet.exchange.driverReadyOn":
+    "Has marcado que estás listo. Esperando a que quien deja el hueco salga.",
   "spotSheet.exchange.ownerLeavingSoon": "Quien reservó está listo. Sal antes de {datetime}.",
   "spotSheet.exchange.stallConfirmEntered": "Entré bien (quien deja el hueco olvidó marcar)",
   "spotSheet.exchange.stallReportNoShow": "Quien deja el hueco no se fue",
@@ -391,8 +402,7 @@ export const es = {
   "announce.alert.dateInPast.title": "Fecha en el pasado",
   "announce.alert.dateInPast.message": "Elige una fecha y hora futuras.",
   "spotSheet.offer.exchangeInPast.title": "Hora de intercambio en el pasado",
-  "spotSheet.offer.exchangeInPast.message":
-    "Elige una fecha y hora de intercambio en el futuro.",
+  "spotSheet.offer.exchangeInPast.message": "Elige una fecha y hora de intercambio en el futuro.",
   "announce.title": "Anuncia que te vas",
   "announce.info":
     "Cuando aceptes una oferta, la otra persona verá el modelo de tu coche, tu ubicación exacta y tu teléfono para organizar el intercambio. No alquilamos plazas.",
@@ -410,8 +420,7 @@ export const es = {
   "announce.needVehicle.message":
     "Para anunciar que sales de un sitio debes tener un coche dado de alta: quien reserve necesita saber sobre quién situarse.",
   "announce.needVehicle.add": "Añadir coche",
-  "announce.error.phoneRequired":
-    "Añade un teléfono en tu perfil antes de anunciar que te vas",
+  "announce.error.phoneRequired": "Añade un teléfono en tu perfil antes de anunciar que te vas",
   "announce.error.phoneInvalid": "El teléfono debe estar en formato E.164 (+…)",
   "announce.location.label": "Ubicación",
   "announce.location.useGps": "Mi ubicación",
@@ -464,8 +473,7 @@ export const es = {
   "exchange.statusPanel.themDriver.en_route": "Ya va de camino",
   "exchange.statusPanel.themDriver.ready": "Ya está en el punto",
   "exchange.driverReady.title": "Quien reservó está listo en el punto",
-  "exchange.driverReady.message":
-    "Confirma que estás en tu coche listo para salir cuando se meta.",
+  "exchange.driverReady.message": "Confirma que estás en tu coche listo para salir cuando se meta.",
   "exchange.confirm.title": "¿Seguro?",
   "exchange.confirm.ownerReady":
     "¿Seguro que estás dentro de tu coche, listo para salir en cuanto llegue quien reservó?",
@@ -528,20 +536,18 @@ export const es = {
     "Quien deja el hueco está listo para salir; no hace falta precipitarse.",
   "exchange.notif.ownerReady.B":
     "Quien deja el hueco está listo — date prisa (si tú también estás listo, se cierra el intercambio).",
-  "exchange.notif.ownerReady.C":
-    "Quien deja el hueco está listo — confirma tú antes del límite.",
+  "exchange.notif.ownerReady.C": "Quien deja el hueco está listo — confirma tú antes del límite.",
   "exchange.notif.ownerReady.D": "Quien deja el hueco está listo — muy tarde; actúa ya.",
   "exchange.notif.driverReady.A":
     "Quien reservó ya está en el punto — ven y confirma que estás listo.",
-  "exchange.notif.driverReady.B":
-    "Quien reservó ya está en el punto — date prisa.",
-  "exchange.notif.driverReady.C":
-    "Quien reservó ya está en el punto — confirma antes del límite.",
+  "exchange.notif.driverReady.B": "Quien reservó ya está en el punto — date prisa.",
+  "exchange.notif.driverReady.C": "Quien reservó ya está en el punto — confirma antes del límite.",
   "exchange.notif.driverReady.D": "Quien reservó ya está en el punto — muy tarde.",
   "exchange.notif.ownerUnready": "Quien deja el hueco ya no está listo para salir.",
   "exchange.notif.driverUnready": "Quien reservó ya no está listo para aparcar.",
   "exchange.notif.cancelled.generic": "El intercambio se ha cancelado.",
-  "exchange.notif.ownerCancelled.release": "Quien deja el hueco canceló — te devolvemos el depósito.",
+  "exchange.notif.ownerCancelled.release":
+    "Quien deja el hueco canceló — te devolvemos el depósito.",
   "exchange.notif.driverCancelled.release": "Quien reservó canceló — depósito liberado.",
   "exchange.notif.driverCancelled.late": "Quien reservó canceló tarde — cobras el depósito.",
   "exchange.stall.confirmTitle": "¿Confirmas que entraste?",

@@ -2,13 +2,7 @@ import DateTimePicker, {
   type DateTimePickerChangeEvent,
 } from "@react-native-community/datetimepicker";
 import { useState } from "react";
-import {
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useTranslation } from "@/i18n";
 
@@ -16,19 +10,20 @@ type Props = {
   value: Date;
   onChange: (next: Date) => void;
   minimumDate?: Date;
+  mode?: "datetime" | "date" | "time";
 };
 
 /**
  * Native date+time control. Android opens date then time dialogs; iOS uses a
  * datetime spinner with an explicit dismiss.
  */
-export function DateTimeField({ value, onChange, minimumDate }: Props) {
+export function DateTimeField({ value, onChange, minimumDate, mode = "datetime" }: Props) {
   const { t, locale, formatDateTime } = useTranslation();
   const [open, setOpen] = useState(false);
   const [androidMode, setAndroidMode] = useState<"date" | "time">("date");
 
   const openPicker = () => {
-    setAndroidMode("date");
+    setAndroidMode(mode === "time" ? "time" : "date");
     setOpen(true);
   };
 
@@ -37,20 +32,16 @@ export function DateTimeField({ value, onChange, minimumDate }: Props) {
     setAndroidMode("date");
   };
 
-  const onValueChange = (
-    _event: DateTimePickerChangeEvent,
-    selected: Date,
-  ) => {
+  const onValueChange = (_event: DateTimePickerChangeEvent, selected: Date) => {
     if (Platform.OS === "android") {
       setOpen(false);
       if (androidMode === "date") {
         const next = new Date(value);
-        next.setFullYear(
-          selected.getFullYear(),
-          selected.getMonth(),
-          selected.getDate(),
-        );
+        next.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
         onChange(next);
+        if (mode === "date") {
+          return;
+        }
         setAndroidMode("time");
         // Android closes the dialog after each mode; reopen for the time step.
         setTimeout(() => setOpen(true), 50);
@@ -66,20 +57,27 @@ export function DateTimeField({ value, onChange, minimumDate }: Props) {
     onChange(selected);
   };
 
+  const languageTag = locale === "en" ? "en-GB" : "es-ES";
+  const displayValue =
+    mode === "date"
+      ? value.toLocaleDateString(languageTag)
+      : mode === "time"
+        ? value.toLocaleTimeString(languageTag, {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : formatDateTime(value.toISOString());
+
   return (
     <View style={styles.wrap}>
-      <Pressable
-        style={styles.input}
-        onPress={openPicker}
-        accessibilityRole="button"
-      >
-        <Text style={styles.text}>{formatDateTime(value.toISOString())}</Text>
+      <Pressable style={styles.input} onPress={openPicker} accessibilityRole="button">
+        <Text style={styles.text}>{displayValue}</Text>
       </Pressable>
       {open ? (
         <DateTimePicker
           key={Platform.OS === "android" ? androidMode : "ios"}
           value={value}
-          mode={Platform.OS === "ios" ? "datetime" : androidMode}
+          mode={Platform.OS === "ios" ? mode : androidMode}
           display={Platform.OS === "ios" ? "spinner" : "default"}
           onValueChange={onValueChange}
           onDismiss={closePicker}
