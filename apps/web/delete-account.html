@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ParkXchange — Delete account</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Source+Sans+3:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <link rel="icon" href="assets/logo.png" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="logo-link" href="index.html">
+        <img src="assets/logo.png" width="32" height="32" alt="" />
+        <span data-i18n="brand">ParkXchange</span>
+      </a>
+      <nav class="header-nav" aria-label="Primary">
+        <a href="privacy.html" data-i18n="nav.privacy">Privacidad</a>
+        <a href="terms.html" data-i18n="nav.terms">Condiciones</a>
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button type="button" data-lang="es" data-i18n="nav.lang.es">ES</button>
+          <button type="button" data-lang="en" data-i18n="nav.lang.en">EN</button>
+        </div>
+      </nav>
+    </header>
+
+    <main class="legal">
+      <h1 data-i18n="delete.title">Eliminar cuenta ParkXchange</h1>
+      <p class="legal-meta">
+        <time datetime="2026-09-22" data-i18n="delete.updated"
+          >Última actualización: 22 de septiembre de 2026</time
+        >
+      </p>
+      <p data-i18n="delete.intro"></p>
+
+      <h2 data-i18n="delete.steps.h"></h2>
+      <ol>
+        <li data-i18n="delete.steps.1"></li>
+        <li data-i18n="delete.steps.2"></li>
+        <li data-i18n="delete.steps.3"></li>
+        <li data-i18n="delete.steps.4"></li>
+      </ol>
+
+      <h2 data-i18n="delete.what.h"></h2>
+      <p data-i18n="delete.what.p"></p>
+
+      <h2 data-i18n="delete.keep.h"></h2>
+      <p data-i18n="delete.keep.p"></p>
+
+      <h2 data-i18n="delete.email.h"></h2>
+      <p data-i18n="delete.email.p"></p>
+
+      <p>
+        <a href="privacy.html" data-i18n="delete.privacy"
+          >Más detalles en la política de privacidad.</a
+        >
+      </p>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-row">
+        <a href="privacy.html" data-i18n="nav.privacy">Privacidad</a>
+        <a href="terms.html" data-i18n="nav.terms">Condiciones</a>
+        <a href="mailto:marcossalvo95@gmail.com" data-i18n="footer.contact"
+          >Contacto</a
+        >
+      </div>
+      <p class="footer-tagline" data-i18n="footer.tagline"></p>
+    </footer>
+
+    <script src="assets/i18n.js"></script>
+    <script>
+      ParkXchangeI18n.initI18n();
+    </script>
+  </body>
+</html>

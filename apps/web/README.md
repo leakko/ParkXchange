@@ -47,6 +47,7 @@ After HTTPS is ready, enable **Enforce HTTPS** in Pages settings.
    - Home: `https://park-xchange.com/`
    - Privacy: `https://park-xchange.com/privacy.html`
    - Terms: `https://park-xchange.com/terms.html`
+   - Account deletion (Play Data safety): `https://park-xchange.com/delete-account.html`
    - Authorized domain: `park-xchange.com`
 3. Submit brand verification when ready.
 

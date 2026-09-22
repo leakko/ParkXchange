@@ -115,6 +115,27 @@
       "terms.contact.h": "Contacto",
       "terms.contact.p":
         "Para notificaciones relacionadas con estas condiciones: marcossalvo95@gmail.com.",
+
+      "delete.title": "Eliminar cuenta ParkXchange",
+      "delete.updated": "Última actualización: 22 de septiembre de 2026",
+      "delete.intro":
+        "Esta página explica cómo solicitar la eliminación de tu cuenta de ParkXchange y de los datos personales asociados. El nombre de la aplicación en Google Play es ParkXchange; el operador es Marcos Salvo.",
+      "delete.steps.h": "Cómo eliminar tu cuenta",
+      "delete.steps.1": "Abre la aplicación ParkXchange e inicia sesión.",
+      "delete.steps.2": "Ve a Cuenta.",
+      "delete.steps.3": "Pulsa Borrar cuenta (o Delete account).",
+      "delete.steps.4":
+        "Confirma en el diálogo. La eliminación se ejecuta de inmediato en el servidor.",
+      "delete.what.h": "Qué se elimina o anonimiza",
+      "delete.what.p":
+        "Se eliminan o anonimizan de forma automática: email, nombre mostrado, teléfono, vínculo con Google, contraseña, tokens de sesión, vehículos y fotos del vehículo, y se cancelan anuncios/ofertas/reservas activos. El saldo de puntos restante se pierde (MVP).",
+      "delete.keep.h": "Qué puede conservarse",
+      "delete.keep.p":
+        "Pueden conservarse registros operativos (por ejemplo asientos del libro de puntos) sin datos identificativos, cuando la seguridad, disputas u obligaciones legales lo exijan.",
+      "delete.email.h": "Si no puedes usar la app",
+      "delete.email.p":
+        "Escribe a marcossalvo95@gmail.com desde el email de la cuenta, indicando que quieres eliminar tu cuenta ParkXchange. Procesaremos la solicitud de borrado de cuenta.",
+      "delete.privacy": "Más detalles en la política de privacidad.",
     },
     en: {
       "nav.privacy": "Privacy",
@@ -220,6 +241,27 @@
       "terms.contact.h": "Contact",
       "terms.contact.p":
         "For notices about these terms: marcossalvo95@gmail.com.",
+
+      "delete.title": "Delete your ParkXchange account",
+      "delete.updated": "Last updated: 22 September 2026",
+      "delete.intro":
+        "This page explains how to request deletion of your ParkXchange account and associated personal data. The app name on Google Play is ParkXchange; the operator is Marcos Salvo.",
+      "delete.steps.h": "How to delete your account",
+      "delete.steps.1": "Open the ParkXchange app and sign in.",
+      "delete.steps.2": "Go to Account.",
+      "delete.steps.3": "Tap Delete account (or Borrar cuenta).",
+      "delete.steps.4":
+        "Confirm in the dialog. Deletion runs immediately on the server.",
+      "delete.what.h": "What is deleted or anonymised",
+      "delete.what.p":
+        "We automatically delete or anonymise: email, display name, phone, Google link, password, session tokens, vehicles and vehicle photos, and we cancel active listings/offers/reservations. Any remaining points balance is forfeited (MVP).",
+      "delete.keep.h": "What may be retained",
+      "delete.keep.p":
+        "Operational records (for example points ledger entries) may be retained without identifying data where required for security, disputes, or legal duties.",
+      "delete.email.h": "If you cannot use the app",
+      "delete.email.p":
+        "Email marcossalvo95@gmail.com from the account email address and ask to delete your ParkXchange account. We will process the account deletion request.",
+      "delete.privacy": "See the privacy policy for more detail.",
     },
   };
 
