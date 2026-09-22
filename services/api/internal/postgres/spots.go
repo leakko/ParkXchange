@@ -56,6 +56,10 @@ const discoveryQuery = `
 	SELECT ` + spotColumns + spotFrom + `
 	 WHERE s.status = 'available'
 	   AND s.expires_at > $5
+	   AND (
+	     s.preferred_departure_at IS NULL
+	     OR s.preferred_departure_at + interval '24 hours' > $5
+	   )
 	   AND s.geom && ST_MakeEnvelope($1, $2, $3, $4, 4326)
 	 ORDER BY s.created_at DESC
 	 LIMIT $6`

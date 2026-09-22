@@ -177,12 +177,13 @@ func TestSpotExpiryAndClaimability(t *testing.T) {
 	now := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
 
 	tests := []struct {
-		name          string
-		status        domain.SpotStatus
-		availableFrom time.Time
-		expiresAt     time.Time
-		wantExpired   bool
-		wantClaimable bool
+		name                 string
+		status               domain.SpotStatus
+		availableFrom        time.Time
+		expiresAt            time.Time
+		preferredDepartureAt *time.Time
+		wantExpired          bool
+		wantClaimable        bool
 	}{
 		{
 			name:          "live and available",
@@ -220,6 +221,24 @@ func TestSpotExpiryAndClaimability(t *testing.T) {
 			availableFrom: now.Add(-time.Minute),
 			expiresAt:     now.Add(time.Hour),
 		},
+		{
+			// Listing lifetime still open, but preferred leave was >24h ago.
+			name:                   "preferred departure grace passed",
+			status:                 domain.SpotAvailable,
+			availableFrom:          now.Add(-25 * time.Hour),
+			expiresAt:              now.Add(time.Hour),
+			preferredDepartureAt:   ptrTime(now.Add(-25 * time.Hour)),
+			wantExpired:            true,
+			wantClaimable:          false,
+		},
+		{
+			name:                 "preferred departure still inside grace",
+			status:               domain.SpotAvailable,
+			availableFrom:        now.Add(-time.Hour),
+			expiresAt:            now.Add(time.Hour),
+			preferredDepartureAt: ptrTime(now.Add(-23 * time.Hour)),
+			wantClaimable:        true,
+		},
 	}
 
 	for _, tc := range tests {
@@ -227,9 +246,10 @@ func TestSpotExpiryAndClaimability(t *testing.T) {
 			t.Parallel()
 
 			spot := domain.Spot{
-				Status:        tc.status,
-				AvailableFrom: tc.availableFrom,
-				ExpiresAt:     tc.expiresAt,
+				Status:               tc.status,
+				AvailableFrom:        tc.availableFrom,
+				ExpiresAt:            tc.expiresAt,
+				PreferredDepartureAt: tc.preferredDepartureAt,
 			}
 
 			if got := spot.Expired(now); got != tc.wantExpired {
@@ -518,4 +538,8 @@ func longString(n int) string {
 		out[i] = 'x'
 	}
 	return string(out)
+}
+
+func ptrTime(t time.Time) *time.Time {
+	return &t
 }

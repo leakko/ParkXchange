@@ -45,6 +45,52 @@ function myReadyAt(res: ReservationResponse, meId: string): string | null {
   return null;
 }
 
+/** Poll/WS often return equal payloads with new object identity — skip those. */
+function sameActiveReservation(
+  a: ReservationResponse | null,
+  b: ReservationResponse | null,
+): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+  return (
+    a.id === b.id &&
+    a.status === b.status &&
+    a.spot_id === b.spot_id &&
+    a.exchange_at === b.exchange_at &&
+    a.owner_en_route_at === b.owner_en_route_at &&
+    a.driver_en_route_at === b.driver_en_route_at &&
+    a.owner_ready_at === b.owner_ready_at &&
+    a.driver_ready_at === b.driver_ready_at &&
+    a.owner_vehicle?.plate === b.owner_vehicle?.plate &&
+    a.owner_vehicle?.make_model === b.owner_vehicle?.make_model &&
+    a.owner_vehicle?.has_photo === b.owner_vehicle?.has_photo &&
+    a.driver_vehicle?.plate === b.driver_vehicle?.plate &&
+    a.driver_vehicle?.make_model === b.driver_vehicle?.make_model &&
+    a.driver_vehicle?.has_photo === b.driver_vehicle?.has_photo
+  );
+}
+
+function sameSheetSpot(a: SpotFeature | null, b: SpotFeature | null): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+  return (
+    String(a.id) === String(b.id) &&
+    a.properties.status === b.properties.status &&
+    a.properties.exact_location === b.properties.exact_location &&
+    a.properties.price_cents === b.properties.price_cents &&
+    a.geometry.coordinates[0] === b.geometry.coordinates[0] &&
+    a.geometry.coordinates[1] === b.geometry.coordinates[1]
+  );
+}
+
 export function useActiveReservation(enabled: boolean) {
   const { t } = useTranslation();
   const { show } = useToast();
@@ -117,8 +163,8 @@ export function useActiveReservation(enabled: boolean) {
       // Resolve spot before publishing active so the exchange pin and sheet never
       // flash with reservation-but-no-coords (or keep a stale fuzzed pin).
       const spotFeature = next ? await getSpot(next.spot_id) : null;
-      setActive(next);
-      setSpot(spotFeature);
+      setActive((cur) => (sameActiveReservation(cur, next) ? cur : next));
+      setSpot((cur) => (sameSheetSpot(cur, spotFeature) ? cur : spotFeature));
 
       // Recover geofence only if this exchange never got its one-shot arrival
       // push — otherwise oscillating the fence would keep re-arming and firing.

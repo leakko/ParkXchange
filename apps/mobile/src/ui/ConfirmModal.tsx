@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MutableRefObject,
   type ReactNode,
 } from "react";
 import { Alert as RNAlert, Modal, Pressable, StyleSheet, Text, View } from "react-native";
@@ -55,11 +56,56 @@ type PendingAlert = AlertRequest & {
 
 type Pending = PendingConfirm | PendingAlert;
 
+type HostApi = {
+  enqueue: (item: Pending) => void;
+};
+
 /**
  * In-app dialogs matching the account-delete look. Prefer this over system
  * Alert.alert for exchange confirms and notification-adjacent prompts.
+ *
+ * Dialog visibility state lives in ConfirmHost (sibling of children) so opening
+ * a modal does not re-render the map / SpotSheet tree under the provider.
  */
 export function ConfirmProvider({ children }: { children: ReactNode }) {
+  const hostRef = useRef<HostApi | null>(null);
+
+  const api = useMemo<ConfirmApi>(
+    () => ({
+      confirm: (req) =>
+        new Promise<boolean>((resolve) => {
+          hostRef.current?.enqueue({ ...req, kind: "confirm", resolve });
+        }),
+      alert: (req) =>
+        new Promise<void>((resolve) => {
+          hostRef.current?.enqueue({ ...req, kind: "alert", resolve });
+        }),
+    }),
+    [],
+  );
+
+  useEffect(() => {
+    confirmBridge = api;
+    return () => {
+      if (confirmBridge === api) {
+        confirmBridge = null;
+      }
+    };
+  }, [api]);
+
+  return (
+    <ConfirmContext.Provider value={api}>
+      {children}
+      <ConfirmHost hostRef={hostRef} />
+    </ConfirmContext.Provider>
+  );
+}
+
+function ConfirmHost({
+  hostRef,
+}: {
+  hostRef: MutableRefObject<HostApi | null>;
+}) {
   const [pending, setPending] = useState<Pending | null>(null);
   const queueRef = useRef<Pending[]>([]);
 
@@ -87,88 +133,69 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const api = useMemo<ConfirmApi>(
-    () => ({
-      confirm: (req) =>
-        new Promise<boolean>((resolve) => {
-          enqueue({ ...req, kind: "confirm", resolve });
-        }),
-      alert: (req) =>
-        new Promise<void>((resolve) => {
-          enqueue({ ...req, kind: "alert", resolve });
-        }),
-    }),
-    [enqueue],
-  );
-
   useEffect(() => {
-    confirmBridge = api;
+    hostRef.current = { enqueue };
     return () => {
-      if (confirmBridge === api) {
-        confirmBridge = null;
-      }
+      hostRef.current = null;
     };
-  }, [api]);
+  }, [enqueue, hostRef]);
 
   return (
-    <ConfirmContext.Provider value={api}>
-      {children}
-      <Modal
-        visible={pending != null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => finish(false)}
-      >
-        {pending ? (
-          <View style={styles.backdrop}>
-            <View style={styles.card} accessibilityViewIsModal>
-              <Text style={styles.title}>{pending.title}</Text>
-              <Text style={styles.body}>{pending.message}</Text>
-              {pending.kind === "confirm" ? (
-                <>
-                  <Pressable
-                    style={[accountStyles.secondary, { marginTop: 8 }]}
-                    onPress={() => finish(false)}
-                  >
-                    <Text style={accountStyles.secondaryText}>
-                      {pending.cancelLabel}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      pending.destructive
-                        ? accountStyles.danger
-                        : accountStyles.primary,
-                      { marginTop: 8 },
-                    ]}
-                    onPress={() => finish(true)}
-                  >
-                    <Text
-                      style={
-                        pending.destructive
-                          ? accountStyles.dangerText
-                          : accountStyles.primaryText
-                      }
-                    >
-                      {pending.confirmLabel}
-                    </Text>
-                  </Pressable>
-                </>
-              ) : (
+    <Modal
+      visible={pending != null}
+      transparent
+      animationType="fade"
+      onRequestClose={() => finish(false)}
+    >
+      {pending ? (
+        <View style={styles.backdrop}>
+          <View style={styles.card} accessibilityViewIsModal>
+            <Text style={styles.title}>{pending.title}</Text>
+            <Text style={styles.body}>{pending.message}</Text>
+            {pending.kind === "confirm" ? (
+              <>
                 <Pressable
-                  style={[accountStyles.primary, { marginTop: 8 }]}
+                  style={[accountStyles.secondary, { marginTop: 8 }]}
+                  onPress={() => finish(false)}
+                >
+                  <Text style={accountStyles.secondaryText}>
+                    {pending.cancelLabel}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    pending.destructive
+                      ? accountStyles.danger
+                      : accountStyles.primary,
+                    { marginTop: 8 },
+                  ]}
                   onPress={() => finish(true)}
                 >
-                  <Text style={accountStyles.primaryText}>
+                  <Text
+                    style={
+                      pending.destructive
+                        ? accountStyles.dangerText
+                        : accountStyles.primaryText
+                    }
+                  >
                     {pending.confirmLabel}
                   </Text>
                 </Pressable>
-              )}
-            </View>
+              </>
+            ) : (
+              <Pressable
+                style={[accountStyles.primary, { marginTop: 8 }]}
+                onPress={() => finish(true)}
+              >
+                <Text style={accountStyles.primaryText}>
+                  {pending.confirmLabel}
+                </Text>
+              </Pressable>
+            )}
           </View>
-        ) : null}
-      </Modal>
-    </ConfirmContext.Provider>
+        </View>
+      ) : null}
+    </Modal>
   );
 }
 

@@ -26,6 +26,10 @@ If that test fails, fix the code, not the test.
   mobile smoke). Ops handoff **smoke passed**.
 - **Also open:** payments deferred. Location permission policy — device demo
   pending. Account-delete confirm is now an in-app modal (pushed).
+- **Just shipped (pending push):** available spots auto-expire when
+  `preferred_departure_at + 24h` has passed (sweeper + discovery + domain
+  `Expired`); SpotSheet drag stability (photo placeholder, poll identity
+  stabilize, ConfirmHost isolated from map tree).
 - **Last updated:** 2026-09-22
 - **Phases complete:** 12 of 12 (MVP) + handshake + push coaching + cancel-actor fix
   + map search pins / push / GPS (prior); geocode LocationIQ wired in mobile;
@@ -40,8 +44,8 @@ If that test fails, fix the code, not the test.
 
 1. Finish Play Console App content + store listing; produce production AAB;
    internal testing track.
-2. Deploy API so `GET /v1/reservations/{id}/peer-vehicle/photo` is live; rebuild
-   preview APK; smoke peer thumbnail during an exchange.
+2. Deploy API so peer-vehicle photo + departure+24h expiry are live; device-smoke
+   reserved SpotSheet drag; rebuild preview APK only when asked.
 3. Device smoke for location policy (foreground vs «Voy de camino»).
 
 
@@ -174,8 +178,8 @@ decisions 39–48 and ARCHITECTURE.md §3.13.
       when `starts_at` is beyond the 15-minute reconfirmation window
 - [x] Cancel and complete transitions, with `release`/`credit`/`debit` entries,
       and a two-sided penalty so an owner withdrawing a claimed spot also pays
-- [x] Background sweeper: expired spots, expired reservations, and reservations
-      nobody reconfirmed
+- [x] Background sweeper: expired spots (listed_until **or** preferred
+      departure + 24h), expired reservations, and reservations nobody reconfirmed
 - [x] Signup grant of 500 cents on registration
 - [x] **Demo executed:** 100 goroutines claiming one spot produced exactly one
       winner and 99 conflicts. An unreconfirmed reservation returned its spot
@@ -655,6 +659,16 @@ instead; the container then became ready in about a second.
 ---
 
 ## Session log
+
+### 2026-09-22 — Departure+24h expiry + SpotSheet drag stability
+
+- Sweeper expires `available` spots when `preferred_departure_at + 24h` has
+  passed (even if `expires_at` is still future). Discovery and `Spot.Expired`
+  apply the same clock so map/claim stay honest between sweeps.
+- SpotSheet: reserve peer-photo placeholder; skip poll identity churn on
+  active reservation; isolate ConfirmModal host so dialog state does not
+  re-render the map tree; disable over-drag.
+- `task api:test` green. No preview APK unless asked.
 
 ### 2026-09-22 — LocationIQ geocode + search UX
 

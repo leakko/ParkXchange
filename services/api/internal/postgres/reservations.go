@@ -686,6 +686,10 @@ func (db *DB) Complete(ctx context.Context, id, actorID string) error {
 
 // Sweep expires offers and listings, then resolves dated no-shows. Each pass
 // locks candidates and writes reservation, spot, and ledger state together.
+//
+// Available listings expire on listed_until (expires_at) or, when set, on
+// preferred_departure_at + 24h — whichever comes first. Reserved/handover rows
+// are left alone here; their clocks are the reservation / no-show paths.
 func (db *DB) Sweep(ctx context.Context, now time.Time) (reservations.SweepResult, error) {
 	tx, err := db.begin(ctx)
 	if err != nil {
@@ -706,7 +710,14 @@ func (db *DB) Sweep(ctx context.Context, now time.Time) (reservations.SweepResul
 	expiredRows, err := tx.Query(ctx, `
 		UPDATE spots
 		   SET status = 'expired'
-		 WHERE status = 'available' AND expires_at <= now()
+		 WHERE status = 'available'
+		   AND (
+		     expires_at <= now()
+		     OR (
+		       preferred_departure_at IS NOT NULL
+		       AND preferred_departure_at + interval '24 hours' <= now()
+		     )
+		   )
 		 RETURNING id, owner_id, ST_X(geom), ST_Y(geom), price_cents
 	`)
 	if err != nil {

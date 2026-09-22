@@ -171,8 +171,21 @@ type Spot struct {
 // The status column lags: a spot goes stale the moment its expiry passes, but
 // the row only says so once the sweeper has run. Every read path has to treat
 // an overdue spot as gone, or a client sees offers that cannot be claimed.
+//
+// Preferred departure + 24h is a second clock: a listing that still has listing
+// lifetime left but whose announced leave time is long past should leave the
+// map too (sweeper marks it expired; this keeps Get/Claim honest in between).
 func (s Spot) Expired(now time.Time) bool {
-	return !s.ExpiresAt.After(now)
+	if !s.ExpiresAt.After(now) {
+		return true
+	}
+	if s.PreferredDepartureAt != nil {
+		cutoff := s.PreferredDepartureAt.Add(24 * time.Hour)
+		if !cutoff.After(now) {
+			return true
+		}
+	}
+	return false
 }
 
 // Claimable reports whether a driver could reserve this spot right now.

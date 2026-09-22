@@ -262,6 +262,8 @@ export const SpotSheet = forwardRef<BottomSheet, Props>(function SpotSheet(
       index={-1}
       snapPoints={snapPoints}
       enablePanDownToClose
+      enableOverDrag={false}
+      overDragResistanceFactor={0}
       keyboardBehavior="extend"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"

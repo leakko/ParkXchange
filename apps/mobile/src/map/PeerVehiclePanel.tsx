@@ -25,9 +25,8 @@ export function PeerVehiclePanel({
   photoUrl = null,
 }: Props) {
   const { t } = useTranslation();
-  const { uri: photoUri } = useAuthImage(
-    vehicle?.has_photo ? photoUrl : null,
-  );
+  const showPhotoSlot = Boolean(vehicle?.has_photo);
+  const { uri: photoUri } = useAuthImage(showPhotoSlot ? photoUrl : null);
   if (!vehicle?.plate && !vehicle?.make_model) {
     return null;
   }
@@ -48,13 +47,17 @@ export function PeerVehiclePanel({
           : t("exchange.peerVehicle.yours")}
       </Text>
       <View style={styles.row}>
-        {photoUri ? (
-          <Image
-            source={{ uri: photoUri }}
-            style={styles.thumb}
-            resizeMode="cover"
-            accessibilityIgnoresInvertColors
-          />
+        {showPhotoSlot ? (
+          photoUri ? (
+            <Image
+              source={{ uri: photoUri }}
+              style={styles.thumb}
+              resizeMode="cover"
+              accessibilityIgnoresInvertColors
+            />
+          ) : (
+            <View style={styles.thumb} accessibilityElementsHidden />
+          )
         ) : null}
         <View style={styles.textCol}>
           <Text style={styles.plate}>{vehicle.plate}</Text>
