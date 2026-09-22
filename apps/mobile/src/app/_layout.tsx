@@ -112,6 +112,20 @@ export default function RootLayout() {
                         sheetExpandsWhenScrolledToEdge: false,
                       }}
                     />
+                    <Stack.Screen
+                      name="filter"
+                      options={{
+                        presentation: "formSheet",
+                        headerShown: false,
+                        contentStyle: { backgroundColor: accountColors.bg },
+                        // Taller peek so day/time controls are usable without expand.
+                        sheetAllowedDetents: [0.58, 0.85],
+                        sheetInitialDetentIndex: 0,
+                        sheetGrabberVisible: false,
+                        sheetLargestUndimmedDetentIndex: 0,
+                        sheetExpandsWhenScrolledToEdge: false,
+                      }}
+                    />
                   </Stack>
                 </OfflineGate>
                 </ConfirmProvider>

@@ -349,7 +349,7 @@ export const en: Record<TranslationKey, string> = {
   "spotSheet.offer.exchangeDatetime": "Exchange date and time",
   "spotSheet.offer.amount": "Offer (points)",
   "spotSheet.offer.submit": "Send offer",
-  "spotSheet.offer.makeOffer": "Make offer",
+  "spotSheet.offer.makeOffer": "Request the spot",
   "spotSheet.offer.pending.title": "Your pending offer",
   "spotSheet.offer.pending.meta": "{points} pts · {datetime}",
   "spotSheet.offer.pending.withdraw": "Withdraw offer",

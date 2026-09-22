@@ -70,7 +70,7 @@ When a custom filter is active (≠ default window or flexibles toggled off), th
 - Small circular FAB on the **main map**, same family as account / locate (icon `options` / `filter`).
 - Stack with existing right-side FABs without covering search; prefer above account or between search chrome and account so it stays reachable one-handed.
 - Closed by default: **zero** permanent filter chrome.
-- Menu: bottom sheet or anchored popover — day picker, two time fields (reuse `DateTimeField` patterns), flexible switch, primary Apply / secondary Reset.
+- Menu: native **form sheet** route (`/filter`), same presentation as spot detail (grabber, swipe dismiss, safe-area padding). Day picker, two time fields, flexible switch, Apply / Reset with extra bottom inset so Restablecer clears the home indicator.
 - i18n: ES + EN keys under `map.filter.*`.
 
 ---

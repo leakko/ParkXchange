@@ -79,10 +79,13 @@ import {
 } from "@/map/geocode";
 import { bannerNextStep, bannerPeerStatusKey } from "@/map/exchangeCopy";
 import { passAuthGate } from "@/map/authGate";
-import { MapFilterSheet } from "@/map/MapFilterSheet";
 import { SpotLayers } from "@/map/SpotLayers";
 import { stageSpotForSheet, beginSpotSheetPresentation } from "@/map/spotSheetHandoff";
-import { defaultMapFilter, type MapFilterState } from "@/map/mapFilter";
+import { defaultMapFilter } from "@/map/mapFilter";
+import {
+  stageMapFilter,
+  subscribeMapFilter,
+} from "@/map/mapFilterHandoff";
 
 const DEBOUNCE_MS = 350;
 /** Longer than map pan debounce — typing must not hammer LocationIQ. */
@@ -118,7 +121,6 @@ export default function MapScreen() {
   /** Query that produced the current searchHits — editing away clears results. */
   const lastSearchedQueryRef = useRef("");
   const [mapFilter, setMapFilter] = useState(() => defaultMapFilter());
-  const [filterOpen, setFilterOpen] = useState(false);
 
   const { ready, signedIn, error: sessionError, retry: retrySession } = useSession();
   const location = useMapLocation();
@@ -879,24 +881,22 @@ export default function MapScreen() {
     })();
   }, [location, userZoom]);
 
-  const applyMapFilter = useCallback((next: MapFilterState) => {
-    setMapFilter(next);
-    setViewport((current) =>
-      current
-        ? {
-            ...current,
-            from: next.from,
-            to: next.to,
-            includeFlexible: next.includeFlexible,
-          }
-        : current,
-    );
-    setFilterOpen(false);
+  // Filter form sheet publishes Apply/Reset here (same pattern as spot handoff).
+  useEffect(() => {
+    return subscribeMapFilter((next) => {
+      setMapFilter(next);
+      setViewport((current) =>
+        current
+          ? {
+              ...current,
+              from: next.from,
+              to: next.to,
+              includeFlexible: next.includeFlexible,
+            }
+          : current,
+      );
+    });
   }, []);
-
-  const resetMapFilter = useCallback(() => {
-    applyMapFilter(defaultMapFilter());
-  }, [applyMapFilter]);
 
   // Deep-link from "show my spot on map" in account → fly camera + open sheet.
   useEffect(() => {
@@ -1394,7 +1394,10 @@ export default function MapScreen() {
 
       <Pressable
         style={[styles.filterFab, { bottom: 228 + insets.bottom }]}
-        onPress={() => setFilterOpen(true)}
+        onPress={() => {
+          stageMapFilter(mapFilter);
+          router.push("/filter" as Href);
+        }}
         accessibilityRole="button"
         accessibilityLabel={t("map.filter.fab")}
         accessibilityHint={mapFilter.isCustom ? t("map.filter.fabHint") : undefined}
@@ -1478,13 +1481,6 @@ export default function MapScreen() {
           }
         }}
         onSubmit={submitAnnouncement}
-      />
-      <MapFilterSheet
-        visible={filterOpen}
-        value={mapFilter}
-        onApply={applyMapFilter}
-        onReset={resetMapFilter}
-        onClose={() => setFilterOpen(false)}
       />
     </View>
   );

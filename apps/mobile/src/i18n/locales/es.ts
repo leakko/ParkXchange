@@ -351,7 +351,7 @@ export const es = {
   "spotSheet.offer.exchangeDatetime": "Fecha y hora del intercambio",
   "spotSheet.offer.amount": "Oferta (puntos)",
   "spotSheet.offer.submit": "Enviar oferta",
-  "spotSheet.offer.makeOffer": "Hacer oferta",
+  "spotSheet.offer.makeOffer": "Pedir el sitio",
   "spotSheet.offer.pending.title": "Tu oferta pendiente",
   "spotSheet.offer.pending.meta": "{points} pts · {datetime}",
   "spotSheet.offer.pending.withdraw": "Retirar oferta",
