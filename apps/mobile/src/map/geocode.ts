@@ -585,148 +585,46 @@ function houseNumberMatches(raw: string | undefined, want: string): boolean {
 }
 
 /**
- * When OSM has no addr:housenumber, place the pin along the street bbox so
- * "nº 1" and "nº 15" are not the same centroid. Crude but usable for parking.
- */
-export function estimatePositionAlongStreetBBox(
-  boundingbox: [string, string, string, string] | string[] | undefined,
-  houseNumber: string,
-): { lon: number; lat: number } | null {
-  if (!boundingbox || boundingbox.length < 4) {
-    return null;
-  }
-  const n = Number.parseInt(houseNumber, 10);
-  if (!Number.isFinite(n) || n < 1) {
-    return null;
-  }
-  const south = Number.parseFloat(String(boundingbox[0]));
-  const north = Number.parseFloat(String(boundingbox[1]));
-  const west = Number.parseFloat(String(boundingbox[2]));
-  const east = Number.parseFloat(String(boundingbox[3]));
-  if (
-    ![south, north, west, east].every((x) => Number.isFinite(x)) ||
-    south === north ||
-    west === east
-  ) {
-    return null;
-  }
-  // Soft range: nº1 near the start, higher numbers further along (~100).
-  const t = Math.min(0.92, Math.max(0.08, (n - 1) / 99));
-  const dLon = east - west;
-  const dLat = north - south;
-  const side = n % 2 === 0 ? 1 : -1;
-  if (Math.abs(dLon) >= Math.abs(dLat)) {
-    const lon = west + dLon * t;
-    const lat = (south + north) / 2;
-    const latOff = side * Math.min(Math.abs(dLat) * 0.2, 0.0002);
-    return { lon, lat: lat + latOff };
-  }
-  const lat = south + dLat * t;
-  const lon = (west + east) / 2;
-  const lonOff = side * Math.min(Math.abs(dLon) * 0.2, 0.0002);
-  return { lon: lon + lonOff, lat };
-}
-
-function roadNameOf(hit: GeocodeHit): string {
-  return hit.address?.road ?? hit.address?.pedestrian ?? hit.address?.footway ?? "";
-}
-
-function streetNameSimilarity(road: string, streetName: string): number {
-  const a = compactSearchKey(road);
-  const b = compactSearchKey(streetName);
-  if (!a || !b) {
-    return 0;
-  }
-  if (a === b || a.includes(b) || b.includes(a)) {
-    return 2;
-  }
-  const strip = (s: string) =>
-    s.replace(/^(calle|avenida|avda|av|plaza|pza|paseo|camino|c)/, "");
-  const aa = strip(a);
-  const bb = strip(b);
-  if (aa && bb && (aa === bb || aa.includes(bb) || bb.includes(aa))) {
-    return 1;
-  }
-  return 0;
-}
-
-/**
- * Map raw geocode hits to suggestions. Exact OSM house numbers win; otherwise
- * interpolate along the street bounding box so different numbers differ.
+ * Prefer OSM hits that match the requested house number. When OSM has no
+ * door number (common), keep the street centroid — do not invent a position.
  */
 export function suggestionsPreferringHouseNumber(
   rawHits: GeocodeHit[],
   houseNumber?: string,
-  streetName?: string,
 ): AddressSuggestion[] {
   const want = houseNumber?.trim() ?? "";
-  if (!want) {
-    return rawHits
-      .map(hitToSuggestion)
-      .filter((s): s is AddressSuggestion => s != null);
-  }
-
-  const exact: AddressSuggestion[] = [];
+  const scored: { s: AddressSuggestion; match: boolean }[] = [];
   for (const hit of rawHits) {
-    if (!houseNumberMatches(hit.address?.house_number, want)) {
+    const s = hitToSuggestion(hit);
+    if (!s) {
       continue;
     }
-    const s = hitToSuggestion(hit);
-    if (s) {
-      exact.push(s);
-    }
+    const match =
+      want !== "" && houseNumberMatches(hit.address?.house_number, want);
+    scored.push({ s, match });
   }
-  if (exact.length > 0) {
-    return exact;
+  if (want) {
+    scored.sort((a, b) => Number(b.match) - Number(a.match));
   }
+  return dedupeSuggestions(scored.map((x) => x.s));
+}
 
-  // No OSM house node — pick best street-level hit and interpolate.
-  let best: GeocodeHit | null = null;
-  let bestScore = -1;
-  for (const hit of rawHits) {
-    let score = 0;
-    if (streetName) {
-      score += streetNameSimilarity(roadNameOf(hit), streetName) * 10;
+/** Drop duplicate place ids / identical coordinates (Nearby + Search overlap). */
+export function dedupeSuggestions(
+  hits: AddressSuggestion[],
+): AddressSuggestion[] {
+  const seen = new Set<string>();
+  const out: AddressSuggestion[] = [];
+  for (const h of hits) {
+    const coordKey = `${h.lon.toFixed(5)},${h.lat.toFixed(5)}`;
+    if (seen.has(h.id) || seen.has(coordKey)) {
+      continue;
     }
-    if (hit.boundingbox && hit.boundingbox.length >= 4) {
-      score += 3;
-    }
-    if (hit.class === "highway") {
-      score += 2;
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      best = hit;
-    }
+    seen.add(h.id);
+    seen.add(coordKey);
+    out.push(h);
   }
-  if (!best) {
-    return [];
-  }
-
-  const estimated = estimatePositionAlongStreetBBox(best.boundingbox, want);
-  const base = hitToSuggestion(best);
-  if (!base) {
-    return [];
-  }
-  const road = roadNameOf(best) || streetName || "Calle";
-  const place =
-    best.address?.neighbourhood ??
-    best.address?.suburb ??
-    best.address?.city ??
-    best.address?.town ??
-    best.address?.village;
-  const label = place ? `${road} ${want}, ${place}` : `${road} ${want}`;
-  if (!estimated) {
-    return [{ ...base, id: `${base.id}:n${want}`, label }];
-  }
-  return [
-    {
-      id: `approx:${compactSearchKey(road)}:${want}:${estimated.lon.toFixed(5)},${estimated.lat.toFixed(5)}`,
-      label,
-      lon: estimated.lon,
-      lat: estimated.lat,
-    },
-  ];
+  return out;
 }
 
 /**
@@ -868,6 +766,19 @@ export function buildNearbyParams(
   });
 }
 
+function suggestionId(
+  placeId: number | string | undefined,
+  lon: number,
+  lat: number,
+  prefix = "",
+): string {
+  const coord = `${lon.toFixed(5)},${lat.toFixed(5)}`;
+  if (placeId != null && String(placeId).length > 0) {
+    return `${prefix}${placeId}@${coord}`;
+  }
+  return `${prefix}${coord}`;
+}
+
 function hitToSuggestion(hit: GeocodeHit): AddressSuggestion | null {
   const lon = Number.parseFloat(hit.lon ?? "");
   const lat = Number.parseFloat(hit.lat ?? "");
@@ -879,7 +790,7 @@ function hitToSuggestion(hit: GeocodeHit): AddressSuggestion | null {
       ? `${hit.name} — ${hit.display_name}`
       : hit.display_name;
   return {
-    id: String(hit.place_id ?? `${lon},${lat}`),
+    id: suggestionId(hit.place_id, lon, lat),
     label: short,
     lon,
     lat,
@@ -932,7 +843,7 @@ function nearbyToSuggestion(hit: NearbyHit): AddressSuggestion | null {
       ? `${hit.name} — ${hit.display_name}`
       : (hit.display_name ?? hit.name ?? `${lat}, ${lon}`);
   return {
-    id: String(hit.place_id ?? `nearby:${lon},${lat}`),
+    id: suggestionId(hit.place_id, lon, lat, "nearby:"),
     label,
     lon,
     lat,
@@ -1078,11 +989,12 @@ function finalizeHits(
   hits: AddressSuggestion[],
   viewport: ViewBox | undefined,
 ): PlaceSearchResult {
+  const unique = dedupeSuggestions(hits);
   if (!viewport) {
-    return { hits, inViewport: hits, shouldZoomOut: false };
+    return { hits: unique, inViewport: unique, shouldZoomOut: false };
   }
   const [centerLon, centerLat] = viewBoxCenter(viewport);
-  const sorted = sortHitsNearToFar(hits, centerLon, centerLat);
+  const sorted = sortHitsNearToFar(unique, centerLon, centerLat);
   const inViewport = filterHitsInViewBox(sorted, viewport);
   return {
     hits: sorted,
@@ -1158,11 +1070,7 @@ async function searchAddressBranch(
   }
 
   return finalizeHits(
-    suggestionsPreferringHouseNumber(
-      raw,
-      parsed.houseNumber,
-      parsed.street,
-    ),
+    suggestionsPreferringHouseNumber(raw, parsed.houseNumber),
     viewport,
   );
 }
@@ -1307,11 +1215,12 @@ export async function autocompletePlaces(
         acceptLanguage: locale,
       }),
     );
+    const unique = dedupeSuggestions(hits);
     if (!opts.viewbox) {
-      return hits;
+      return unique;
     }
     const [clon, clat] = viewBoxCenter(opts.viewbox);
-    return sortHitsNearToFar(hits, clon, clat);
+    return sortHitsNearToFar(unique, clon, clat);
   } catch {
     return [];
   }

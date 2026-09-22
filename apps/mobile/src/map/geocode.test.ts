@@ -7,8 +7,8 @@ import {
   buildNearbyParams,
   buildNominatimSearchParams,
   classifySearchQuery,
+  dedupeSuggestions,
   ensureMinSearchBox,
-  estimatePositionAlongStreetBBox,
   expandViewBox,
   filterHitsInViewBox,
   matchCategoryPrefix,
@@ -112,20 +112,8 @@ describe("parseStreetAddressQuery", () => {
   });
 });
 
-describe("estimatePositionAlongStreetBBox", () => {
-  const malvaloca = ["37.3709384", "37.3722070", "-5.9744544", "-5.9720446"];
-
-  it("puts nº1 and nº15 at different coordinates", () => {
-    const a = estimatePositionAlongStreetBBox(malvaloca, "1");
-    const b = estimatePositionAlongStreetBBox(malvaloca, "15");
-    assert.ok(a && b);
-    assert.notEqual(a!.lon, b!.lon);
-    assert.ok(Math.abs(a!.lon - b!.lon) > 1e-5 || Math.abs(a!.lat - b!.lat) > 1e-5);
-  });
-});
-
 describe("suggestionsPreferringHouseNumber", () => {
-  it("interpolates when OSM has no house_number", () => {
+  it("keeps street centroid when OSM has no house_number", () => {
     const hits = suggestionsPreferringHouseNumber(
       [
         {
@@ -135,16 +123,48 @@ describe("suggestionsPreferringHouseNumber", () => {
           lon: "-5.9731456",
           class: "highway",
           type: "residential",
-          boundingbox: ["37.3709384", "37.3722070", "-5.9744544", "-5.9720446"],
           address: { road: "Calle Malvaloca", city: "Seville" },
         },
       ],
       "15",
-      "Calle Malvaloca",
     );
     assert.equal(hits.length, 1);
-    assert.match(hits[0]!.label, /15/);
-    assert.notEqual(hits[0]!.lon, -5.9731456);
+    assert.equal(hits[0]!.lon, -5.9731456);
+    assert.equal(hits[0]!.lat, 37.3718479);
+  });
+
+  it("prefers an exact OSM house_number when present", () => {
+    const hits = suggestionsPreferringHouseNumber(
+      [
+        {
+          place_id: "a",
+          display_name: "Calle X, Sevilla",
+          lat: "37.37",
+          lon: "-5.97",
+          address: { road: "Calle X", city: "Seville" },
+        },
+        {
+          place_id: "b",
+          display_name: "Calle X 15, Sevilla",
+          lat: "37.371",
+          lon: "-5.971",
+          address: { road: "Calle X", house_number: "15", city: "Seville" },
+        },
+      ],
+      "15",
+    );
+    assert.equal(hits[0]!.lat, 37.371);
+  });
+});
+
+describe("dedupeSuggestions", () => {
+  it("drops identical place ids and coordinates", () => {
+    const out = dedupeSuggestions([
+      { id: "1@1.0,2.0", label: "a", lon: 1, lat: 2 },
+      { id: "1@1.0,2.0", label: "a2", lon: 1, lat: 2 },
+      { id: "2@3.0,4.0", label: "b", lon: 3, lat: 4 },
+    ]);
+    assert.equal(out.length, 2);
   });
 });
 

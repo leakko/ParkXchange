@@ -7,12 +7,26 @@ vars:
 
 tasks:
   start:
-    desc: Start the Metro bundler for the dev client
+    desc: Start Metro (uses the last mobile:env:* target, or emulator defaults)
     interactive: true
     cmds:
-      # Hoisted node_modules lives at the repo root; filter keeps the cwd of
-      # Expo's resolution inside apps/mobile without a local node_modules/.bin.
-      - pnpm --filter @parkxchange/mobile exec expo start --dev-client
+      - task: expo:exec
+        vars:
+          EXPO_CMD: start --dev-client
+
+  start:emulator:
+    desc: Point the app at 10.0.2.2 and start Metro
+    interactive: true
+    cmds:
+      - task: env:emulator
+      - task: start
+
+  start:device:
+    desc: Point the app at this PC's Wi-Fi IP and start Metro
+    interactive: true
+    cmds:
+      - task: env:device
+      - task: start
 
   prebuild:
     desc: Generate the native android project from app.config.ts
@@ -20,17 +34,58 @@ tasks:
       - pnpm --filter @parkxchange/mobile exec expo prebuild --platform android
 
   android:
-    desc: Build and install the dev client on the connected device or emulator
+    desc: "Build/install debug APK (defaults to emulator URLs — prefer android:emulator or android:device)"
     interactive: true
     cmds:
-      # Gradle build-cache can restore a partial :expo compile that omits
-      # ReactActivityDelegateWrapper.class; MainActivity then fails to resolve
-      # it. Ensure a real local compile before expo run:android.
-      #
-      # On Windows, Task's shell must not run `./gradlew` (cmd sees a lone `.`).
-      # android:compile-expo invokes gradlew.bat via cmd.exe instead.
+      - task: android:emulator
+
+  android:emulator:
+    desc: Build/install debug APK targeting the Android emulator (10.0.2.2)
+    interactive: true
+    cmds:
+      - task: env:emulator
       - task: android:ensure-expo-classes
-      - pnpm --filter @parkxchange/mobile exec expo run:android
+      - task: expo:exec
+        vars:
+          EXPO_CMD: run:android
+
+  android:device:
+    desc: Build/install debug APK targeting a USB/Wi-Fi phone (LAN IP of this PC)
+    interactive: true
+    cmds:
+      - task: env:device
+      - task: android:ensure-expo-classes
+      - task: expo:exec
+        vars:
+          EXPO_CMD: run:android
+
+  env:emulator:
+    desc: Activate emulator API URLs (writes .env.development.local)
+    cmds:
+      - bash tools/mobile-use-env.sh emulator
+
+  env:device:
+    desc: "Activate physical-device API URLs; optional -- <ip> to set/override LAN IP"
+    cmds:
+      - bash tools/mobile-use-env.sh device {{.CLI_ARGS}}
+
+  # Root Taskfile dotenv:[.env] used to inject EXPO_PUBLIC_* into every task;
+  # Expo then ignores .env.development.local for those keys. Clear + re-source.
+  expo:exec:
+    internal: true
+    interactive: true
+    cmds:
+      - |
+        set -e
+        unset EXPO_PUBLIC_API_URL EXPO_PUBLIC_WS_URL
+        if [ -f "{{.APP_DIR}}/.env.development.local" ]; then
+          set -a
+          # shellcheck disable=SC1091
+          . "{{.APP_DIR}}/.env.development.local"
+          set +a
+        fi
+        echo "expo will use API ${EXPO_PUBLIC_API_URL:-'(from apps/mobile env files)'}"
+        pnpm --filter @parkxchange/mobile exec expo {{.EXPO_CMD}}
 
   android:ensure-expo-classes:
     desc: Recompile :expo when ReactActivityDelegateWrapper.class is missing
@@ -57,7 +112,7 @@ tasks:
     desc: Drop the generated native project, Metro cache, and stale :expo Kotlin outputs
     dir: "{{.APP_DIR}}"
     cmds:
-      - rm -rf android .expo
+      - rm -rf android .expo .env.development.local
       # node_modules is hoisted at the repo root; :expo builds there, not under apps/mobile.
       - rm -rf ../../node_modules/expo/android/build
       - echo "Removed generated native project and :expo build; run task mobile:prebuild to recreate it"

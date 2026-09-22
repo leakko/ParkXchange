@@ -15,9 +15,10 @@ export function searchHitsToCollection(
 ): FeatureCollection {
   return {
     type: "FeatureCollection",
-    features: hits.map((h) => ({
+    features: hits.map((h, index) => ({
       type: "Feature",
-      id: h.id,
+      // MapLibre prefers numeric feature ids; uniqueness lives in properties.
+      id: index,
       geometry: { type: "Point", coordinates: [h.lon, h.lat] },
       properties: {
         id: h.id,

@@ -6,6 +6,9 @@
 # Committed Expo mode files (public EXPO_PUBLIC_* only — see apps/mobile).
 !apps/mobile/.env.development
 !apps/mobile/.env.production
+!apps/mobile/.env.emulator
+!apps/mobile/.env.device.example
+# .env.device and .env.development.local stay ignored (machine / active target).
 
 # --- Go ---------------------------------------------------------------------
 # go.work is a local development overlay: CI builds each module in isolation

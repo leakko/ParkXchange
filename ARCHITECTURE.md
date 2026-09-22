@@ -60,7 +60,7 @@ ParkXchange/
 ├── Taskfile.yml              # the only entry point: setup, doctor, test, lint
 ├── Taskfile.db.yml           # db:up, db:migrate, db:seed, db:psql, db:reset
 ├── Taskfile.go.yml           # api:run, api:test, api:lint, api:build
-├── Taskfile.mobile.yml       # mobile:android, mobile:prebuild, mobile:start
+├── Taskfile.mobile.yml       # mobile:android:{emulator,device}, mobile:start, …
 ├── go.work                   # local Go overlay (gitignored, see §3.1)
 ├── pnpm-workspace.yaml       # JS workspace members + version catalog
 ├── turbo.json                # JS task graph and cache contracts
@@ -711,8 +711,13 @@ task db:up       # PostGIS on localhost:5433
 task db:migrate  # apply migrations
 task db:seed     # load development data
 task api:run     # serve on :8080
-task mobile:android
+task mobile:android:emulator   # debug APK → emulator (10.0.2.2)
+task mobile:android:device     # debug APK → USB phone (PC Wi-Fi IP)
 ```
+
+`mobile:android` still works and defaults to the emulator target. Switch Metro alone with
+`task mobile:start:emulator` / `task mobile:start:device`. Device LAN IP is written to
+gitignored `apps/mobile/.env.device` (override with `task mobile:env:device -- 192.168.x.x`).
 
 PostGIS is published on **5433** rather than 5432 so it cannot collide with a
 PostgreSQL instance already installed on the host.

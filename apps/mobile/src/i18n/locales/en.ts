@@ -19,7 +19,6 @@ export const en: Record<TranslationKey, string> = {
   "map.search.clear": "Clear search",
   "map.search.failed": "Search failed",
   "map.search.resultsTitle": "{count} results (near → far)",
-  "map.search.announceHit": "Announce at this place",
   "map.search.categoryNear": "Search {category} nearby",
   "map.search.suggestionsTitle": "Suggestions",
   "map.search.attribution": "Search by LocationIQ.com",

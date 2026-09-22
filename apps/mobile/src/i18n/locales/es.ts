@@ -17,7 +17,6 @@ export const es = {
   "map.search.clear": "Limpiar búsqueda",
   "map.search.failed": "No se pudo buscar",
   "map.search.resultsTitle": "{count} resultados (cerca → lejos)",
-  "map.search.announceHit": "Anunciar en este lugar",
   "map.search.categoryNear": "Buscar {category} cerca",
   "map.search.suggestionsTitle": "Sugerencias",
   "map.search.attribution": "Search by LocationIQ.com",

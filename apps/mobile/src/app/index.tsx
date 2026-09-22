@@ -119,6 +119,8 @@ export default function MapScreen() {
   const jumpedToUserRef = useRef(false);
   const lastJumpCoordsRef = useRef<[number, number] | null>(null);
   const mapViewboxRef = useRef<ViewBox | null>(null);
+  /** Query that produced the current searchHits — editing away clears results. */
+  const lastSearchedQueryRef = useRef("");
   const timeWindow = useMemo(() => defaultTimeWindow(), []);
 
   const { ready, signedIn, error: sessionError, retry: retrySession } = useSession();
@@ -642,6 +644,15 @@ export default function MapScreen() {
     setCategoryHint(null);
     setSelectedSearchId(null);
     setSearchQuery("");
+    lastSearchedQueryRef.current = "";
+  }, []);
+
+  const onChangeSearchQuery = useCallback((text: string) => {
+    setSearchQuery(text);
+    if (text.trim() !== lastSearchedQueryRef.current) {
+      setSearchHits([]);
+      setSelectedSearchId(null);
+    }
   }, []);
 
   // Local category hint + debounced LocationIQ autocomplete (no Nearby until tap).
@@ -705,7 +716,7 @@ export default function MapScreen() {
       if (!hit) {
         return;
       }
-      // Always preview on the map — choosing a place is the + button (or map tap).
+      // Preview on the map; exact car position is chosen with announce pick / map.
       setSelectedSearchId(id);
       dispatchFollow({ type: "user_gesture" });
       cameraRef.current?.easeTo({
@@ -718,7 +729,13 @@ export default function MapScreen() {
   );
 
   const applySearchResult = useCallback(
-    (hits: AddressSuggestion[], inViewport: AddressSuggestion[], shouldZoomOut: boolean) => {
+    (
+      hits: AddressSuggestion[],
+      inViewport: AddressSuggestion[],
+      shouldZoomOut: boolean,
+      committedQuery: string,
+    ) => {
+      lastSearchedQueryRef.current = committedQuery.trim();
       setSearchHits(hits);
       setSuggestHits([]);
       setSelectedSearchId(null);
@@ -772,9 +789,13 @@ export default function MapScreen() {
         viewbox,
         locale,
       });
-      applySearchResult(hits, inViewport, shouldZoomOut);
-    } catch {
-      Alert.alert(t("map.search.failed"), t("common.error"));
+      applySearchResult(hits, inViewport, shouldZoomOut, q);
+    } catch (err) {
+      const detail =
+        err instanceof Error && err.message.trim()
+          ? err.message
+          : t("common.error");
+      Alert.alert(t("map.search.failed"), detail);
     } finally {
       setSearchBusy(false);
     }
@@ -790,9 +811,13 @@ export default function MapScreen() {
           { viewbox, locale },
         );
         setSearchQuery(hint.label);
-        applySearchResult(hits, inViewport, shouldZoomOut);
-      } catch {
-        Alert.alert(t("map.search.failed"), t("common.error"));
+        applySearchResult(hits, inViewport, shouldZoomOut, hint.label);
+      } catch (err) {
+        const detail =
+          err instanceof Error && err.message.trim()
+            ? err.message
+            : t("common.error");
+        Alert.alert(t("map.search.failed"), detail);
       } finally {
         setSearchBusy(false);
       }
@@ -802,7 +827,8 @@ export default function MapScreen() {
 
   const onPressSuggestHit = useCallback(
     (hit: AddressSuggestion) => {
-      applySearchResult([hit], [hit], false);
+      applySearchResult([hit], [hit], false, hit.label);
+      setSearchQuery(hit.label);
       setSelectedSearchId(hit.id);
       dispatchFollow({ type: "user_gesture" });
       cameraRef.current?.easeTo({
@@ -931,41 +957,6 @@ export default function MapScreen() {
       }
     },
     [requireEmailVerified, requireSignIn, router, signedIn, t],
-  );
-
-  const announceFromSearchHit = useCallback(
-    (hit: AddressSuggestion, opts: { confirm: boolean }) => {
-      const go = () => {
-        clearSearchHits();
-        if (announcePickMode) {
-          setAnnounceCoords([hit.lon, hit.lat]);
-          setAnnounceLabel(hit.label);
-          setAnnouncePickMode(false);
-          setAnnounceOpen(true);
-          return;
-        }
-        void openAnnounce([hit.lon, hit.lat], hit.label);
-      };
-      if (!opts.confirm) {
-        go();
-        return;
-      }
-      Alert.alert(
-        t("map.alert.announceHere.title"),
-        t("map.alert.announceHere.message", {
-          lat: hit.lat.toFixed(5),
-          lon: hit.lon.toFixed(5),
-        }),
-        [
-          { text: t("common.cancel"), style: "cancel" },
-          {
-            text: t("map.alert.announceHere.confirm"),
-            onPress: go,
-          },
-        ],
-      );
-    },
-    [announcePickMode, clearSearchHits, openAnnounce, t],
   );
 
   const submitAnnouncement = useCallback(
@@ -1169,7 +1160,7 @@ export default function MapScreen() {
           <TextInput
             style={styles.searchInput}
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={onChangeSearchQuery}
             placeholder={t("map.search.placeholder")}
             placeholderTextColor="#7A93A0"
             returnKeyType="search"
@@ -1245,20 +1236,9 @@ export default function MapScreen() {
                   ]}
                   onPress={() => onPressSearchHit(hit.id)}
                 >
-                  <Text style={styles.searchResultText} numberOfLines={1}>
+                  <Text style={styles.searchResultText} numberOfLines={2}>
                     {hit.label}
                   </Text>
-                  <Pressable
-                    style={styles.searchResultAnnounce}
-                    accessibilityRole="button"
-                    accessibilityLabel={t("map.search.announceHit")}
-                    hitSlop={8}
-                    onPress={() =>
-                      announceFromSearchHit(hit, { confirm: false })
-                    }
-                  >
-                    <Text style={styles.searchResultAnnounceText}>+</Text>
-                  </Pressable>
                 </Pressable>
               );
             })}
@@ -1617,21 +1597,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     flex: 1,
-  },
-  searchResultAnnounce: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#1B9AAA",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  searchResultAnnounceText: {
-    color: "#fff",
-    fontSize: 20,
-    fontWeight: "700",
-    lineHeight: 22,
-    marginTop: -1,
   },
   searchCategoryRow: {
     flexDirection: "row",
