@@ -562,7 +562,7 @@ const styles = StyleSheet.create({
   },
   secondaryBtnText: { color: "#F4F7FA", fontWeight: "600", fontSize: 13 },
   toggleGroup: {
-    gap: 0,
+    gap: 10,
     width: "100%",
     paddingHorizontal: 4,
     marginVertical: 4,
@@ -573,9 +573,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 8,
     width: "100%",
-    // Android Switch touch targets are ~48dp; negative margin pulls rows together.
-    paddingVertical: 0,
-    marginVertical: -6,
+    paddingVertical: 2,
   },
   toggleLabel: {
     color: "#D6E2E9",
