@@ -35,11 +35,12 @@ type refreshRequest struct {
 }
 
 type sessionResponse struct {
-	AccessToken  string       `json:"access_token"`
-	RefreshToken string       `json:"refresh_token"`
-	TokenType    string       `json:"token_type"`
-	ExpiresIn    int          `json:"expires_in"`
-	User         userResponse `json:"user"`
+	AccessToken     string       `json:"access_token"`
+	RefreshToken    string       `json:"refresh_token"`
+	TokenType       string       `json:"token_type"`
+	ExpiresIn       int          `json:"expires_in"`
+	User            userResponse `json:"user"`
+	LoginGrantCents int64        `json:"login_grant_cents,omitempty"`
 }
 
 type userResponse struct {
@@ -82,8 +83,9 @@ func toSessionResponse(s accounts.Session) sessionResponse {
 
 		// Seconds remaining rather than an absolute timestamp, so a client
 		// with a skewed clock still refreshes at the right moment.
-		ExpiresIn: int(time.Until(s.ExpiresAt).Seconds()),
-		User:      toUserResponse(s.User),
+		ExpiresIn:       int(time.Until(s.ExpiresAt).Seconds()),
+		User:            toUserResponse(s.User),
+		LoginGrantCents: s.LoginGrantCents,
 	}
 }
 

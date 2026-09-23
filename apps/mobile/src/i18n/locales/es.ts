@@ -71,6 +71,9 @@ export const es = {
   "auth.login.submit": "Entrar",
   "auth.login.toRegister": "Crear una cuenta",
   "auth.login.forgot": "Olvidé mi contraseña",
+  "loginGrant.toast.title": "+1 punto",
+  "loginGrant.toast.body":
+    "Has ganado 1 punto por iniciar sesión. ¡Gracias por usar la app!",
   "auth.register.title": "Crear cuenta",
   "auth.register.subtitle": "Regístrate con email o Google.",
   "auth.register.submit": "Registrarme",
@@ -488,7 +491,7 @@ export const es = {
     "Retira o espera a que termine tu anuncio actual antes de publicar otro que se solape (salida ya, flexible, o preferida a menos de 1 hora).",
   "insufficientBalance.title": "No te llegan los puntos",
   "insufficientBalance.message":
-    "No tienes puntos suficientes para esa oferta. Publica tu plaza: al completar el traspaso ganas los puntos del intercambio.",
+    "No tienes puntos suficientes para esa oferta. Publica tu sitio la próxima vez que aparques para ganar puntos",
   "announce.location.label": "Ubicación",
   "announce.location.useGps": "Mi ubicación",
   "announce.location.pickOnMap": "Elegir en el mapa",

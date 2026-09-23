@@ -308,7 +308,7 @@ var copyES = map[string]pushCopy{
 	},
 	reservations.EventPointsFiveStar: {
 		"+1 punto",
-		"Alguien te ha valorado con 5 estrellas — has ganado 1 punto",
+		"Alguien te ha valorado con 5 estrellas, ¡has recibido 1 punto de premio!",
 	},
 	"_default": {
 		"ParkXchange",
@@ -403,7 +403,7 @@ var copyEN = map[string]pushCopy{
 	},
 	reservations.EventPointsFiveStar: {
 		"+1 point",
-		"Someone rated your exchange 5 stars — you earned 1 point",
+		"Someone rated your exchange 5 stars — you got 1 bonus point!",
 	},
 	"_default": {
 		"ParkXchange",

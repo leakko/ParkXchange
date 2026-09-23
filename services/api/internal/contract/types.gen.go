@@ -515,10 +515,13 @@ type SessionResponse struct {
 	AccessToken string `json:"access_token"`
 
 	// ExpiresIn Seconds remaining on the access token
-	ExpiresIn    int          `json:"expires_in"`
-	RefreshToken string       `json:"refresh_token"`
-	TokenType    string       `json:"token_type"`
-	User         UserResponse `json:"user"`
+	ExpiresIn int `json:"expires_in"`
+
+	// LoginGrantCents Present when this session credited the weekly login bonus. Clients should show an in-app notice — push often cannot deliver on first login because the Expo token is registered afterwards.
+	LoginGrantCents *int64       `json:"login_grant_cents,omitempty"`
+	RefreshToken    string       `json:"refresh_token"`
+	TokenType       string       `json:"token_type"`
+	User            UserResponse `json:"user"`
 }
 
 // SnapshotMessage Server to client WebSocket snapshot after a viewport

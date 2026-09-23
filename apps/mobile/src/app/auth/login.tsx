@@ -8,15 +8,18 @@ import {
 } from "react-native";
 
 import { login } from "@/api/client";
+import type { SessionResponse } from "@/api/client";
 import { accountColors, accountStyles } from "@/account/theme";
 import { AuthScroll } from "@/auth/AuthScroll";
 import { AuthTextInput } from "@/auth/AuthTextInput";
 import { authErrorMessage } from "@/auth/errors";
 import { GoogleButton } from "@/auth/GoogleButton";
 import { useGoogleSignIn, googleSignInConfigured } from "@/auth/google";
+import { scheduleLoginGrantToast } from "@/auth/loginGrantToast";
 import { PasswordField } from "@/auth/PasswordField";
 import { applySession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
+import { useToast } from "@/ui/toast";
 
 function returnPath(raw: string | string[] | undefined): Href {
   const value = Array.isArray(raw) ? raw[0] : raw;
@@ -28,6 +31,7 @@ function returnPath(raw: string | string[] | undefined): Href {
 
 export default function LoginScreen() {
   const { t } = useTranslation();
+  const { show } = useToast();
   const router = useRouter();
   const params = useLocalSearchParams<{ returnTo?: string }>();
   const [email, setEmail] = useState("");
@@ -42,12 +46,16 @@ export default function LoginScreen() {
     },
     [t],
   );
-  const finish = useCallback(() => {
-    const path = returnPath(params.returnTo);
-    // Avoid stacking a second /account (or returnTo) under the auth screen —
-    // otherwise the first back lands on the same hub again.
-    router.dismissTo(path);
-  }, [params.returnTo, router]);
+  const finish = useCallback(
+    (session?: SessionResponse) => {
+      scheduleLoginGrantToast(session, show, t);
+      const path = returnPath(params.returnTo);
+      // Avoid stacking a second /account (or returnTo) under the auth screen —
+      // otherwise the first back lands on the same hub again.
+      router.dismissTo(path);
+    },
+    [params.returnTo, router, show, t],
+  );
   const google = useGoogleSignIn({ onError: onGoogleError, onSuccess: finish });
 
   const onSubmit = async () => {
@@ -56,7 +64,7 @@ export default function LoginScreen() {
     try {
       const session = await login(email.trim(), password);
       await applySession(session.access_token, session.refresh_token);
-      finish();
+      finish(session);
     } catch (err) {
       setError(authErrorMessage(err, t));
     } finally {

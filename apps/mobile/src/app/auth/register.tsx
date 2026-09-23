@@ -8,6 +8,7 @@ import {
 } from "react-native";
 
 import { register } from "@/api/client";
+import type { SessionResponse } from "@/api/client";
 import { accountColors, accountStyles } from "@/account/theme";
 import { AuthScroll } from "@/auth/AuthScroll";
 import { AuthTextInput } from "@/auth/AuthTextInput";
@@ -15,10 +16,12 @@ import { authErrorMessage } from "@/auth/errors";
 import { apiFieldErrors } from "@/auth/fieldErrors";
 import { GoogleButton } from "@/auth/GoogleButton";
 import { useGoogleSignIn, googleSignInConfigured } from "@/auth/google";
+import { scheduleLoginGrantToast } from "@/auth/loginGrantToast";
 import { normalizePhoneInput } from "@/auth/phone";
 import { PasswordField } from "@/auth/PasswordField";
 import { applySession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
+import { useToast } from "@/ui/toast";
 
 function returnPath(raw: string | string[] | undefined): Href {
   const value = Array.isArray(raw) ? raw[0] : raw;
@@ -30,6 +33,7 @@ function returnPath(raw: string | string[] | undefined): Href {
 
 export default function RegisterScreen() {
   const { t } = useTranslation();
+  const { show } = useToast();
   const router = useRouter();
   const params = useLocalSearchParams<{ returnTo?: string }>();
   const [displayName, setDisplayName] = useState("");
@@ -48,10 +52,14 @@ export default function RegisterScreen() {
     },
     [t],
   );
-  const finish = useCallback(() => {
-    const path = returnPath(params.returnTo);
-    router.dismissTo(path);
-  }, [params.returnTo, router]);
+  const finish = useCallback(
+    (session?: SessionResponse) => {
+      scheduleLoginGrantToast(session, show, t);
+      const path = returnPath(params.returnTo);
+      router.dismissTo(path);
+    },
+    [params.returnTo, router, show, t],
+  );
   const google = useGoogleSignIn({ onError: onGoogleError, onSuccess: finish });
 
   const clearField = (key: string) => {
@@ -86,7 +94,7 @@ export default function RegisterScreen() {
       }
       const session = await register(payload);
       await applySession(session.access_token, session.refresh_token);
-      finish();
+      finish(session);
     } catch (err) {
       const fields = apiFieldErrors(err, t);
       setFieldErrors(fields);

@@ -64,12 +64,6 @@ func Load(ctx context.Context, conn *pgx.Conn) (Result, error) {
 	if _, err := conn.Exec(ctx, creditSignupGrantsSQL, int64(10)); err != nil {
 		return result, fmt.Errorf("credit signup grants: %w", err)
 	}
-	if _, err := conn.Exec(ctx, `
-		UPDATE users SET last_login_grant_at = now()
-		 WHERE last_login_grant_at IS NULL
-	`); err != nil {
-		return result, fmt.Errorf("stamp login grant clock: %w", err)
-	}
 
 	tag, err = conn.Exec(ctx, insertVehiclesSQL)
 	if err != nil {

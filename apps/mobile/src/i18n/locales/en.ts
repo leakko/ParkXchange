@@ -74,6 +74,9 @@ export const en: Record<TranslationKey, string> = {
   "auth.login.submit": "Sign in",
   "auth.login.toRegister": "Create an account",
   "auth.login.forgot": "Forgot password",
+  "loginGrant.toast.title": "+1 point",
+  "loginGrant.toast.body":
+    "You earned 1 point for signing in. Thanks for using the app!",
   "auth.register.title": "Create account",
   "auth.register.subtitle": "Register with email or Google.",
   "auth.register.submit": "Create account",
@@ -490,7 +493,7 @@ export const en: Record<TranslationKey, string> = {
     "Withdraw or wait out your current listing before publishing another that overlaps (leaving now, flexible, or preferred within 1 hour).",
   "insufficientBalance.title": "Not enough points",
   "insufficientBalance.message":
-    "You don't have enough points for that offer. List your own spot — you earn the exchange points when the handover completes.",
+    "You don't have enough points for that offer. List your spot the next time you park to earn points.",
   "announce.location.label": "Location",
   "announce.location.useGps": "My location",
   "announce.location.pickOnMap": "Pick on map",

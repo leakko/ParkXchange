@@ -257,7 +257,7 @@ func accountCopyFor(eventType, locale string) (title, body string) {
 var accountCopyES = map[string]pushCopy{
 	accounts.EventLoginGrant: {
 		"+1 punto",
-		"Has ganado 1 punto por volver a ParkXchange. ¡Gracias por usar la app!",
+		"Has ganado 1 punto por iniciar sesión. ¡Gracias por usar la app!",
 	},
 	"_default": {
 		"ParkXchange",
@@ -268,7 +268,7 @@ var accountCopyES = map[string]pushCopy{
 var accountCopyEN = map[string]pushCopy{
 	accounts.EventLoginGrant: {
 		"+1 point",
-		"You earned 1 point for coming back to ParkXchange. Thanks for using the app!",
+		"You earned 1 point for signing in. Thanks for using the app!",
 	},
 	"_default": {
 		"ParkXchange",

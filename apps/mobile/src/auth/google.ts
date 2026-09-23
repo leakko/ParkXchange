@@ -7,6 +7,7 @@ import {
 import { useCallback, useEffect, useRef } from "react";
 
 import { loginWithGoogle } from "@/api/client";
+import type { SessionResponse } from "@/api/client";
 import { applySession } from "@/hooks/useSession";
 
 const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "";
@@ -33,7 +34,7 @@ export function googleSignInConfigured(): boolean {
 /** Native Google Sign-In → ID token → ParkXchange session. */
 export function useGoogleSignIn(opts: {
   onError: (err: unknown) => void;
-  onSuccess: () => void;
+  onSuccess: (session: SessionResponse) => void;
 }) {
   const onErrorRef = useRef(opts.onError);
   const onSuccessRef = useRef(opts.onSuccess);
@@ -70,7 +71,7 @@ export function useGoogleSignIn(opts: {
       }
       const session = await loginWithGoogle(idToken);
       await applySession(session.access_token, session.refresh_token);
-      onSuccessRef.current();
+      onSuccessRef.current(session);
     } catch (err) {
       if (isErrorWithCode(err) && err.code === statusCodes.SIGN_IN_CANCELLED) {
         return;

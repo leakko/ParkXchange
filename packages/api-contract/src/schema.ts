@@ -744,6 +744,11 @@ export interface components {
             /** @description Seconds remaining on the access token */
             expires_in: number;
             user: components["schemas"]["UserResponse"];
+            /**
+             * Format: int64
+             * @description Present when this session credited the weekly login bonus. Clients should show an in-app notice — push often cannot deliver on first login because the Expo token is registered afterwards.
+             */
+            login_grant_cents?: number;
         };
         UserResponse: {
             /** Format: uuid */

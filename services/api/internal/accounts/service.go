@@ -103,10 +103,11 @@ func (s *Service) WithNotifier(n Notifier) *Service {
 // Session is a freshly minted pair of credentials and the account they belong
 // to.
 type Session struct {
-	AccessToken  string
-	RefreshToken string
-	ExpiresAt    time.Time
-	User         domain.User
+	AccessToken     string
+	RefreshToken    string
+	ExpiresAt       time.Time
+	User            domain.User
+	LoginGrantCents int64 // set when this session claim credited the weekly login bonus
 }
 
 // Register creates an account and signs it in.
@@ -237,13 +238,19 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent string) (
 		return Session{}, domain.Internal(err)
 	}
 
-	s.maybeLoginGrant(ctx, user.ID)
+	grantCents := s.maybeLoginGrant(ctx, user.ID)
+	if grantCents > 0 {
+		if fresh, err := s.store.UserByID(ctx, user.ID); err == nil {
+			user = fresh
+		}
+	}
 
 	return Session{
-		AccessToken:  accessToken,
-		RefreshToken: plaintext,
-		ExpiresAt:    expiresAt,
-		User:         user,
+		AccessToken:     accessToken,
+		RefreshToken:    plaintext,
+		ExpiresAt:       expiresAt,
+		User:            user,
+		LoginGrantCents: grantCents,
 	}, nil
 }
 
@@ -796,26 +803,37 @@ func (s *Service) issue(ctx context.Context, user domain.User, userAgent string)
 		return Session{}, domain.Internal(err)
 	}
 
-	s.maybeLoginGrant(ctx, user.ID)
+	grantCents := s.maybeLoginGrant(ctx, user.ID)
+	if grantCents > 0 {
+		if fresh, err := s.store.UserByID(ctx, user.ID); err == nil {
+			user = fresh
+		}
+	}
 
 	return Session{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresAt:    expiresAt,
-		User:         user,
+		AccessToken:     accessToken,
+		RefreshToken:    refreshToken,
+		ExpiresAt:       expiresAt,
+		User:            user,
+		LoginGrantCents: grantCents,
 	}, nil
 }
 
 // maybeLoginGrant credits LoginGrantCents at most once per LoginGrantInterval.
-func (s *Service) maybeLoginGrant(ctx context.Context, userID string) {
+// New accounts have a null clock, so the session issued right after register
+// (or first Google sign-in) also pays. Returns the credited amount (0 when skipped).
+// Push is best-effort and often fails on first login — no Expo token yet — so
+// Session.LoginGrantCents lets the client show an in-app toast instead.
+func (s *Service) maybeLoginGrant(ctx context.Context, userID string) int64 {
 	granted, err := s.store.TryClaimLoginGrant(
 		ctx, userID, time.Now(), domain.LoginGrantInterval, domain.LoginGrantCents)
 	if err != nil || !granted {
-		return
+		return 0
 	}
 	_ = s.notifier.Notify(ctx, Notification{
 		Type:        EventLoginGrant,
 		RecipientID: userID,
 		Actions:     []string{"open"},
 	})
+	return domain.LoginGrantCents
 }
