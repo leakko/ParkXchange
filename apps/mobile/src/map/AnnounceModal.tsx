@@ -564,6 +564,8 @@ const styles = StyleSheet.create({
   toggleGroup: {
     gap: 0,
     width: "100%",
+    paddingHorizontal: 4,
+    marginVertical: 4,
   },
   toggleRow: {
     flexDirection: "row",
@@ -582,10 +584,11 @@ const styles = StyleSheet.create({
     flex: 1,
     flexShrink: 1,
     minWidth: 0,
-    paddingRight: 8,
+    paddingRight: 10,
   },
   toggleControl: {
     flexShrink: 0,
+    marginRight: 2,
     transform: [{ scale: 0.9 }],
   },
   primary: {
