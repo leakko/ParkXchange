@@ -147,6 +147,9 @@ export default function ReservationDetailScreen() {
   useEffect(() => {
     const current = reservation.data;
     if (!current || current.status !== "completed" || !current.can_rate) {
+      if (current && !current.can_rate) {
+        setRateOpen(false);
+      }
       return;
     }
     let cancelled = false;
@@ -379,7 +382,10 @@ export default function ReservationDetailScreen() {
       reservationId={res.id}
       visible={rateOpen}
       onClose={() => setRateOpen(false)}
-      onSubmitted={() => void invalidate()}
+      onSubmitted={() => {
+        setRateOpen(false);
+        void invalidate();
+      }}
     />
     </>
   );

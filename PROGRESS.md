@@ -21,9 +21,11 @@ If that test fails, fix the code, not the test.
 
 ## Current state
 
-- **Phase in progress:** Play Store closed/internal testing setup (declarations
-  in progress). Peer vehicle photo in exchange UI **coded** (needs API deploy +
-  mobile smoke). Ops handoff **smoke passed**.
+- **Phase in progress:** Play Store **Prueba cerrada** — listing + App content /
+  Data safety done. Rating modal now closes after submit (native dismiss +
+  dismiss-prompt). New production AAB queued on EAS from latest `main`. Next:
+  upload AAB → closed track → Play App Signing SHA-1 → Google Sign-In → tester
+  list + opt-in link.
 - **Also open:** payments deferred. Location permission policy — device demo
   pending. Account-delete confirm is now an in-app modal (pushed).
 - **Ratings + public profile:** **on main**. Owner pending offers show
@@ -52,15 +54,16 @@ If that test fails, fix the code, not the test.
   + map search pins / push / GPS (prior); geocode LocationIQ wired in mobile;
   ops handoff (Dozzle, loopback DB, `ops-queries.sql`, README) deployed and
   verified on the VPS.
-- **Blockers:** Play listing/Data safety still being filled; public/open testing
-  later. LocationIQ key is on EAS preview env (confirm device smoke).
+- **Blockers:** First closed-track Play review (hours–days) after AAB upload;
+  Google Sign-In needs Play App Signing SHA-1. Public/open testing later.
 
 ---
 
 ## Next immediate step
 
-1. Finish Play Console App content + store listing; produce production AAB;
-   internal testing track.
+1. When EAS AAB finishes: upload to **Prueba cerrada**, start release, wire
+   Play App Signing SHA-1 into Google OAuth, create tester list + share opt-in
+   link.
 2. Start PostGIS and run the pending full API suite/seed verification; deploy
    the departure filter + flexible expiry + listing Get-filter + ratings API
    + reports + «Me voy ya» (`00019`), then device-smoke the map filter, guest

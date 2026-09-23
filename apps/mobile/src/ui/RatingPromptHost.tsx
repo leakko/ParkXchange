@@ -31,12 +31,12 @@ export function RatingPromptHost() {
       reservationId={reservationId}
       visible={visible}
       onClose={() => {
+        // Keep reservationId until the modal finishes hiding so RateExchangeModal
+        // can pass visible={false} to the native dialog before unmounting.
         setVisible(false);
-        setReservationId(null);
       }}
       onSubmitted={() => {
         setVisible(false);
-        setReservationId(null);
       }}
     />
   );

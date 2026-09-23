@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useState } from "react";
 import {
+  Keyboard,
   Modal,
   Pressable,
   StyleSheet,
@@ -14,6 +15,8 @@ import { accountColors, accountStyles } from "@/account/theme";
 import { useTranslation } from "@/i18n";
 
 const DISMISS_KEY = "parkxchange.rating.dismissed";
+/** Match Modal animationType="fade" so Android can tear down the native dialog. */
+const UNMOUNT_AFTER_HIDE_MS = 350;
 
 async function loadDismissed(): Promise<Set<string>> {
   try {
@@ -64,6 +67,21 @@ export function RateExchangeModal({
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Keep the native Modal mounted long enough to receive visible=false; unmounting
+  // while still visible leaves the Android dialog stuck (worse with a focused TextInput).
+  const [hosted, setHosted] = useState(visible);
+
+  useEffect(() => {
+    if (visible) {
+      setHosted(true);
+      return;
+    }
+    if (!hosted) {
+      return;
+    }
+    const hideTimer = setTimeout(() => setHosted(false), UNMOUNT_AFTER_HIDE_MS);
+    return () => clearTimeout(hideTimer);
+  }, [visible, hosted]);
 
   useEffect(() => {
     if (visible) {
@@ -84,6 +102,9 @@ export function RateExchangeModal({
         stars,
         ...(comment.trim() ? { comment: comment.trim() } : {}),
       });
+      // Stop delayed map prompts / detail auto-open from bringing the sheet back.
+      await dismissRatingPrompt(reservationId);
+      Keyboard.dismiss();
       onSubmitted();
       onClose();
     } catch (err) {
@@ -94,6 +115,7 @@ export function RateExchangeModal({
   }, [reservationId, stars, comment, onClose, onSubmitted]);
 
   const skip = useCallback(() => {
+    Keyboard.dismiss();
     onClose();
   }, [onClose]);
 
@@ -101,18 +123,19 @@ export function RateExchangeModal({
     if (reservationId) {
       await dismissRatingPrompt(reservationId);
     }
+    Keyboard.dismiss();
     onClose();
   }, [reservationId, onClose]);
 
-  // Unmount when hidden: a persistent invisible Modal steals touches on Android
-  // when another Modal (confirm) is also in the tree.
-  if (!visible || !reservationId) {
+  // Unmount when fully hidden: a persistent invisible Modal steals touches on
+  // Android when another Modal (confirm) is also in the tree.
+  if (!hosted || !reservationId) {
     return null;
   }
 
   return (
     <Modal
-      visible
+      visible={visible}
       transparent
       animationType="fade"
       statusBarTranslucent
