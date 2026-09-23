@@ -24,6 +24,7 @@ export type AnnounceValues = {
   guidePriceCents: number;
   preferredDepartureAt: string | null;
   autoCancelNoShow: boolean;
+  leavingNow: boolean;
   vehicleId: string;
   lon: number;
   lat: number;
@@ -242,6 +243,45 @@ export function AnnounceModal({
         ? preferredTime.toISOString()
         : null,
       autoCancelNoShow: autoCancel,
+      leavingNow: false,
+      vehicleId,
+      lon: coords[0],
+      lat: coords[1],
+      addressHint: addressLabel,
+    });
+  };
+
+  const submitLeavingNow = async () => {
+    if (!vehicleId) {
+      await alert({
+        title: t("announce.needVehicle.title"),
+        message: t("announce.needVehicle.message"),
+        confirmLabel: t("common.ok"),
+      });
+      return;
+    }
+    if (!coords) {
+      await alert({
+        title: t("announce.location.required.title"),
+        message: t("announce.location.required.message"),
+        confirmLabel: t("common.ok"),
+      });
+      return;
+    }
+    const points = parsePointsInput(price);
+    if (points == null) {
+      await alert({
+        title: t("announce.alert.invalidPrice.title"),
+        message: t("announce.alert.invalidPrice.message"),
+        confirmLabel: t("common.ok"),
+      });
+      return;
+    }
+    await onSubmit({
+      guidePriceCents: points,
+      preferredDepartureAt: null,
+      autoCancelNoShow: autoCancel,
+      leavingNow: true,
       vehicleId,
       lon: coords[0],
       lat: coords[1],
@@ -407,6 +447,13 @@ export function AnnounceModal({
               </View>
               <Switch value={autoCancel} onValueChange={setAutoCancel} />
             </View>
+            <Pressable style={styles.leavingNow} disabled={busy} onPress={() => void submitLeavingNow()}>
+              {busy ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.leavingNowText}>{t("announce.leavingNow")}</Text>
+              )}
+            </Pressable>
             <Pressable style={styles.primary} disabled={busy} onPress={() => void submit()}>
               {busy ? (
                 <ActivityIndicator color="#fff" />
@@ -538,6 +585,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 4,
   },
+  leavingNow: {
+    backgroundColor: "#E85D04",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    marginTop: 4,
+  },
+  leavingNowText: { color: "#fff", fontSize: 15, fontWeight: "700" },
   primaryText: { color: "#fff", fontSize: 15, fontWeight: "600" },
   cancel: { color: "#9DB4C0", textAlign: "center", paddingVertical: 8 },
 });

@@ -27,6 +27,12 @@ const (
 	// (publish + 24h) and the grace after preferred_departure_at.
 	FlexibleListingDuration = 24 * time.Hour
 
+	// LeavingNowDuration is unreserved visibility for «Me voy ya» listings.
+	LeavingNowDuration = 60 * time.Minute
+
+	// LeavingNowOfferSkew is the allowed clock skew when matching 5/15/30 chips.
+	LeavingNowOfferSkew = 30 * time.Second
+
 	// MaxLeadTime is how far ahead a preferred departure may be set.
 	// Independent of the 24h unreserved visibility clock.
 	MaxLeadTime = 7 * 24 * time.Hour
@@ -165,6 +171,9 @@ type Spot struct {
 	// ExpiresAt is the listing end (listed_until). Not the exchange time.
 	ExpiresAt time.Time
 	CreatedAt time.Time
+
+	// LeavingNow is the «Me voy ya» modality: short-lived listing, ETA-only offers.
+	LeavingNow bool
 }
 
 // Expired reports whether the offer has run out, independently of the stored
@@ -270,6 +279,7 @@ type SpotDraft struct {
 
 	PreferredDepartureAt *time.Time
 	AutoCancelNoShow     bool
+	LeavingNow           bool
 
 	// AvailableIn is always zero for new listings (immediate). Kept so the
 	// postgres insert can still stamp available_from = now() until dropped.
@@ -296,8 +306,12 @@ type NewSpotInput struct {
 	// AutoCancelNoShow defaults to true when the pointer is nil.
 	AutoCancelNoShow *bool
 
+	// LeavingNow is the «Me voy ya» create path.
+	LeavingNow bool
+
 	// ExpiresAt is optional; zero means now + FlexibleListingDuration when
 	// no preferred departure is set, otherwise preferred + FlexibleListingDuration.
+	// LeavingNow forces now + LeavingNowDuration and ignores ExpiresAt/preferred.
 	ExpiresAt time.Time
 }
 
@@ -344,8 +358,16 @@ func NewSpot(in NewSpotInput, now time.Time) (SpotDraft, error) {
 		preferred = &p
 	}
 
+	if in.LeavingNow && preferred != nil {
+		fields["preferred_departure_at"] = "cannot be set with leaving_now"
+		fields["leaving_now"] = "cannot combine with preferred_departure_at"
+	}
+
 	expiresAt := in.ExpiresAt
-	if expiresAt.IsZero() {
+	if in.LeavingNow {
+		expiresAt = now.Add(LeavingNowDuration)
+		preferred = nil
+	} else if expiresAt.IsZero() {
 		if preferred == nil {
 			expiresAt = now.Add(FlexibleListingDuration)
 		} else {
@@ -403,6 +425,7 @@ func NewSpot(in NewSpotInput, now time.Time) (SpotDraft, error) {
 		Notes:                notes,
 		PreferredDepartureAt: preferred,
 		AutoCancelNoShow:     autoCancel,
+		LeavingNow:           in.LeavingNow,
 		AvailableIn:          0,
 		ExpiresIn:            expiresAt.Sub(now),
 	}, nil

@@ -36,12 +36,12 @@ func (db *DB) SpotForOffer(ctx context.Context, spotID string) (domain.Spot, err
 		status string
 	)
 	err := db.q().QueryRow(ctx, `
-		SELECT id, owner_id, status, expires_at, preferred_departure_at
+		SELECT id, owner_id, status, expires_at, preferred_departure_at, price_cents, leaving_now
 		  FROM spots
 		 WHERE id = $1
 	`, spotID).Scan(
 		&spot.ID, &spot.OwnerID, &status, &spot.ExpiresAt,
-		&spot.PreferredDepartureAt,
+		&spot.PreferredDepartureAt, &spot.PriceCents, &spot.LeavingNow,
 	)
 	if err != nil {
 		return domain.Spot{}, translate(err, "load spot for offer")

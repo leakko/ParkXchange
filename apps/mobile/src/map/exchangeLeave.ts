@@ -1,5 +1,5 @@
-/** Matches domain.NoShowGrace (10 minutes). */
-export const NO_SHOW_GRACE_MS = 10 * 60 * 1000;
+/** Matches domain.NoShowGrace (5 minutes). */
+export const NO_SHOW_GRACE_MS = 5 * 60 * 1000;
 
 /** Matches domain.DriverFairCancelWindow (30 minutes). */
 export const DRIVER_FAIR_CANCEL_MS = 30 * 60 * 1000;

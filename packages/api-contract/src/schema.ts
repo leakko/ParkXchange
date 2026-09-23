@@ -847,6 +847,11 @@ export interface components {
             preferred_departure_at?: string | null;
             /** @default true */
             auto_cancel_no_show: boolean;
+            /**
+             * @description «Me voy ya» — short-lived listing with ETA-only offers
+             * @default false
+             */
+            leaving_now: boolean;
         };
         /**
          * @description Partial edit of an available listing. Location, listing lifetime, and
@@ -879,6 +884,8 @@ export interface components {
             /** Format: date-time */
             listed_until: string;
             auto_cancel_no_show: boolean;
+            /** @description Owner is leaving now («Me voy ya») */
+            leaving_now?: boolean;
             exact_location: boolean;
             is_mine: boolean;
             /** @description Omitted until exact_location is true */
@@ -1047,8 +1054,12 @@ export interface components {
             from?: string;
             /** Format: date-time */
             to?: string;
-            /** @description When true, include spots with no preferred_departure_at. Defaults to true when omitted. */
+            /** @description When true, include flexible (non-leaving-now) spots. Defaults to true when omitted. */
             include_flexible?: boolean;
+            /** @description When true, include «Me voy ya» listings. Defaults to true when omitted. */
+            include_leaving_now?: boolean;
+            /** @description When true, return only leaving_now listings. */
+            leaving_now_only?: boolean;
         };
         /** @description Server to client WebSocket snapshot after a viewport */
         SnapshotMessage: {
@@ -1105,8 +1116,12 @@ export interface components {
         From: string;
         /** @description Exclusive end of the time window (RFC3339) */
         To: string;
-        /** @description When true, include spots with no preferred_departure_at */
+        /** @description When true, include flexible (non-preferred, non-leaving-now) spots */
         IncludeFlexible: boolean;
+        /** @description When true, include «Me voy ya» listings */
+        IncludeLeavingNow: boolean;
+        /** @description When true, return only leaving_now listings */
+        LeavingNowOnly: boolean;
     };
     requestBodies: never;
     headers: never;
@@ -1729,8 +1744,12 @@ export interface operations {
                 from?: components["parameters"]["From"];
                 /** @description Exclusive end of the time window (RFC3339) */
                 to?: components["parameters"]["To"];
-                /** @description When true, include spots with no preferred_departure_at */
+                /** @description When true, include flexible (non-preferred, non-leaving-now) spots */
                 include_flexible?: components["parameters"]["IncludeFlexible"];
+                /** @description When true, include «Me voy ya» listings */
+                include_leaving_now?: components["parameters"]["IncludeLeavingNow"];
+                /** @description When true, return only leaving_now listings */
+                leaving_now_only?: components["parameters"]["LeavingNowOnly"];
             };
             header?: never;
             path?: never;

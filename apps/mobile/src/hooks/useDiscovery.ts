@@ -19,6 +19,8 @@ export type Viewport = {
   from: string;
   to: string;
   includeFlexible: boolean;
+  includeLeavingNow: boolean;
+  leavingNowOnly: boolean;
 };
 
 function vehicleIncomplete(feature: SpotFeature | undefined): boolean {
@@ -55,6 +57,8 @@ export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) 
         from: viewport!.from,
         to: viewport!.to,
         includeFlexible: viewport!.includeFlexible,
+        includeLeavingNow: viewport!.includeLeavingNow,
+        leavingNowOnly: viewport!.leavingNowOnly,
       }),
     staleTime: 15_000,
   });
@@ -123,6 +127,8 @@ export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) 
       from: viewport.from,
       to: viewport.to,
       include_flexible: viewport.includeFlexible,
+      include_leaving_now: viewport.includeLeavingNow,
+      leaving_now_only: viewport.leavingNowOnly,
     });
   }, [viewport]);
 

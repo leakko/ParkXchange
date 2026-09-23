@@ -233,6 +233,8 @@ export async function fetchSpots(opts: {
   from: string;
   to: string;
   includeFlexible: boolean;
+  includeLeavingNow?: boolean;
+  leavingNowOnly?: boolean;
 }): Promise<SpotFeatureCollection> {
   const qs = new URLSearchParams({
     bbox: bboxQuery(opts.bbox),
@@ -240,6 +242,8 @@ export async function fetchSpots(opts: {
     from: opts.from,
     to: opts.to,
     include_flexible: String(opts.includeFlexible),
+    include_leaving_now: String(opts.includeLeavingNow ?? true),
+    leaving_now_only: String(opts.leavingNowOnly ?? false),
   });
   const res = await apiFetch(`/v1/spots?${qs}`);
   if (!res.ok) {

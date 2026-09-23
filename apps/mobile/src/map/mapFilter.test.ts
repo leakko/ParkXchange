@@ -16,6 +16,8 @@ describe("defaultMapFilter", () => {
       from: "2026-09-22T12:30:00.000Z",
       to: "2026-09-22T14:30:00.000Z",
       includeFlexible: true,
+      includeLeavingNow: true,
+      leavingNowOnly: false,
       isCustom: false,
     });
   });
@@ -30,6 +32,8 @@ describe("mapFilterFromDayRange", () => {
       from: new Date(2026, 8, 24, 9, 15).toISOString(),
       to: new Date(2026, 8, 24, 17, 30).toISOString(),
       includeFlexible: false,
+      includeLeavingNow: true,
+      leavingNowOnly: false,
       isCustom: true,
     });
   });

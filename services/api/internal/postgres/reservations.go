@@ -762,7 +762,7 @@ func (db *DB) Sweep(ctx context.Context, now time.Time) (reservations.SweepResul
 		AND r.driver_ready_at IS NULL
 		AND s.auto_cancel_no_show = true
 		AND $1::timestamptz >= r.exchange_at
-		AND $1::timestamptz >= GREATEST(r.owner_ready_at, r.exchange_at) + interval '10 minutes'
+		AND $1::timestamptz >= GREATEST(r.owner_ready_at, r.exchange_at) + interval '5 minutes'
 	`, "driver_no_show", false, now)
 	if err != nil {
 		return reservations.SweepResult{}, err
@@ -774,7 +774,7 @@ func (db *DB) Sweep(ctx context.Context, now time.Time) (reservations.SweepResul
 		r.driver_ready_at IS NOT NULL
 		AND r.owner_ready_at IS NULL
 		AND $1::timestamptz >= r.exchange_at
-		AND $1::timestamptz >= GREATEST(r.driver_ready_at, r.exchange_at) + interval '10 minutes'
+		AND $1::timestamptz >= GREATEST(r.driver_ready_at, r.exchange_at) + interval '5 minutes'
 	`, "owner_no_show", true, now)
 	if err != nil {
 		return reservations.SweepResult{}, err

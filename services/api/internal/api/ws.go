@@ -30,12 +30,14 @@ type ticketResponse struct {
 }
 
 type viewportIn struct {
-	Type            string    `json:"type"`
-	BBox            []float64 `json:"bbox"`
-	Zoom            int       `json:"zoom"`
-	From            time.Time `json:"from"`
-	To              time.Time `json:"to"`
-	IncludeFlexible *bool     `json:"include_flexible"`
+	Type              string    `json:"type"`
+	BBox              []float64 `json:"bbox"`
+	Zoom              int       `json:"zoom"`
+	From              time.Time `json:"from"`
+	To                time.Time `json:"to"`
+	IncludeFlexible   *bool     `json:"include_flexible"`
+	IncludeLeavingNow *bool     `json:"include_leaving_now"`
+	LeavingNowOnly    *bool     `json:"leaving_now_only"`
 }
 
 type snapshotOut struct {
@@ -131,14 +133,18 @@ func (a *API) readLoop(
 			MaxLon: msg.BBox[2], MaxLat: msg.BBox[3],
 		}
 		includeFlexible := msg.IncludeFlexible == nil || *msg.IncludeFlexible
+		includeLeavingNow := msg.IncludeLeavingNow == nil || *msg.IncludeLeavingNow
+		leavingNowOnly := msg.LeavingNowOnly != nil && *msg.LeavingNowOnly
 
 		visible, err := a.spots.InViewport(ctx, spots.ViewportQuery{
-			BBox:            box,
-			Zoom:            msg.Zoom,
-			From:            msg.From,
-			To:              msg.To,
-			IncludeFlexible: includeFlexible,
-			Viewer:          claims,
+			BBox:              box,
+			Zoom:              msg.Zoom,
+			From:              msg.From,
+			To:                msg.To,
+			IncludeFlexible:   includeFlexible,
+			IncludeLeavingNow: includeLeavingNow,
+			LeavingNowOnly:    leavingNowOnly,
+			Viewer:            claims,
 		})
 		if err != nil {
 			payload, _ := json.Marshal(map[string]string{

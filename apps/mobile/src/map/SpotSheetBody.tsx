@@ -248,6 +248,10 @@ export function SpotSheetBody({
     if (!(await ensureVehicle())) {
       return;
     }
+    if (spot?.properties.leaving_now) {
+      setAmount(formatPoints(spot.properties.price_cents));
+      setExchangeAt(new Date(Date.now() + 5 * 60_000));
+    }
     setMakingOffer(true);
     requestAnimationFrame(onExpandSheet);
   };
@@ -274,7 +278,9 @@ export function SpotSheetBody({
       await ensureVehicle();
       return;
     }
-    const offerPoints = parsePointsInput(amount);
+    const offerPoints = spot.properties.leaving_now
+      ? spot.properties.price_cents
+      : parsePointsInput(amount);
     if (!Number.isFinite(exchangeAt.getTime())) {
       await alert({
         title: t("announce.alert.invalidDate.title"),
@@ -468,19 +474,50 @@ export function SpotSheetBody({
               <Text style={styles.formLabel}>
                 {t("spotSheet.offer.exchangeDatetime")}
               </Text>
-              <DateTimeField
-                value={exchangeAt}
-                onChange={setExchangeAt}
-                minimumDate={new Date()}
-              />
+              {spot.properties.leaving_now ? (
+                <View style={styles.etaRow}>
+                  {([5, 15, 30] as const).map((mins) => (
+                    <Pressable
+                      key={mins}
+                      style={[
+                        styles.etaChip,
+                        Math.abs(
+                          exchangeAt.getTime() - (Date.now() + mins * 60_000),
+                        ) < 45_000 && styles.etaChipActive,
+                      ]}
+                      onPress={() =>
+                        setExchangeAt(new Date(Date.now() + mins * 60_000))
+                      }
+                    >
+                      <Text style={styles.etaChipText}>
+                        {t("spotSheet.offer.etaMinutes", { minutes: mins })}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : (
+                <DateTimeField
+                  value={exchangeAt}
+                  onChange={setExchangeAt}
+                  minimumDate={new Date()}
+                />
+              )}
               <Text style={styles.formLabel}>{t("spotSheet.offer.amount")}</Text>
-              <TextInput
-                style={styles.input}
-                value={amount}
-                onChangeText={setAmount}
-                keyboardType="number-pad"
-                placeholderTextColor="#7A93A0"
-              />
+              {spot.properties.leaving_now ? (
+                <Text style={styles.help}>
+                  {t("spotSheet.offer.fixedPrice", {
+                    points: formatPoints(spot.properties.price_cents),
+                  })}
+                </Text>
+              ) : (
+                <TextInput
+                  style={styles.input}
+                  value={amount}
+                  onChangeText={setAmount}
+                  keyboardType="number-pad"
+                  placeholderTextColor="#7A93A0"
+                />
+              )}
               <Pressable
                 style={[
                   styles.primary,
@@ -798,6 +835,17 @@ const styles = StyleSheet.create({
   reportText: { color: "#9DB4C0", fontSize: 13, fontWeight: "600" },
   actions: { marginTop: 12, gap: 8 },
   offerForm: { gap: 8 },
+  etaRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  etaChip: {
+    borderWidth: 1,
+    borderColor: "#1F3A56",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "#16324F",
+  },
+  etaChipActive: { borderColor: "#E85D04", backgroundColor: "#3D2410" },
+  etaChipText: { color: "#F4F7FA", fontWeight: "600", fontSize: 13 },
   formLabel: { color: "#9DB4C0", fontSize: 12, marginTop: 4 },
   help: { color: "#7A93A0", fontSize: 13, lineHeight: 18 },
   input: {

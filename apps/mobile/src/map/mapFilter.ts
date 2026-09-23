@@ -4,7 +4,9 @@ export type MapFilterState = {
   from: string;
   to: string;
   includeFlexible: boolean;
-  /** True when the user changed the day, range, or flexible-listing option. */
+  includeLeavingNow: boolean;
+  leavingNowOnly: boolean;
+  /** True when the user changed the day, range, or listing options. */
   isCustom: boolean;
 };
 
@@ -13,6 +15,8 @@ export function defaultMapFilter(now = new Date()): MapFilterState {
     from: now.toISOString(),
     to: new Date(now.getTime() + DEFAULT_WINDOW_MS).toISOString(),
     includeFlexible: true,
+    includeLeavingNow: true,
+    leavingNowOnly: false,
     isCustom: false,
   };
 }
@@ -24,6 +28,8 @@ export function mapFilterFromDayRange(
   endHour: number,
   endMinute: number,
   includeFlexible: boolean,
+  includeLeavingNow = true,
+  leavingNowOnly = false,
 ): MapFilterState {
   const year = dayLocal.getFullYear();
   const month = dayLocal.getMonth();
@@ -33,6 +39,8 @@ export function mapFilterFromDayRange(
     from: new Date(year, month, day, startHour, startMinute).toISOString(),
     to: new Date(year, month, day, endHour, endMinute).toISOString(),
     includeFlexible,
+    includeLeavingNow: leavingNowOnly ? true : includeLeavingNow,
+    leavingNowOnly,
     isCustom: true,
   };
 }
@@ -53,6 +61,8 @@ export function isDefaultMapFilter(filter: MapFilterState, now = new Date()): bo
   return (
     !filter.isCustom &&
     filter.includeFlexible === expected.includeFlexible &&
+    filter.includeLeavingNow === expected.includeLeavingNow &&
+    filter.leavingNowOnly === expected.leavingNowOnly &&
     filter.from === expected.from &&
     filter.to === expected.to
   );

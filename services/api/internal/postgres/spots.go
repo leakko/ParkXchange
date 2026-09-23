@@ -23,7 +23,7 @@ const spotColumns = `
 	s.id, s.owner_id, u.display_name, u.rating_sum, u.rating_count, u.phone,
 	ST_X(s.geom), ST_Y(s.geom),
 	s.address_hint, s.size_class, s.status, s.price_cents, s.notes,
-	s.preferred_departure_at, s.auto_cancel_no_show,
+	s.preferred_departure_at, s.auto_cancel_no_show, s.leaving_now,
 	s.expires_at, s.created_at,
 	(
 		SELECT r.driver_id
@@ -63,20 +63,32 @@ const discoveryQuery = `
 	     )
 	     OR (
 	       s.preferred_departure_at IS NULL
+	       AND s.leaving_now
+	     )
+	     OR (
+	       s.preferred_departure_at IS NULL
+	       AND NOT s.leaving_now
 	       AND s.created_at + interval '24 hours' > now()
 	     )
 	   )
 	   AND (
-	     (
-	       s.preferred_departure_at IS NOT NULL
-	       AND s.preferred_departure_at >= $5
-	       AND s.preferred_departure_at < $6
+	     ($9::boolean AND s.leaving_now)
+	     OR (
+	       NOT $9::boolean
+	       AND (
+	         (
+	           s.preferred_departure_at IS NOT NULL
+	           AND s.preferred_departure_at >= $5
+	           AND s.preferred_departure_at < $6
+	         )
+	         OR ($7::boolean AND s.preferred_departure_at IS NULL AND NOT s.leaving_now)
+	         OR ($8::boolean AND s.leaving_now)
+	       )
 	     )
-	     OR ($7::boolean AND s.preferred_departure_at IS NULL)
 	   )
 	   AND s.geom && ST_MakeEnvelope($1, $2, $3, $4, 4326)
 	 ORDER BY s.created_at DESC
-	 LIMIT $8`
+	 LIMIT $10`
 
 func scanSpot(row pgx.Row) (domain.Spot, error) {
 	var (
@@ -101,7 +113,7 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 		&spot.ID, &spot.OwnerID, &spot.OwnerName, &ratingSum, &ratingCount, &spot.OwnerPhone,
 		&spot.Lon, &spot.Lat,
 		&addressHint, &size, &status, &spot.PriceCents, &notes,
-		&spot.PreferredDepartureAt, &spot.AutoCancelNoShow,
+		&spot.PreferredDepartureAt, &spot.AutoCancelNoShow, &spot.LeavingNow,
 		&spot.ExpiresAt, &spot.CreatedAt,
 		&holderID,
 		&vehicleID,
@@ -151,7 +163,13 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 // geometry would defeat the index entirely, because the bounding box of a
 // collection spanning the antimeridian is the whole planet. A viewport only
 // splits when it crosses the date line, so in practice this loop runs once.
-func (db *DB) SpotsInBBox(ctx context.Context, boxes []geo.BBox, from, to time.Time, includeFlexible bool, limit int) ([]domain.Spot, error) {
+func (db *DB) SpotsInBBox(
+	ctx context.Context,
+	boxes []geo.BBox,
+	from, to time.Time,
+	includeFlexible, includeLeavingNow, leavingNowOnly bool,
+	limit int,
+) ([]domain.Spot, error) {
 	// Deduplicated by id because a caller could pass overlapping rectangles.
 	// The antimeridian split never does, but the port does not forbid it and
 	// returning the same spot twice would put two markers on one pin.
@@ -165,7 +183,7 @@ func (db *DB) SpotsInBBox(ctx context.Context, boxes []geo.BBox, from, to time.T
 
 		rows, err := db.q().Query(ctx, discoveryQuery,
 			box.MinLon, box.MinLat, box.MaxLon, box.MaxLat,
-			from, to, includeFlexible, limit-len(spots))
+			from, to, includeFlexible, includeLeavingNow, leavingNowOnly, limit-len(spots))
 		if err != nil {
 			return nil, translate(err, "query spots in bbox")
 		}
@@ -218,18 +236,19 @@ func (db *DB) CreateSpot(ctx context.Context, draft domain.SpotDraft) (domain.Sp
 		INSERT INTO spots (
 			owner_id, vehicle_id, geom, address_hint, size_class, status,
 			price_cents, notes, preferred_departure_at, auto_cancel_no_show,
-			expires_at
+			leaving_now, expires_at
 		)
 		VALUES (
 			$1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326), $5, $6, 'available',
 			$7, $8, $9, $10,
-			now() + make_interval(secs => $11)
+			$11, now() + make_interval(secs => $12)
 		)
 		RETURNING id
 	`,
 		draft.OwnerID, draft.VehicleID, draft.Lon, draft.Lat, nullable(draft.AddressHint),
 		string(draft.Size), draft.PriceCents, nullable(draft.Notes),
-		draft.PreferredDepartureAt, draft.AutoCancelNoShow, draft.ExpiresIn.Seconds(),
+		draft.PreferredDepartureAt, draft.AutoCancelNoShow, draft.LeavingNow,
+		draft.ExpiresIn.Seconds(),
 	).Scan(&id)
 	if err != nil {
 		return domain.Spot{}, translate(err, "insert spot")

@@ -67,7 +67,7 @@ func newFakeStore() *fakeStore {
 	return &fakeStore{spots: make(map[string]domain.Spot)}
 }
 
-func (f *fakeStore) SpotsInBBox(_ context.Context, boxes []geo.BBox, from, to time.Time, includeFlexible bool, limit int) ([]domain.Spot, error) {
+func (f *fakeStore) SpotsInBBox(_ context.Context, boxes []geo.BBox, from, to time.Time, includeFlexible, includeLeavingNow, leavingNowOnly bool, limit int) ([]domain.Spot, error) {
 	f.gotBoxes = boxes
 	f.gotLimit = limit
 	f.gotFrom = from

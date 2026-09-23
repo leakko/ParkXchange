@@ -8,6 +8,13 @@ import (
 // OfferTTL is how long a pending offer waits for the owner before it expires.
 const OfferTTL = 24 * time.Hour
 
+// LeavingNowOfferOffsets are the only exchange leads allowed on leaving_now spots.
+var LeavingNowOfferOffsets = []time.Duration{
+	5 * time.Minute,
+	15 * time.Minute,
+	30 * time.Minute,
+}
+
 // OfferStatus is where an offer sits before (or after) acceptance.
 type OfferStatus string
 
@@ -113,6 +120,33 @@ func NewOffer(in NewOfferInput, listedUntil time.Time, now time.Time) (OfferDraf
 		AmountCents: in.AmountCents,
 		ExpiresIn:   OfferTTL,
 	}, nil
+}
+
+// AssertLeavingNowOffer enforces guide-price and 5/15/30 exchange chips.
+func AssertLeavingNowOffer(amountCents, priceCents int, exchangeAt, now time.Time) error {
+	fields := make(map[string]string)
+	if amountCents != priceCents {
+		fields["amount_cents"] = "must match the listing price"
+	}
+	matched := false
+	for _, offset := range LeavingNowOfferOffsets {
+		target := now.Add(offset)
+		delta := exchangeAt.Sub(target)
+		if delta < 0 {
+			delta = -delta
+		}
+		if delta <= LeavingNowOfferSkew {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		fields["exchange_at"] = "must be 5, 15, or 30 minutes from now"
+	}
+	if len(fields) > 0 {
+		return InvalidFields(fields)
+	}
+	return nil
 }
 
 // MatchesPreferred reports whether the bid is at the owner's preferred departure.

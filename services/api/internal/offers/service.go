@@ -102,6 +102,13 @@ func (s *Service) Create(ctx context.Context, spotID string, viewer domain.Claim
 	if err != nil {
 		return domain.Offer{}, err
 	}
+	if spot.LeavingNow {
+		if err := domain.AssertLeavingNowOffer(
+			draft.AmountCents, spot.PriceCents, draft.ExchangeAt, s.now(),
+		); err != nil {
+			return domain.Offer{}, err
+		}
+	}
 
 	owned, err := s.store.VehicleOwnedBy(ctx, draft.VehicleID, viewer.UserID)
 	if err != nil {

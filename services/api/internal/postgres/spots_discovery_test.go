@@ -43,7 +43,7 @@ func TestDiscoveryFiltersDepartureWindowAndFlexibleListings(t *testing.T) {
 		MaxLon: 2.18, MaxLat: 41.39,
 	}}
 
-	withFlexible, err := db.SpotsInBBox(ctx, boxes, from, to, true, 10)
+	withFlexible, err := db.SpotsInBBox(ctx, boxes, from, to, true, true, false, 10)
 	if err != nil {
 		t.Fatalf("SpotsInBBox(include flexible): %v", err)
 	}
@@ -55,7 +55,7 @@ func TestDiscoveryFiltersDepartureWindowAndFlexibleListings(t *testing.T) {
 		t.Errorf("with flexible IDs = %v, want %v", withFlexibleIDs, wantWithFlexible)
 	}
 
-	withoutFlexible, err := db.SpotsInBBox(ctx, boxes, from, to, false, 10)
+	withoutFlexible, err := db.SpotsInBBox(ctx, boxes, from, to, false, true, false, 10)
 	if err != nil {
 		t.Fatalf("SpotsInBBox(exclude flexible): %v", err)
 	}

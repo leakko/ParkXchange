@@ -33,12 +33,16 @@ export function MapFilterSheetBody({
   const [fromTime, setFromTime] = useState(() => dateFrom(value.from));
   const [toTime, setToTime] = useState(() => dateFrom(value.to));
   const [includeFlexible, setIncludeFlexible] = useState(value.includeFlexible);
+  const [includeLeavingNow, setIncludeLeavingNow] = useState(value.includeLeavingNow);
+  const [leavingNowOnly, setLeavingNowOnly] = useState(value.leavingNowOnly);
 
   useEffect(() => {
     setDay(dateFrom(value.from));
     setFromTime(dateFrom(value.from));
     setToTime(dateFrom(value.to));
     setIncludeFlexible(value.includeFlexible);
+    setIncludeLeavingNow(value.includeLeavingNow);
+    setLeavingNowOnly(value.leavingNowOnly);
   }, [value]);
 
   const rangeValid = isValidMapFilterDayRange(
@@ -61,6 +65,8 @@ export function MapFilterSheetBody({
         toTime.getHours(),
         toTime.getMinutes(),
         includeFlexible,
+        includeLeavingNow,
+        leavingNowOnly,
       ),
     );
   };
@@ -91,6 +97,32 @@ export function MapFilterSheetBody({
           value={includeFlexible}
           onValueChange={setIncludeFlexible}
           trackColor={{ false: "#1F3A56", true: "#1B9AAA" }}
+        />
+      </View>
+      <View style={styles.toggleRow}>
+        <Text style={styles.toggleLabel}>{t("map.filter.includeLeavingNow")}</Text>
+        <Switch
+          value={includeLeavingNow}
+          onValueChange={(v) => {
+            setIncludeLeavingNow(v);
+            if (!v) {
+              setLeavingNowOnly(false);
+            }
+          }}
+          trackColor={{ false: "#1F3A56", true: "#1B9AAA" }}
+        />
+      </View>
+      <View style={styles.toggleRow}>
+        <Text style={styles.toggleLabel}>{t("map.filter.leavingNowOnly")}</Text>
+        <Switch
+          value={leavingNowOnly}
+          onValueChange={(v) => {
+            setLeavingNowOnly(v);
+            if (v) {
+              setIncludeLeavingNow(true);
+            }
+          }}
+          trackColor={{ false: "#1F3A56", true: "#E85D04" }}
         />
       </View>
 

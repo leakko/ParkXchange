@@ -39,7 +39,13 @@ type Store interface {
 	// that into the port would mean every implementation reinvents the split,
 	// and PostGIS in particular has no notion of a wrapping envelope.
 	// includeFlexible admits listings without a preferred departure time.
-	SpotsInBBox(ctx context.Context, boxes []geo.BBox, from, to time.Time, includeFlexible bool, limit int) ([]domain.Spot, error)
+	SpotsInBBox(
+		ctx context.Context,
+		boxes []geo.BBox,
+		from, to time.Time,
+		includeFlexible, includeLeavingNow, leavingNowOnly bool,
+		limit int,
+	) ([]domain.Spot, error)
 
 	// CreateSpot persists a new offer and returns it with its generated
 	// identifier and timestamps.

@@ -28,6 +28,11 @@ If that test fails, fix the code, not the test.
   pending. Account-delete confirm is now an in-app modal (pushed).
 - **Ratings + public profile:** **on main**. Owner pending offers show
   driver name/rating and open `/user/{driver_id}` before accept.
+- **«Me voy ya» (leaving_now):** **coded on main** — migration `00019`,
+  domain/offer rules (60m expiry, 5/15/30 at guide price), discovery
+  `include_leaving_now` / `leaving_now_only`, announce CTA, ETA chips,
+  map filter, car icon, owner waiting banner, `NoShowGrace` 5m.
+  Pending migrate + API deploy + device smoke when Docker/PostGIS is up.
 - **Reports (problem / listing / profile):** **coded** — table `reports`,
   `POST /v1/reports`; mobile CTAs on own profile, spot sheet, public profile.
   Review via TablePlus. Pending migrate when Docker/PostGIS is up.
@@ -57,13 +62,13 @@ If that test fails, fix the code, not the test.
 1. Finish Play Console App content + store listing; produce production AAB;
    internal testing track.
 2. Start PostGIS and run the pending full API suite/seed verification; deploy
-   the departure filter + flexible expiry + listing Get-filter + ratings API,
-   then device-smoke the map filter, guest login gates, and rating/profile flows.
+   the departure filter + flexible expiry + listing Get-filter + ratings API
+   + reports + «Me voy ya» (`00019`), then device-smoke the map filter, guest
+   login gates, rating/profile, reports, and leaving-now flows.
    Rebuild the preview APK only when asked.
 3. Device smoke for location policy (foreground vs «Voy de camino»).
 4. Rebuild preview/dev client; device smoke arrival background location
    (Android×2 + iOS) per arrival-background-location design acceptance.
-5. Next product: «Me voy ya» in-car modality.
 
 
 ---

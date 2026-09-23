@@ -384,6 +384,7 @@ export async function announceHere(opts: {
     price_cents: opts.guidePriceCents,
     preferred_departure_at: opts.preferredDepartureAt ?? null,
     auto_cancel_no_show: opts.autoCancelNoShow,
+    leaving_now: false,
     vehicle_id: opts.vehicleId,
     notes: opts.notes,
   });
@@ -396,6 +397,7 @@ export async function announceAt(
     guidePriceCents: number;
     preferredDepartureAt?: string | null;
     autoCancelNoShow: boolean;
+    leavingNow?: boolean;
     vehicleId: string;
     notes: string;
     addressHint?: string | null;
@@ -406,8 +408,9 @@ export async function announceAt(
     lat,
     size_class: "medium",
     price_cents: opts.guidePriceCents,
-    preferred_departure_at: opts.preferredDepartureAt ?? null,
+    preferred_departure_at: opts.leavingNow ? null : (opts.preferredDepartureAt ?? null),
     auto_cancel_no_show: opts.autoCancelNoShow,
+    leaving_now: opts.leavingNow ?? false,
     vehicle_id: opts.vehicleId,
     notes: opts.notes,
     ...(opts.addressHint?.trim() ? { address_hint: opts.addressHint.trim() } : {}),

@@ -37,6 +37,7 @@ type spotProperties struct {
 	PreferredDepartureAt *time.Time `json:"preferred_departure_at,omitempty"`
 	ListedUntil          time.Time  `json:"listed_until"`
 	AutoCancelNoShow     bool       `json:"auto_cancel_no_show"`
+	LeavingNow           bool       `json:"leaving_now"`
 
 	// ExactLocation tells the client whether the geometry is the real position
 	// or an offset privacy centre, so it can draw a pin or an uncertainty
@@ -89,6 +90,7 @@ func toFeature(visible spots.VisibleSpot, viewer domain.Claims) geo.Feature[spot
 		PreferredDepartureAt: spot.PreferredDepartureAt,
 		ListedUntil:          spot.ExpiresAt,
 		AutoCancelNoShow:     spot.AutoCancelNoShow,
+		LeavingNow:           spot.LeavingNow,
 		ExactLocation:        visible.Exact,
 		IsMine:               spot.OwnedBy(viewer.UserID),
 	}
@@ -153,15 +155,35 @@ func (a *API) handleListSpots(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 
+	includeLeavingNow := true
+	if raw := query.Get("include_leaving_now"); raw != "" {
+		includeLeavingNow, err = strconv.ParseBool(raw)
+		if err != nil {
+			return domain.Invalid("include_leaving_now_invalid",
+				"include_leaving_now must be a boolean")
+		}
+	}
+
+	leavingNowOnly := false
+	if raw := query.Get("leaving_now_only"); raw != "" {
+		leavingNowOnly, err = strconv.ParseBool(raw)
+		if err != nil {
+			return domain.Invalid("leaving_now_only_invalid",
+				"leaving_now_only must be a boolean")
+		}
+	}
+
 	viewer := claimsFrom(r.Context())
 
 	visible, err := a.spots.InViewport(r.Context(), spots.ViewportQuery{
-		BBox:            bbox,
-		Zoom:            zoom,
-		From:            from,
-		To:              to,
-		IncludeFlexible: includeFlexible,
-		Viewer:          viewer,
+		BBox:              bbox,
+		Zoom:              zoom,
+		From:              from,
+		To:                to,
+		IncludeFlexible:   includeFlexible,
+		IncludeLeavingNow: includeLeavingNow,
+		LeavingNowOnly:    leavingNowOnly,
+		Viewer:            viewer,
 	})
 	if err != nil {
 		return err
@@ -209,6 +231,7 @@ type createSpotRequest struct {
 	VehicleID            string     `json:"vehicle_id"`
 	PreferredDepartureAt *time.Time `json:"preferred_departure_at"`
 	AutoCancelNoShow     *bool      `json:"auto_cancel_no_show"`
+	LeavingNow           bool       `json:"leaving_now"`
 
 	// DurationMinutes is how long the offer stands after it becomes
 	// available, rather than an absolute expiry.
@@ -267,6 +290,7 @@ func (a *API) handleCreateSpot(w http.ResponseWriter, r *http.Request) error {
 		Notes:                req.Notes,
 		PreferredDepartureAt: req.PreferredDepartureAt,
 		AutoCancelNoShow:     req.AutoCancelNoShow,
+		LeavingNow:           req.LeavingNow,
 		ExpiresAt:            expiresAt,
 	})
 	if err != nil {

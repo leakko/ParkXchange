@@ -8,7 +8,7 @@ const ReconfirmWindow = 15 * time.Minute
 
 // NoShowGrace is the post-exchange courtesy window once a party has marked
 // ready: max(ready_at, exchange_at) + grace.
-const NoShowGrace = 10 * time.Minute
+const NoShowGrace = 5 * time.Minute
 
 // OwnerSafetyNet cancels an unresolved reservation this long after
 // exchange_at when the handshake never completed.

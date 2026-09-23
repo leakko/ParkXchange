@@ -524,6 +524,8 @@ paths:
         - $ref: "#/components/parameters/From"
         - $ref: "#/components/parameters/To"
         - $ref: "#/components/parameters/IncludeFlexible"
+        - $ref: "#/components/parameters/IncludeLeavingNow"
+        - $ref: "#/components/parameters/LeavingNowOnly"
       responses:
         "200":
           description: FeatureCollection of spots
@@ -1108,10 +1110,26 @@ components:
       name: include_flexible
       in: query
       required: false
-      description: When true, include spots with no preferred_departure_at
+      description: When true, include flexible (non-preferred, non-leaving-now) spots
       schema:
         type: boolean
         default: true
+    IncludeLeavingNow:
+      name: include_leaving_now
+      in: query
+      required: false
+      description: When true, include «Me voy ya» listings
+      schema:
+        type: boolean
+        default: true
+    LeavingNowOnly:
+      name: leaving_now_only
+      in: query
+      required: false
+      description: When true, return only leaving_now listings
+      schema:
+        type: boolean
+        default: false
 
   responses:
     Error:
@@ -1429,6 +1447,10 @@ components:
         auto_cancel_no_show:
           type: boolean
           default: true
+        leaving_now:
+          type: boolean
+          default: false
+          description: «Me voy ya» — short-lived listing with ETA-only offers
 
     UpdateSpotRequest:
       type: object
@@ -1494,6 +1516,9 @@ components:
           format: date-time
         auto_cancel_no_show:
           type: boolean
+        leaving_now:
+          type: boolean
+          description: Owner is leaving now («Me voy ya»)
         exact_location:
           type: boolean
         is_mine:
@@ -1825,7 +1850,13 @@ components:
           format: date-time
         include_flexible:
           type: boolean
-          description: When true, include spots with no preferred_departure_at. Defaults to true when omitted.
+          description: When true, include flexible (non-leaving-now) spots. Defaults to true when omitted.
+        include_leaving_now:
+          type: boolean
+          description: When true, include «Me voy ya» listings. Defaults to true when omitted.
+        leaving_now_only:
+          type: boolean
+          description: When true, return only leaving_now listings.
 
     SnapshotMessage:
       type: object

@@ -23,7 +23,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { OfferResponse, SpotFeature, VehicleResponse } from "@/api/client";
-import { ApiError, fetchMySpots, getSpot, listMyOffers, listVehicles } from "@/api/client";
+import { ApiError, fetchMySpots, getSpot, listMyOffers, listOffers, listVehicles, withdrawSpot } from "@/api/client";
 import { apiErrorMessage } from "@/api/errors";
 import { getAccessToken } from "@/api/session";
 import { ensureEmailVerified } from "@/auth/requireEmailVerified";
@@ -280,6 +280,49 @@ export default function MapScreen() {
     clearReady,
     refresh: refreshActiveReservation,
   } = useActiveReservation(signedIn);
+
+  const leavingNowSpot = useMemo(() => {
+    if (active || !signedIn) {
+      return null;
+    }
+    return (
+      collection.features.find(
+        (f) =>
+          f.properties.is_mine &&
+          !!f.properties.leaving_now &&
+          f.properties.status === "available",
+      ) ?? null
+    );
+  }, [active, signedIn, collection.features]);
+
+  const [leavingNowOfferCount, setLeavingNowOfferCount] = useState(0);
+  useEffect(() => {
+    if (!leavingNowSpot) {
+      setLeavingNowOfferCount(0);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const offers = await listOffers(String(leavingNowSpot.id));
+        if (!cancelled) {
+          setLeavingNowOfferCount(
+            offers.filter((o) => o.status === "pending").length,
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setLeavingNowOfferCount(0);
+        }
+      }
+    };
+    void load();
+    const timer = setInterval(() => void load(), 8_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [leavingNowSpot?.id]);
 
   const [mySpotFeatures, setMySpotFeatures] = useState<SpotFeature[]>([]);
 
@@ -598,6 +641,8 @@ export default function MapScreen() {
       from: mapFilter.from,
       to: mapFilter.to,
       includeFlexible: mapFilter.includeFlexible,
+      includeLeavingNow: mapFilter.includeLeavingNow,
+      leavingNowOnly: mapFilter.leavingNowOnly,
     });
     setMapViewbox(bounds as ViewBox);
   }, [mapFilter]);
@@ -892,6 +937,8 @@ export default function MapScreen() {
               from: next.from,
               to: next.to,
               includeFlexible: next.includeFlexible,
+              includeLeavingNow: next.includeLeavingNow,
+              leavingNowOnly: next.leavingNowOnly,
             }
           : current,
       );
@@ -1072,6 +1119,7 @@ export default function MapScreen() {
           guidePriceCents: values.guidePriceCents,
           preferredDepartureAt: values.preferredDepartureAt,
           autoCancelNoShow: values.autoCancelNoShow,
+          leavingNow: values.leavingNow,
           vehicleId: values.vehicleId,
           notes: t("announce.notes.longPress"),
           addressHint: values.addressHint,
@@ -1372,6 +1420,62 @@ export default function MapScreen() {
             );
           })()}
         </Pressable>
+      ) : leavingNowSpot ? (
+        <View
+          style={[styles.banner, styles.activeBanner, { top: insets.top + 118 }]}
+        >
+          <Pressable
+            style={styles.activeBannerBody}
+            onPress={() => {
+              router.push(`/account/spots/${String(leavingNowSpot.id)}` as Href);
+            }}
+          >
+            <Text style={styles.bannerText}>
+              {t("map.banner.leavingNowWaiting", {
+                count: leavingNowOfferCount,
+              })}
+            </Text>
+          </Pressable>
+          <View style={styles.activeBannerActions}>
+            <Pressable
+              style={styles.bannerBtn}
+              onPress={() => {
+                router.push(`/account/spots/${String(leavingNowSpot.id)}` as Href);
+              }}
+            >
+              <Text style={styles.bannerBtnText}>{t("map.banner.leavingNowOffers")}</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.bannerBtn, { backgroundColor: "#3D1F2B" }]}
+              onPress={() => {
+                void (async () => {
+                  const ok = await confirm({
+                    title: t("map.banner.leavingNowLeave.title"),
+                    message: t("map.banner.leavingNowLeave.message"),
+                    cancelLabel: t("common.cancel"),
+                    confirmLabel: t("map.banner.leavingNowLeave.confirm"),
+                    destructive: true,
+                  });
+                  if (!ok) {
+                    return;
+                  }
+                  try {
+                    await withdrawSpot(String(leavingNowSpot.id));
+                    await refetch();
+                  } catch (err) {
+                    await alert({
+                      title: t("map.alert.withdrawFailed.title"),
+                      message: apiErrorMessage(err, t),
+                      confirmLabel: t("common.ok"),
+                    });
+                  }
+                })();
+              }}
+            >
+              <Text style={styles.bannerBtnText}>{t("map.banner.leavingNowLeave.cta")}</Text>
+            </Pressable>
+          </View>
+        </View>
       ) : null}
 
       {error ? (

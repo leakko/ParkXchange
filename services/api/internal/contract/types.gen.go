@@ -308,9 +308,12 @@ type CreateReportRequest struct {
 
 // CreateSpotRequest defines model for CreateSpotRequest.
 type CreateSpotRequest struct {
-	AddressHint          *string    `json:"address_hint,omitempty"`
-	AutoCancelNoShow     *bool      `json:"auto_cancel_no_show,omitempty"`
-	Lat                  float64    `json:"lat"`
+	AddressHint      *string `json:"address_hint,omitempty"`
+	AutoCancelNoShow *bool   `json:"auto_cancel_no_show,omitempty"`
+	Lat              float64 `json:"lat"`
+
+	// LeavingNow «Me voy ya» — short-lived listing with ETA-only offers
+	LeavingNow           *bool      `json:"leaving_now,omitempty"`
 	Lon                  float64    `json:"lon"`
 	Notes                *string    `json:"notes,omitempty"`
 	PreferredDepartureAt *time.Time `json:"preferred_departure_at,omitempty"`
@@ -563,14 +566,17 @@ type SpotFeatureCollectionType string
 
 // SpotProperties defines model for SpotProperties.
 type SpotProperties struct {
-	AddressHint      *string            `json:"address_hint,omitempty"`
-	AutoCancelNoShow bool               `json:"auto_cancel_no_show"`
-	ExactLocation    bool               `json:"exact_location"`
-	IsMine           bool               `json:"is_mine"`
-	ListedUntil      time.Time          `json:"listed_until"`
-	Notes            *string            `json:"notes,omitempty"`
-	OwnerId          openapi_types.UUID `json:"owner_id"`
-	OwnerName        string             `json:"owner_name"`
+	AddressHint      *string `json:"address_hint,omitempty"`
+	AutoCancelNoShow bool    `json:"auto_cancel_no_show"`
+	ExactLocation    bool    `json:"exact_location"`
+	IsMine           bool    `json:"is_mine"`
+
+	// LeavingNow Owner is leaving now («Me voy ya»)
+	LeavingNow  *bool              `json:"leaving_now,omitempty"`
+	ListedUntil time.Time          `json:"listed_until"`
+	Notes       *string            `json:"notes,omitempty"`
+	OwnerId     openapi_types.UUID `json:"owner_id"`
+	OwnerName   string             `json:"owner_name"`
 
 	// OwnerPhone Owner E.164 phone; only present when exact_location is true
 	OwnerPhone           *string    `json:"owner_phone,omitempty"`
@@ -692,11 +698,17 @@ type ViewportMessage struct {
 	Bbox []float64  `json:"bbox"`
 	From *time.Time `json:"from,omitempty"`
 
-	// IncludeFlexible When true, include spots with no preferred_departure_at. Defaults to true when omitted.
-	IncludeFlexible *bool               `json:"include_flexible,omitempty"`
-	To              *time.Time          `json:"to,omitempty"`
-	Type            ViewportMessageType `json:"type"`
-	Zoom            *int                `json:"zoom,omitempty"`
+	// IncludeFlexible When true, include flexible (non-leaving-now) spots. Defaults to true when omitted.
+	IncludeFlexible *bool `json:"include_flexible,omitempty"`
+
+	// IncludeLeavingNow When true, include «Me voy ya» listings. Defaults to true when omitted.
+	IncludeLeavingNow *bool `json:"include_leaving_now,omitempty"`
+
+	// LeavingNowOnly When true, return only leaving_now listings.
+	LeavingNowOnly *bool               `json:"leaving_now_only,omitempty"`
+	To             *time.Time          `json:"to,omitempty"`
+	Type           ViewportMessageType `json:"type"`
+	Zoom           *int                `json:"zoom,omitempty"`
 }
 
 // ViewportMessageType defines model for ViewportMessage.Type.
@@ -710,6 +722,12 @@ type From = time.Time
 
 // IncludeFlexible defines model for IncludeFlexible.
 type IncludeFlexible = bool
+
+// IncludeLeavingNow defines model for IncludeLeavingNow.
+type IncludeLeavingNow = bool
+
+// LeavingNowOnly defines model for LeavingNowOnly.
+type LeavingNowOnly = bool
 
 // OfferID defines model for OfferID.
 type OfferID = openapi_types.UUID
@@ -760,8 +778,14 @@ type ListSpotsParams struct {
 	// To Exclusive end of the time window (RFC3339)
 	To *To `form:"to,omitempty" json:"to,omitempty"`
 
-	// IncludeFlexible When true, include spots with no preferred_departure_at
+	// IncludeFlexible When true, include flexible (non-preferred, non-leaving-now) spots
 	IncludeFlexible *IncludeFlexible `form:"include_flexible,omitempty" json:"include_flexible,omitempty"`
+
+	// IncludeLeavingNow When true, include «Me voy ya» listings
+	IncludeLeavingNow *IncludeLeavingNow `form:"include_leaving_now,omitempty" json:"include_leaving_now,omitempty"`
+
+	// LeavingNowOnly When true, return only leaving_now listings
+	LeavingNowOnly *LeavingNowOnly `form:"leaving_now_only,omitempty" json:"leaving_now_only,omitempty"`
 }
 
 // GetUserProfileParams defines parameters for GetUserProfile.

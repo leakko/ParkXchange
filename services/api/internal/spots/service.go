@@ -104,8 +104,15 @@ type ViewportQuery struct {
 	From time.Time
 	To   time.Time
 
-	// IncludeFlexible admits listings without a preferred departure time.
+	// IncludeFlexible admits listings without a preferred departure time
+	// (excluding leaving_now, which has its own flag).
 	IncludeFlexible bool
+
+	// IncludeLeavingNow admits «Me voy ya» listings. Default true at the edge.
+	IncludeLeavingNow bool
+
+	// LeavingNowOnly restricts the viewport to leaving_now spots only.
+	LeavingNowOnly bool
 
 	Viewer domain.Claims
 }
@@ -129,7 +136,9 @@ func (s *Service) InViewport(ctx context.Context, q ViewportQuery) ([]VisibleSpo
 
 	// Splitting here, not in the adapter, keeps the antimeridian rule in one
 	// place and testable without a database.
-	found, err := s.store.SpotsInBBox(ctx, q.BBox.Split(), from, to, q.IncludeFlexible, MaxResults)
+	found, err := s.store.SpotsInBBox(
+		ctx, q.BBox.Split(), from, to,
+		q.IncludeFlexible, q.IncludeLeavingNow, q.LeavingNowOnly, MaxResults)
 	if err != nil {
 		return nil, domain.Internal(err)
 	}
