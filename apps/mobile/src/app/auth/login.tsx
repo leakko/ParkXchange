@@ -48,7 +48,10 @@ export default function LoginScreen() {
   );
   const finish = useCallback(
     (session?: SessionResponse) => {
-      scheduleLoginGrantToast(session, show, t);
+      scheduleLoginGrantToast(session, show, {
+        title: t("loginGrant.toast.title"),
+        body: t("loginGrant.toast.body"),
+      });
       const path = returnPath(params.returnTo);
       // Avoid stacking a second /account (or returnTo) under the auth screen —
       // otherwise the first back lands on the same hub again.

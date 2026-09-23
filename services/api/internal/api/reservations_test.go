@@ -120,7 +120,7 @@ func TestOfferAcceptanceAndHandshakePayOwner(t *testing.T) {
 	if err := json.NewDecoder(me.Body).Decode(&profile); err != nil {
 		t.Fatalf("decode owner profile: %v", err)
 	}
-	if want := domain.SignupGrantCents + 2; profile.BalanceCents != want {
+	if want := domain.SignupGrantCents + domain.LoginGrantCents + 2; profile.BalanceCents != want {
 		t.Errorf("owner balance = %d, want %d", profile.BalanceCents, want)
 	}
 }

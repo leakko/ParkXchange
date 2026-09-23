@@ -54,7 +54,10 @@ export default function RegisterScreen() {
   );
   const finish = useCallback(
     (session?: SessionResponse) => {
-      scheduleLoginGrantToast(session, show, t);
+      scheduleLoginGrantToast(session, show, {
+        title: t("loginGrant.toast.title"),
+        body: t("loginGrant.toast.body"),
+      });
       const path = returnPath(params.returnTo);
       router.dismissTo(path);
     },
