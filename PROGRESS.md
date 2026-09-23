@@ -22,10 +22,9 @@ If that test fails, fix the code, not the test.
 ## Current state
 
 - **Phase in progress:** Play Store **Prueba cerrada** — listing + App content /
-  Data safety done. Rating modal now closes after submit (native dismiss +
-  dismiss-prompt). New production AAB queued on EAS from latest `main`. Next:
-  upload AAB → closed track → Play App Signing SHA-1 → Google Sign-In → tester
-  list + opt-in link.
+  Data safety done. Rating modal closes after submit. Production AAB building on
+  EAS (`502eb2cc`, `main` @ `cd7f893`). Next: upload AAB → closed track → Play
+  App Signing SHA-1 → Google Sign-In → tester list + opt-in link.
 - **Also open:** payments deferred. Location permission policy — device demo
   pending. Account-delete confirm is now an in-app modal (pushed).
 - **Ratings + public profile:** **on main**. Owner pending offers show
