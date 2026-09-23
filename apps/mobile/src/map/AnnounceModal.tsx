@@ -392,42 +392,56 @@ export function AnnounceModal({
               keyboardType="number-pad"
               placeholderTextColor="#7A93A0"
             />
-            <View style={styles.toggleRow}>
-              <Text style={styles.label}>{t("announce.leavingNow")}</Text>
-              <Switch
-                value={leavingNow}
-                onValueChange={(v) => {
-                  setLeavingNow(v);
-                  if (v) {
-                    setHasPreferredTime(false);
-                  }
-                }}
-                trackColor={{ false: "#1F3A56", true: "#E85D04" }}
-              />
-            </View>
-            <View style={styles.toggleRow}>
-              <Text style={styles.label}>{t("announce.preferredDeparture")}</Text>
-              <Switch
-                value={hasPreferredTime}
-                disabled={leavingNow}
-                onValueChange={(v) => {
-                  setHasPreferredTime(v);
-                  if (v) {
-                    setLeavingNow(false);
-                  }
-                }}
-              />
-            </View>
-            {hasPreferredTime && !leavingNow ? (
-              <DateTimeField
-                value={preferredTime}
-                onChange={setPreferredTime}
-                minimumDate={new Date()}
-              />
-            ) : null}
-            <View style={styles.toggleRow}>
-              <Text style={styles.label}>{t("announce.autoCancel.label")}</Text>
-              <Switch value={autoCancel} onValueChange={setAutoCancel} />
+            <View style={styles.toggleGroup}>
+              <View style={styles.toggleRow}>
+                <Text style={styles.toggleLabel} numberOfLines={2}>
+                  {t("announce.leavingNow")}
+                </Text>
+                <View style={styles.toggleControl}>
+                  <Switch
+                    value={leavingNow}
+                    onValueChange={(v) => {
+                      setLeavingNow(v);
+                      if (v) {
+                        setHasPreferredTime(false);
+                      }
+                    }}
+                    trackColor={{ false: "#1F3A56", true: "#E85D04" }}
+                  />
+                </View>
+              </View>
+              <View style={styles.toggleRow}>
+                <Text style={styles.toggleLabel} numberOfLines={2}>
+                  {t("announce.preferredDeparture")}
+                </Text>
+                <View style={styles.toggleControl}>
+                  <Switch
+                    value={hasPreferredTime}
+                    disabled={leavingNow}
+                    onValueChange={(v) => {
+                      setHasPreferredTime(v);
+                      if (v) {
+                        setLeavingNow(false);
+                      }
+                    }}
+                  />
+                </View>
+              </View>
+              {hasPreferredTime && !leavingNow ? (
+                <DateTimeField
+                  value={preferredTime}
+                  onChange={setPreferredTime}
+                  minimumDate={new Date()}
+                />
+              ) : null}
+              <View style={styles.toggleRow}>
+                <Text style={styles.toggleLabel} numberOfLines={2}>
+                  {t("announce.autoCancel.label")}
+                </Text>
+                <View style={styles.toggleControl}>
+                  <Switch value={autoCancel} onValueChange={setAutoCancel} />
+                </View>
+              </View>
             </View>
             <Pressable style={styles.primary} disabled={busy} onPress={() => void submit()}>
               {busy ? (
@@ -546,13 +560,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   secondaryBtnText: { color: "#F4F7FA", fontWeight: "600", fontSize: 13 },
+  toggleGroup: {
+    gap: 4,
+    width: "100%",
+  },
   toggleRow: {
-    minHeight: 44,
+    minHeight: 36,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
+    gap: 10,
+    width: "100%",
   },
+  // flexShrink keeps long labels from shoving the Switch past the card edge.
+  toggleLabel: {
+    color: "#D6E2E9",
+    fontSize: 13,
+    flex: 1,
+    flexShrink: 1,
+    paddingRight: 4,
+  },
+  toggleControl: { flexShrink: 0 },
   primary: {
     backgroundColor: "#1B9AAA",
     borderRadius: 12,
