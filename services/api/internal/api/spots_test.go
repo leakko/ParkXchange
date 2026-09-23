@@ -318,7 +318,8 @@ func TestCreateSpotRejectsInvalidInput(t *testing.T) {
 			func(b map[string]any) { b["duration_minutes"] = 0 }, "duration_minutes",
 		},
 		"duration beyond the maximum": {
-			func(b map[string]any) { b["duration_minutes"] = 60 * 24 * 8 }, "expires_at",
+			// MaxDuration is MaxLeadTime (7d) + FlexibleListingDuration (24h).
+			func(b map[string]any) { b["duration_minutes"] = 60*24*8 + 1 }, "expires_at",
 		},
 		"notes too long": {
 			func(b map[string]any) { b["notes"] = strings.Repeat("x", 281) }, "notes",

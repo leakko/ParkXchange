@@ -79,7 +79,8 @@ func TestDiscoveryQueryUsesThePartialSpatialIndex(t *testing.T) {
 	from := time.Now()
 	rows, err := tx.Query(ctx,
 		"EXPLAIN (COSTS OFF) "+discoveryQuery,
-		minLon, minLat, maxLon, maxLat, from, from.Add(time.Hour), true, 500)
+		minLon, minLat, maxLon, maxLat, from, from.Add(time.Hour),
+		true, true, false, 500)
 	if err != nil {
 		t.Fatalf("explain: %v", err)
 	}
