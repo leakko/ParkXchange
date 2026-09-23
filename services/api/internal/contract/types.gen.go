@@ -453,7 +453,7 @@ type RegisterRequest struct {
 	Email       openapi_types.Email `json:"email"`
 	Password    string              `json:"password"`
 
-	// Phone Optional E.164 phone; required before announcing a spot
+	// Phone Optional E.164 phone; shown to the other party after accept when set
 	Phone *string `json:"phone,omitempty"`
 }
 
@@ -535,6 +535,7 @@ type SpotEventMessage struct {
 	ExactLocation bool                 `json:"exact_location"`
 	Id            openapi_types.UUID   `json:"id"`
 	Lat           float64              `json:"lat"`
+	LeavingNow    *bool                `json:"leaving_now,omitempty"`
 	Lon           float64              `json:"lon"`
 	PriceCents    *int                 `json:"price_cents,omitempty"`
 	Status        *string              `json:"status,omitempty"`

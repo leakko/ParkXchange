@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -95,6 +96,7 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 		spot        domain.Spot
 		ratingSum   int
 		ratingCount int
+		ownerPhone  *string
 		addressHint *string
 		notes       *string
 		size        string
@@ -110,7 +112,7 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 	)
 
 	err := row.Scan(
-		&spot.ID, &spot.OwnerID, &spot.OwnerName, &ratingSum, &ratingCount, &spot.OwnerPhone,
+		&spot.ID, &spot.OwnerID, &spot.OwnerName, &ratingSum, &ratingCount, &ownerPhone,
 		&spot.Lon, &spot.Lat,
 		&addressHint, &size, &status, &spot.PriceCents, &notes,
 		&spot.PreferredDepartureAt, &spot.AutoCancelNoShow, &spot.LeavingNow,
@@ -125,6 +127,7 @@ func scanSpot(row pgx.Row) (domain.Spot, error) {
 
 	spot.Size = domain.SpotSize(size)
 	spot.Status = domain.SpotStatus(status)
+	spot.OwnerPhone = optional(ownerPhone)
 	spot.AddressHint = optional(addressHint)
 	spot.Notes = optional(notes)
 	spot.HolderID = optional(holderID)
@@ -262,6 +265,7 @@ func (db *DB) CreateSpot(ctx context.Context, draft domain.SpotDraft) (domain.Sp
 		Lat:        draft.Lat,
 		Status:     domain.SpotAvailable,
 		PriceCents: draft.PriceCents,
+		LeavingNow: draft.LeavingNow,
 	}); err != nil {
 		return domain.Spot{}, translate(err, "notify spot added")
 	}
@@ -278,7 +282,7 @@ func (db *DB) CreateSpot(ctx context.Context, draft domain.SpotDraft) (domain.Sp
 
 // SpotByID loads one spot regardless of its status.
 func (db *DB) SpotByID(ctx context.Context, id string) (domain.Spot, error) {
-	return scanSpot(db.Pool.QueryRow(ctx, `
+	return scanSpot(db.q().QueryRow(ctx, `
 		SELECT `+spotColumns+spotFrom+`
 		 WHERE s.id = $1`, id))
 }
@@ -442,6 +446,74 @@ func (db *DB) OwnerPhone(ctx context.Context, ownerID string) (domain.Phone, err
 		return "", nil
 	}
 	return domain.NewPhone(*phone), nil
+}
+
+// HasBlockingSpotActivity reports a leaving_now listing or a near-term live
+// reservation that already occupies the caller's single active slot.
+func (db *DB) HasBlockingSpotActivity(
+	ctx context.Context,
+	userID, excludeSpotID string,
+	now time.Time,
+) (bool, error) {
+	var exclude any
+	if strings.TrimSpace(excludeSpotID) != "" {
+		exclude = excludeSpotID
+	}
+	horizonEnd := now.Add(domain.ActiveSpotHorizon)
+	var blocked bool
+	err := db.q().QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			  FROM spots s
+			 WHERE s.owner_id = $1
+			   AND s.status = 'available'
+			   AND s.leaving_now
+			   AND s.expires_at > $3::timestamptz
+			   AND ($2::uuid IS NULL OR s.id <> $2::uuid)
+		)
+		OR EXISTS (
+			SELECT 1
+			  FROM reservations r
+			  JOIN spots s ON s.id = r.spot_id
+			 WHERE r.status IN ('pending', 'confirmed', 'arrived')
+			   AND r.exchange_at > $3::timestamptz
+			   AND r.exchange_at <= $4::timestamptz
+			   AND (s.owner_id = $1 OR r.driver_id = $1)
+			   AND ($2::uuid IS NULL OR s.id <> $2::uuid)
+		)`, userID, exclude, now, horizonEnd).Scan(&blocked)
+	if err != nil {
+		return false, translate(err, "check active spot commitment")
+	}
+	return blocked, nil
+}
+
+// HasOfferTimeConflict reports a live reservation whose exchange_at falls
+// strictly inside domain.OfferConflictWindow of proposed (|Δt| < 1h).
+func (db *DB) HasOfferTimeConflict(
+	ctx context.Context,
+	userID string,
+	proposed time.Time,
+	excludeSpotID string,
+) (bool, error) {
+	var exclude any
+	if strings.TrimSpace(excludeSpotID) != "" {
+		exclude = excludeSpotID
+	}
+	var conflict bool
+	err := db.q().QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			  FROM reservations r
+			  JOIN spots s ON s.id = r.spot_id
+			 WHERE r.status IN ('pending', 'confirmed', 'arrived')
+			   AND (s.owner_id = $1 OR r.driver_id = $1)
+			   AND ($2::uuid IS NULL OR s.id <> $2::uuid)
+			   AND ABS(EXTRACT(EPOCH FROM (r.exchange_at - $3::timestamptz))) < $4::double precision
+		)`, userID, exclude, proposed, domain.OfferConflictWindow.Seconds()).Scan(&conflict)
+	if err != nil {
+		return false, translate(err, "check offer time conflict")
+	}
+	return conflict, nil
 }
 
 // SpotVehiclePhoto returns the linked vehicle's photo bytes.

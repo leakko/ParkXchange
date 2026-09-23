@@ -24,7 +24,8 @@ import {
   type SpotFeature,
   type VehicleResponse,
 } from "@/api/client";
-import { apiErrorMessage } from "@/api/errors";
+import { apiErrorMessage, apiErrorTitle } from "@/api/errors";
+import { notifySpotWithdrawn } from "@/map/spotWithdrawHandoff";
 import { ensureEmailVerified } from "@/auth/requireEmailVerified";
 import { useSession } from "@/hooks/useSession";
 import { useActiveReservation } from "@/hooks/useSpotActions";
@@ -35,6 +36,10 @@ import {
   peekOpenSpot,
   subscribeOpenSpot,
 } from "@/map/spotSheetHandoff";
+import {
+  consumeResumeOfferAfterVehicle,
+  subscribeVehicleCreated,
+} from "@/map/vehicleCreateHandoff";
 import { useConfirm } from "@/ui/ConfirmModal";
 import { ReportModal, type ReportTarget } from "@/ui/ReportModal";
 
@@ -163,6 +168,21 @@ export default function SpotDetailScreen() {
     void refreshActive();
   }, [spotId, refreshSpot, refreshOffers, refreshVehicles, refreshActive]);
 
+  // After “add car” from the offer soft-gate, reload vehicles and reopen the form.
+  useEffect(() => {
+    return subscribeVehicleCreated((kind) => {
+      if (kind !== "offer") {
+        return;
+      }
+      void (async () => {
+        await refreshVehicles();
+        if (consumeResumeOfferAfterVehicle()) {
+          setMakingOffer(true);
+        }
+      })();
+    });
+  }, [refreshVehicles]);
+
   const requireSignIn = useCallback(() => {
     router.replace(
       `/auth/login?returnTo=${encodeURIComponent(`/spot/${spotId}`)}` as Href,
@@ -192,27 +212,41 @@ export default function SpotDetailScreen() {
       </View>
 
       <View style={styles.header}>
-        <Pressable
-          disabled={!spot?.properties.owner_id || !!spot.properties.is_mine}
-          onPress={() => {
-            const oid = spot?.properties.owner_id;
-            if (oid) {
-              router.push(`/user/${oid}` as Href);
-            }
-          }}
-          style={styles.titleRow}
-          accessibilityRole="link"
-          accessibilityLabel={title}
-        >
+        <View style={styles.titleBlock}>
           <Text style={styles.title} numberOfLines={1}>
             {title}
           </Text>
-          {ratingLabel ? (
+          {spot && !spot.properties.is_mine && spot.properties.owner_id ? (
+            <View style={styles.profileRow}>
+              <Pressable
+                onPress={() => {
+                  router.push(`/user/${spot.properties.owner_id}` as Href);
+                }}
+                accessibilityRole="link"
+                accessibilityLabel={t("profile.public.viewOf", {
+                  name: firstGivenName(spot.properties.owner_name),
+                })}
+                hitSlop={8}
+                style={styles.profileLinkHit}
+              >
+                <Text style={styles.profileLink} numberOfLines={1}>
+                  {t("profile.public.viewOf", {
+                    name: firstGivenName(spot.properties.owner_name),
+                  })}
+                </Text>
+              </Pressable>
+              {ratingLabel ? (
+                <Text style={styles.rating} numberOfLines={1}>
+                  {ratingLabel}
+                </Text>
+              ) : null}
+            </View>
+          ) : ratingLabel ? (
             <Text style={styles.rating} numberOfLines={1}>
               {ratingLabel}
             </Text>
           ) : null}
-        </Pressable>
+        </View>
         <Pressable
           onPress={close}
           hitSlop={12}
@@ -291,7 +325,7 @@ export default function SpotDetailScreen() {
                 ]);
               } catch (err) {
                 await alert({
-                  title: t("map.alert.offerFailed.title"),
+                  title: apiErrorTitle(err, t, "map.alert.offerFailed.title"),
                   message: apiErrorMessage(err, t),
                   confirmLabel: t("common.ok"),
                 });
@@ -348,6 +382,7 @@ export default function SpotDetailScreen() {
                 }
                 try {
                   await withdrawSpot(String(s.id));
+                  notifySpotWithdrawn(String(s.id));
                   close();
                 } catch (err) {
                   await alert({
@@ -419,24 +454,37 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingBottom: 8,
     gap: 10,
   },
-  titleRow: {
+  titleBlock: {
     flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  title: {
+    color: accountColors.text,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  profileRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     minWidth: 0,
   },
-  title: {
+  profileLinkHit: {
     flexShrink: 1,
-    color: accountColors.text,
-    fontSize: 16,
-    fontWeight: "700",
+    minWidth: 0,
+  },
+  profileLink: {
+    color: accountColors.accent,
+    fontSize: 13,
+    fontWeight: "600",
+    textDecorationLine: "underline",
   },
   rating: {
     color: accountColors.muted,

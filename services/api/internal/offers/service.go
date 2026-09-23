@@ -126,6 +126,15 @@ func (s *Service) Create(ctx context.Context, spotID string, viewer domain.Claim
 		return domain.Offer{}, insufficientBalance()
 	}
 
+	conflict, err := s.store.HasOfferTimeConflict(ctx, viewer.UserID, draft.ExchangeAt, "")
+	if err != nil {
+		return domain.Offer{}, domain.Internal(err)
+	}
+	if conflict {
+		return domain.Offer{}, domain.Conflict("offer_time_conflict",
+			"you already have an accepted exchange within 1 hour of that time")
+	}
+
 	created, err := s.store.CreateOffer(ctx, draft)
 	if err != nil {
 		switch {
@@ -228,6 +237,34 @@ func (s *Service) Accept(ctx context.Context, offerID string, viewer domain.Clai
 	}
 	if offer.Status != domain.OfferPending {
 		return domain.Reservation{}, offerNotPending()
+	}
+
+	blocked, err := s.store.HasBlockingSpotActivity(ctx, viewer.UserID, spot.ID, s.now())
+	if err != nil {
+		return domain.Reservation{}, domain.Internal(err)
+	}
+	if blocked {
+		return domain.Reservation{}, domain.Conflict("active_spot_limit",
+			"you already have a leaving-now listing or an accepted exchange within 2 hours")
+	}
+
+	ownerConflict, err := s.store.HasOfferTimeConflict(ctx, viewer.UserID, offer.ExchangeAt, spot.ID)
+	if err != nil {
+		return domain.Reservation{}, domain.Internal(err)
+	}
+	if ownerConflict {
+		return domain.Reservation{}, domain.Conflict("offer_time_conflict",
+			"you already have an accepted exchange within 1 hour of that time")
+	}
+	if offer.DriverID != "" {
+		driverConflict, err := s.store.HasOfferTimeConflict(ctx, offer.DriverID, offer.ExchangeAt, spot.ID)
+		if err != nil {
+			return domain.Reservation{}, domain.Internal(err)
+		}
+		if driverConflict {
+			return domain.Reservation{}, domain.Conflict("offer_time_conflict",
+				"that driver already has an accepted exchange within 1 hour of that time")
+		}
 	}
 
 	// Capture sibling pending offers before Accept rejects them atomically.

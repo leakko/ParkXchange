@@ -138,6 +138,7 @@ func encodeFor(viewer domain.Claims, ev domain.SpotEvent, fuzzSecret []byte) ([]
 		Status     string  `json:"status,omitempty"`
 		PriceCents int     `json:"price_cents,omitempty"`
 		Exact      bool    `json:"exact_location"`
+		LeavingNow bool    `json:"leaving_now,omitempty"`
 	}{
 		Type:       ev.Type,
 		ID:         ev.SpotID,
@@ -146,6 +147,7 @@ func encodeFor(viewer domain.Claims, ev domain.SpotEvent, fuzzSecret []byte) ([]
 		Status:     string(ev.Status),
 		PriceCents: ev.PriceCents,
 		Exact:      exact,
+		LeavingNow: ev.LeavingNow,
 	}
 	return json.Marshal(wire)
 }

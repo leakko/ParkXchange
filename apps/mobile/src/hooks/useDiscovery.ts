@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { fetchSpots, type SpotFeature } from "@/api/client";
 import { applySpotEvent, SpotSocket, type BBox } from "@/api/ws";
+import { featureMatchesViewport } from "@/map/discoveryFilter";
 import { SpotTombstones } from "@/map/spotTombstones";
 import type { components } from "@parkxchange/api-contract";
 
@@ -77,6 +78,21 @@ export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) 
     }, VEHICLE_REFETCH_MS);
   }, []);
 
+  // Drop the live overlay when the discovery filter changes so a stale WS
+  // snapshot cannot keep flexibles on screen after «Solo salidas ya».
+  useEffect(() => {
+    if (!viewport) {
+      return;
+    }
+    setLiveFeatures(null);
+  }, [
+    viewport?.from,
+    viewport?.to,
+    viewport?.includeFlexible,
+    viewport?.includeLeavingNow,
+    viewport?.leavingNowOnly,
+  ]);
+
   // REST snapshot wins whenever it refreshes, but never resurrect tombstoned ids
   // (stale in-flight fetch right after accept → spot.removed).
   useEffect(() => {
@@ -132,7 +148,13 @@ export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) 
     });
   }, [viewport]);
 
-  const features = liveFeatures ?? query.data?.features ?? EMPTY;
+  const rawFeatures = liveFeatures ?? query.data?.features ?? EMPTY;
+  const features = useMemo(() => {
+    if (!viewport) {
+      return rawFeatures;
+    }
+    return rawFeatures.filter((f) => featureMatchesViewport(f, viewport));
+  }, [rawFeatures, viewport]);
 
   const collection = useMemo(
     () => ({ type: "FeatureCollection" as const, features }),
@@ -144,11 +166,27 @@ export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) 
     [features],
   );
 
+  const forgetSpot = useCallback((id: string) => {
+    const spotId = String(id);
+    if (!spotId) {
+      return;
+    }
+    tombstonesRef.current.noteEvent({
+      type: "spot.removed",
+      id: spotId,
+      status: "cancelled",
+    } as SpotEventMessage);
+    setLiveFeatures((prev) =>
+      prev == null ? prev : prev.filter((f) => String(f.id) !== spotId),
+    );
+  }, []);
+
   return {
     collection,
     featureById,
     isLoading: query.isLoading && liveFeatures == null,
     error: query.error,
     refetch: query.refetch,
+    forgetSpot,
   };
 }

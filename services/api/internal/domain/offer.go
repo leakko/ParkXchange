@@ -8,6 +8,24 @@ import (
 // OfferTTL is how long a pending offer waits for the owner before it expires.
 const OfferTTL = 24 * time.Hour
 
+// OfferConflictWindow is how close two exchange times may be for the same
+// person (as driver or owner of a live reservation). Strictly less than this
+// duration conflicts; the exact ±1h endpoints are allowed.
+const OfferConflictWindow = time.Hour
+
+// ConflictsWithExchange reports whether two exchange times fall inside the
+// exclusive OfferConflictWindow (|Δt| < 1h).
+func ConflictsWithExchange(a, b time.Time) bool {
+	if a.IsZero() || b.IsZero() {
+		return false
+	}
+	d := a.Sub(b)
+	if d < 0 {
+		d = -d
+	}
+	return d < OfferConflictWindow
+}
+
 // LeavingNowOfferOffsets are the only exchange leads allowed on leaving_now spots.
 var LeavingNowOfferOffsets = []time.Duration{
 	5 * time.Minute,

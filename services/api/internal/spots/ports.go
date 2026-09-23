@@ -87,6 +87,12 @@ type Store interface {
 	// EmailVerified reports whether the user has confirmed their email.
 	EmailVerified(ctx context.Context, userID string) (bool, error)
 
+	// HasBlockingSpotActivity reports whether userID already holds an available
+	// leaving_now listing or an accepted exchange (as owner or driver) whose
+	// exchange_at falls within domain.ActiveSpotHorizon of now. excludeSpotID
+	// skips that spot (accept path for the spot being reserved).
+	HasBlockingSpotActivity(ctx context.Context, userID, excludeSpotID string, now time.Time) (bool, error)
+
 	// SpotVehiclePhoto returns the image bytes for the vehicle linked to the
 	// spot, or ErrNoRows when the spot is missing or the vehicle has no photo.
 	SpotVehiclePhoto(ctx context.Context, spotID string) ([]byte, string, error)

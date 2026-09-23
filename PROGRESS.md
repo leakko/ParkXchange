@@ -202,7 +202,7 @@ decisions 39–48 and ARCHITECTURE.md §3.13.
       and a two-sided penalty so an owner withdrawing a claimed spot also pays
 - [x] Background sweeper: expired spots (listed_until **or** preferred
       departure + 24h), expired reservations, and reservations nobody reconfirmed
-- [x] Signup grant of 500 cents on registration
+- [x] Signup grant of 10 points on registration
 - [x] **Demo executed:** 100 goroutines claiming one spot produced exactly one
       winner and 99 conflicts. An unreconfirmed reservation returned its spot
       to the map. A claimed spot vanished from the viewport; a future spot was
@@ -544,9 +544,10 @@ does not relitigate it.
     the index already returned. A spatio-temporal
     `GIST (geom, tstzrange(...))` is now possible thanks to `btree_gist`, but
     building it without evidence of a bottleneck would be guessing.
-47. **New accounts receive a 500-cent credit.** Without it the first claim is
-    impossible: a hold against a zero balance never succeeds. 500 cents lets a
-    new driver take a cheap spot once; the ceiling is still 20 euros.
+47. **New accounts receive a 10-point credit.** Without it the first claim is
+    impossible: a hold against a zero balance never succeeds. 10 points (~5
+    claims at the default 2-point guide) nudges users to list and earn more;
+    the ceiling is still 2000 points.
 48. **The hold is the payment.** Completing a handover does not release the
     driver's hold and then debit them; the hold stays, and the owner is
     credited. A fair cancel before `starts_at` is the only path that writes a
@@ -672,8 +673,8 @@ instead; the container then became ready in about a second.
    grows further.
 2. **Seed city.** Resolved: Sevilla (clustered around ten neighbourhoods plus
    eight landmarks, including Calle Malvaloca 5).
-3. **Starting virtual balance.** Resolved: a `credit` of 500 cents on
-   registration (`domain.SignupGrantCents`).
+3. **Starting virtual balance.** Resolved: a `credit` of 10 points on
+   registration (`domain.SignupGrantCents`). Default guide price on announce is 2.
 4. **Penalty amounts.** Resolved: a forfeit equals the spot's price. An owner
    who withdraws a claimed spot is debited the same amount, and the driver's
    hold is released.

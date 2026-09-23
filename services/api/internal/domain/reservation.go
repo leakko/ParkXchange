@@ -30,8 +30,8 @@ const PreDepartureLead = DriverFairCancelWindow
 
 // SignupGrantCents is credited to every new account so a first claim is
 // possible. A new user's balance is otherwise zero, and a hold against zero
-// can never succeed.
-const SignupGrantCents int64 = 500
+// can never succeed. Kept small so drivers earn by listing, not by hoarding.
+const SignupGrantCents int64 = 10
 
 // ReservationStatus is where a claim sits in its lifecycle.
 type ReservationStatus string

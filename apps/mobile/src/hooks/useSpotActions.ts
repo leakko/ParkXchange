@@ -17,6 +17,7 @@ import {
 import { useTranslation } from "@/i18n";
 import { distanceMeters } from "@/map/exchange";
 import { detectExchangeNotif } from "@/map/exchangeNotifs";
+import { notifyRatingPrompt } from "@/map/ratingPromptHandoff";
 import { shouldTrackArrival } from "@/push/arrivalAssistLogic";
 import {
   armGeofenceForReservation,
@@ -26,6 +27,7 @@ import {
   isArrivalGeofenceArmed,
 } from "@/push/geofence";
 import { useConfirm } from "@/ui/ConfirmModal";
+import { isRatingDismissed } from "@/ui/RateExchangeModal";
 import { useToast } from "@/ui/toast";
 
 function isLiveStatus(status: string | undefined): boolean {
@@ -79,12 +81,49 @@ function sameSheetSpot(a: SpotFeature | null, b: SpotFeature | null): boolean {
 }
 
 /**
- * Shared across map + spot sheet so a freshly mounted sheet can paint the
- * active exchange immediately (no “flexible departure” flash before refresh).
+ * Shared across map + spot detail so a freshly mounted screen can paint the
+ * active exchange immediately, and optimistic updates from one instance reach
+ * the other (banner vs sheet) without waiting for the 5s poll.
  */
 let cachedActiveReservation: ReservationResponse | null = null;
 let cachedActiveSpot: SpotFeature | null = null;
 let cachedActiveUserId: string | null = null;
+let cachedBusy = false;
+let sharedPrev: ReservationResponse | null = null;
+let sharedLastNotifKey: string | null = null;
+
+const activeListeners = new Set<(next: ReservationResponse | null) => void>();
+const spotListeners = new Set<(next: SpotFeature | null) => void>();
+const userIdListeners = new Set<(next: string | null) => void>();
+const busyListeners = new Set<(next: boolean) => void>();
+
+function broadcastActive(next: ReservationResponse | null) {
+  cachedActiveReservation = next;
+  for (const listener of activeListeners) {
+    listener(next);
+  }
+}
+
+function broadcastSpot(next: SpotFeature | null) {
+  cachedActiveSpot = next;
+  for (const listener of spotListeners) {
+    listener(next);
+  }
+}
+
+function broadcastUserId(next: string | null) {
+  cachedActiveUserId = next;
+  for (const listener of userIdListeners) {
+    listener(next);
+  }
+}
+
+function broadcastBusy(next: boolean) {
+  cachedBusy = next;
+  for (const listener of busyListeners) {
+    listener(next);
+  }
+}
 
 export function useActiveReservation(enabled: boolean) {
   const { t } = useTranslation();
@@ -93,25 +132,61 @@ export function useActiveReservation(enabled: boolean) {
   const [active, setActive] = useState<ReservationResponse | null>(() => cachedActiveReservation);
   const [spot, setSpot] = useState<SpotFeature | null>(() => cachedActiveSpot);
   const [userId, setUserId] = useState<string | null>(() => cachedActiveUserId);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(() => cachedBusy);
   const activeRef = useRef<ReservationResponse | null>(active);
-  const prevRef = useRef<ReservationResponse | null>(cachedActiveReservation);
-  const lastNotifKeyRef = useRef<string | null>(null);
   activeRef.current = active;
 
+  useEffect(() => {
+    const onActive = (next: ReservationResponse | null) => {
+      setActive((cur) => (sameActiveReservation(cur, next) ? cur : next));
+    };
+    const onSpot = (next: SpotFeature | null) => {
+      setSpot((cur) => (sameSheetSpot(cur, next) ? cur : next));
+    };
+    const onUserId = (next: string | null) => {
+      setUserId((cur) => (cur === next ? cur : next));
+    };
+    const onBusy = (next: boolean) => {
+      setBusy((cur) => (cur === next ? cur : next));
+    };
+    activeListeners.add(onActive);
+    spotListeners.add(onSpot);
+    userIdListeners.add(onUserId);
+    busyListeners.add(onBusy);
+    return () => {
+      activeListeners.delete(onActive);
+      spotListeners.delete(onSpot);
+      userIdListeners.delete(onUserId);
+      busyListeners.delete(onBusy);
+    };
+  }, []);
+
   const publishActive = useCallback((next: ReservationResponse | null) => {
-    cachedActiveReservation = next;
-    setActive((cur) => (sameActiveReservation(cur, next) ? cur : next));
+    if (sameActiveReservation(cachedActiveReservation, next)) {
+      return;
+    }
+    broadcastActive(next);
   }, []);
 
   const publishSpot = useCallback((next: SpotFeature | null) => {
-    cachedActiveSpot = next;
-    setSpot((cur) => (sameSheetSpot(cur, next) ? cur : next));
+    if (sameSheetSpot(cachedActiveSpot, next)) {
+      return;
+    }
+    broadcastSpot(next);
   }, []);
 
   const publishUserId = useCallback((next: string | null) => {
-    cachedActiveUserId = next;
-    setUserId(next);
+    if (cachedActiveUserId === next) {
+      return;
+    }
+    broadcastUserId(next);
+  }, []);
+
+  const setBusyShared = useCallback((next: boolean) => {
+    if (cachedBusy === next) {
+      return;
+    }
+    broadcastBusy(next);
   }, []);
 
   const maybeNotify = useCallback(
@@ -130,13 +205,23 @@ export function useActiveReservation(enabled: boolean) {
         return;
       }
       const dedupe = `${next.id}:${event.kind}:${event.key}:${next.status}`;
-      if (lastNotifKeyRef.current === dedupe) {
+      if (sharedLastNotifKey === dedupe) {
         return;
       }
-      lastNotifKeyRef.current = dedupe;
+      sharedLastNotifKey = dedupe;
       const title =
         event.kind === "completed" ? t("exchange.completed.title") : t("exchange.notif.title");
       show({ title, body: t(event.key), durationMs: 5500 });
+      if (event.kind === "completed" && next.can_rate) {
+        // Let the “pull in / leave now” toast be readable first.
+        setTimeout(() => {
+          void isRatingDismissed(next.id).then((dismissed) => {
+            if (!dismissed) {
+              notifyRatingPrompt(next.id);
+            }
+          });
+        }, 10_000);
+      }
     },
     [show, t],
   );
@@ -148,14 +233,14 @@ export function useActiveReservation(enabled: boolean) {
     try {
       const [list, me] = await Promise.all([fetchActiveReservations(), getMe()]);
       let next = list[0] ?? null;
-      const prev = prevRef.current;
+      const prev = sharedPrev;
 
       // Active list drops terminal rows — resolve final status for notifs.
       if (!next && prev && isLiveStatus(prev.status)) {
         try {
           const ended = await getReservation(prev.id);
           maybeNotify(prev, ended, me.id);
-          prevRef.current = null;
+          sharedPrev = null;
           publishActive(null);
           publishUserId(me.id);
           publishSpot(null);
@@ -167,7 +252,7 @@ export function useActiveReservation(enabled: boolean) {
       }
 
       maybeNotify(prev, next, me.id);
-      prevRef.current = next;
+      sharedPrev = next;
       publishUserId(me.id);
       // Resolve spot before publishing active so the exchange pin and sheet never
       // flash with reservation-but-no-coords (or keep a stale fuzzed pin).
@@ -207,7 +292,7 @@ export function useActiveReservation(enabled: boolean) {
       publishActive(null);
       publishSpot(null);
       publishUserId(null);
-      prevRef.current = null;
+      sharedPrev = null;
       return;
     }
     void refresh();
@@ -232,10 +317,9 @@ export function useActiveReservation(enabled: boolean) {
 
   const run = useCallback(
     async (fn: () => Promise<void>) => {
-      setBusy(true);
+      setBusyShared(true);
       try {
         await fn();
-        await refresh();
       } catch (err) {
         await refresh();
         await alert({
@@ -243,16 +327,20 @@ export function useActiveReservation(enabled: boolean) {
           message: err instanceof Error ? err.message : t("common.error"),
           confirmLabel: t("common.ok"),
         });
+        return;
       } finally {
-        setBusy(false);
+        setBusyShared(false);
       }
+      // Reconcile in the background — do not hold the CTA spinner on getSpot.
+      void refresh();
     },
-    [alert, refresh, t],
+    [alert, refresh, setBusyShared, t],
   );
 
   const warnIfFar = useCallback(async () => {
+    // Without a spot we still ask — skipping would let a far “ready” through.
     if (!spot) {
-      return true;
+      return confirmLeaveLocation("unknown");
     }
     const permission = await Location.requestForegroundPermissionsAsync();
     if (!permission.granted) {
@@ -316,30 +404,88 @@ export function useActiveReservation(enabled: boolean) {
     isDriver,
     busy,
     refresh,
-    markEnRoute: () =>
-      run(async () => {
+    markEnRoute: () => {
+      void (async () => {
         const current = activeRef.current;
         if (!current) {
           return;
         }
-        await reservationEnRoute(current.id);
-        const coords = spot?.geometry?.coordinates
-          ? {
-              lon: Number(spot.geometry.coordinates[0]),
-              lat: Number(spot.geometry.coordinates[1]),
-            }
-          : null;
-        await armGeofenceForReservation(current.id, coords);
-      }),
-    markReady: () =>
-      run(async () => {
-        const current = activeRef.current;
-        if (!current || !(await warnIfFar())) {
+        const ok = await confirm({
+          title: t("exchange.confirm.title"),
+          message: t("exchange.confirm.enRoute"),
+          cancelLabel: t("common.cancel"),
+          confirmLabel: t("common.confirm"),
+        });
+        if (!ok) {
           return;
         }
-        await reservationReady(current.id);
-        await disarmArrivalGeofence();
-      }),
+        await run(async () => {
+          await reservationEnRoute(current.id);
+          const nowIso = new Date().toISOString();
+          const iAmOwner = current.owner_id === userId;
+          const next = {
+            ...current,
+            ...(iAmOwner
+              ? { owner_en_route_at: nowIso }
+              : { driver_en_route_at: nowIso }),
+          };
+          sharedPrev = next;
+          publishActive(next);
+          const coords = spot?.geometry?.coordinates
+            ? {
+                lon: Number(spot.geometry.coordinates[0]),
+                lat: Number(spot.geometry.coordinates[1]),
+              }
+            : null;
+          await armGeofenceForReservation(current.id, coords);
+        });
+      })();
+    },
+    markReady: () => {
+      void (async () => {
+        const current = activeRef.current;
+        if (!current) {
+          return;
+        }
+        const iAmOwner = current.owner_id === userId;
+        // Confirm + location checks before busy so the dialog is never stuck
+        // under a loading banner / nested inside run().
+        const ok = await confirm({
+          title: t("exchange.confirm.title"),
+          message: iAmOwner
+            ? t("exchange.confirm.ownerReady")
+            : t("exchange.confirm.driverReady"),
+          cancelLabel: t("common.cancel"),
+          confirmLabel: t("common.confirm"),
+        });
+        if (!ok) {
+          return;
+        }
+        if (!(await warnIfFar())) {
+          return;
+        }
+        await run(async () => {
+          const result = await reservationReady(current.id);
+          await disarmArrivalGeofence();
+          // Paint the banner/sheet before refresh finishes (getSpot is slow).
+          if (result.completed) {
+            publishActive(null);
+            publishSpot(null);
+            // Keep sharedPrev so refresh can fetch the terminal row for toasts.
+          } else {
+            const nowIso = new Date().toISOString();
+            const next = {
+              ...current,
+              ...(iAmOwner
+                ? { owner_ready_at: nowIso }
+                : { driver_ready_at: nowIso }),
+            };
+            sharedPrev = next;
+            publishActive(next);
+          }
+        });
+      })();
+    },
     clearReady: () =>
       run(async () => {
         const current = activeRef.current;

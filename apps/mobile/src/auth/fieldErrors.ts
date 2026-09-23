@@ -16,6 +16,9 @@ const messageToKey: Record<string, TranslationKey> = {
   "must be in the future": "auth.field.mustBeFuture",
   "must not be negative": "auth.field.notNegative",
   "must be at most 2000 (20 euros)": "auth.field.amountMax",
+  "must be 5, 15, or 30 minutes from now": "auth.field.leavingNowExchange",
+  "must match the listing price": "auth.field.mustMatchListingPrice",
+  "must be at or before the listing ends": "auth.field.exchangeBeforeListingEnds",
 };
 
 const fieldLabelKey: Record<string, TranslationKey> = {

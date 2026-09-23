@@ -26,4 +26,7 @@ type SpotEvent struct {
 	Status     SpotStatus `json:"status,omitempty"`
 	PriceCents int        `json:"price_cents,omitempty"`
 	HolderID   string     `json:"holder_id,omitempty"`
+	// LeavingNow travels on the bus so map clients can style «Me voy ya»
+	// pins without waiting for the next REST snapshot.
+	LeavingNow bool `json:"leaving_now,omitempty"`
 }

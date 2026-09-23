@@ -74,11 +74,21 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     () => ({
       confirm: (req) =>
         new Promise<boolean>((resolve) => {
-          hostRef.current?.enqueue({ ...req, kind: "confirm", resolve });
+          const host = hostRef.current;
+          if (!host) {
+            resolve(false);
+            return;
+          }
+          host.enqueue({ ...req, kind: "confirm", resolve });
         }),
       alert: (req) =>
         new Promise<void>((resolve) => {
-          hostRef.current?.enqueue({ ...req, kind: "alert", resolve });
+          const host = hostRef.current;
+          if (!host) {
+            resolve();
+            return;
+          }
+          host.enqueue({ ...req, kind: "alert", resolve });
         }),
     }),
     [],
@@ -124,12 +134,17 @@ function ConfirmHost({
       if (!current) {
         return null;
       }
-      if (current.kind === "confirm") {
-        current.resolve(result);
-      } else {
-        current.resolve();
-      }
-      return queueRef.current.shift() ?? null;
+      const next = queueRef.current.shift() ?? null;
+      // Resolve after this updater so the Modal can unmount before the caller
+      // opens another dialog (e.g. far-away confirm after ready confirm).
+      queueMicrotask(() => {
+        if (current.kind === "confirm") {
+          current.resolve(result);
+        } else {
+          current.resolve();
+        }
+      });
+      return next;
     });
   }, []);
 
@@ -140,59 +155,62 @@ function ConfirmHost({
     };
   }, [enqueue, hostRef]);
 
+  if (pending == null) {
+    return null;
+  }
+
   return (
     <Modal
-      visible={pending != null}
+      visible
       transparent
       animationType="fade"
+      statusBarTranslucent
       onRequestClose={() => finish(false)}
     >
-      {pending ? (
-        <View style={styles.backdrop}>
-          <View style={styles.card} accessibilityViewIsModal>
-            <Text style={styles.title}>{pending.title}</Text>
-            <Text style={styles.body}>{pending.message}</Text>
-            {pending.kind === "confirm" ? (
-              <>
-                <Pressable
-                  style={[
-                    pending.destructive
-                      ? accountStyles.danger
-                      : accountStyles.primary,
-                    { marginTop: 8 },
-                  ]}
-                  onPress={() => finish(true)}
-                >
-                  <Text
-                    style={
-                      pending.destructive
-                        ? accountStyles.dangerText
-                        : accountStyles.primaryText
-                    }
-                  >
-                    {pending.confirmLabel}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={styles.cancelHit}
-                  onPress={() => finish(false)}
-                >
-                  <Text style={styles.cancelText}>{pending.cancelLabel}</Text>
-                </Pressable>
-              </>
-            ) : (
+      <View style={styles.backdrop}>
+        <View style={styles.card} accessibilityViewIsModal>
+          <Text style={styles.title}>{pending.title}</Text>
+          <Text style={styles.body}>{pending.message}</Text>
+          {pending.kind === "confirm" ? (
+            <>
               <Pressable
-                style={[accountStyles.primary, { marginTop: 8 }]}
+                style={[
+                  pending.destructive
+                    ? accountStyles.danger
+                    : accountStyles.primary,
+                  { marginTop: 8 },
+                ]}
                 onPress={() => finish(true)}
               >
-                <Text style={accountStyles.primaryText}>
+                <Text
+                  style={
+                    pending.destructive
+                      ? accountStyles.dangerText
+                      : accountStyles.primaryText
+                  }
+                >
                   {pending.confirmLabel}
                 </Text>
               </Pressable>
-            )}
-          </View>
+              <Pressable
+                style={styles.cancelHit}
+                onPress={() => finish(false)}
+              >
+                <Text style={styles.cancelText}>{pending.cancelLabel}</Text>
+              </Pressable>
+            </>
+          ) : (
+            <Pressable
+              style={[accountStyles.primary, { marginTop: 8 }]}
+              onPress={() => finish(true)}
+            >
+              <Text style={accountStyles.primaryText}>
+                {pending.confirmLabel}
+              </Text>
+            </Pressable>
+          )}
         </View>
-      ) : null}
+      </View>
     </Modal>
   );
 }

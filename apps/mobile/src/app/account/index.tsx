@@ -150,6 +150,15 @@ export default function AccountHubScreen() {
       </Pressable>
       <Pressable
         style={accountStyles.row}
+        onPress={() => router.push(`/user/${user.id}` as Href)}
+      >
+        <View>
+          <Text style={accountStyles.rowTitle}>{t("account.ratings.title")}</Text>
+          <Text style={accountStyles.rowMeta}>{t("account.ratings.meta")}</Text>
+        </View>
+      </Pressable>
+      <Pressable
+        style={accountStyles.row}
         onPress={() => router.push("/account/vehicles" as Href)}
       >
         <View>

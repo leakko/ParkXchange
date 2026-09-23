@@ -104,23 +104,47 @@ export function RateExchangeModal({
     onClose();
   }, [reservationId, onClose]);
 
+  // Unmount when hidden: a persistent invisible Modal steals touches on Android
+  // when another Modal (confirm) is also in the tree.
+  if (!visible || !reservationId) {
+    return null;
+  }
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={skip}>
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={skip}
+    >
+      {/*
+        Do not put an absoluteFill Pressable behind the card: on Android it
+        steals presses from sibling Pressables (stars / buttons) while still
+        letting the native TextInput receive focus — exactly the broken UX.
+        Dismiss via Later / Never / system back, same as ConfirmModal.
+      */}
       <View style={styles.backdrop}>
-        <View style={styles.card}>
+        <View style={styles.card} accessibilityViewIsModal>
           <Text style={accountStyles.title}>{t("rating.modal.title")}</Text>
           <Text style={accountStyles.meta}>{t("rating.modal.body")}</Text>
           <View style={styles.starsRow}>
-            {[1, 2, 3, 4, 5].map((n) => (
-              <Pressable
-                key={n}
-                onPress={() => setStars(n)}
-                accessibilityRole="button"
-                accessibilityLabel={`${n}`}
-              >
-                <Text style={[styles.star, n <= stars && styles.starOn]}>★</Text>
-              </Pressable>
-            ))}
+            {[1, 2, 3, 4, 5].map((n) => {
+              const selected = n <= stars;
+              return (
+                <Pressable
+                  key={n}
+                  onPress={() => setStars(n)}
+                  hitSlop={12}
+                  style={styles.starHit}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`${n}`}
+                >
+                  <Text style={[styles.star, selected && styles.starOn]}>★</Text>
+                </Pressable>
+              );
+            })}
           </View>
           <TextInput
             style={styles.input}
@@ -166,9 +190,19 @@ const styles = StyleSheet.create({
     padding: 20,
     gap: 12,
   },
-  starsRow: { flexDirection: "row", gap: 8, justifyContent: "center" },
-  star: { fontSize: 32, color: accountColors.muted },
-  starOn: { color: accountColors.accent },
+  starsRow: {
+    flexDirection: "row",
+    gap: 4,
+    justifyContent: "center",
+    marginVertical: 4,
+  },
+  starHit: {
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+  },
+  star: { fontSize: 36, color: accountColors.muted },
+  // Classic rating gold — accent teal is too close to the muted off state.
+  starOn: { color: "#F5C518" },
   input: {
     minHeight: 72,
     borderWidth: 1,

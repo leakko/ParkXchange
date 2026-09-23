@@ -113,10 +113,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={api}>
       {children}
+      {/* Below map spot-count chip + search bar (chrome ≈ insets.top + 8…~100). */}
       {current ? (
         <View
           pointerEvents="box-none"
-          style={[styles.host, { top: insets.top + 12 }]}
+          style={[styles.host, { top: insets.top + 120 }]}
         >
           <Animated.View style={{ opacity }}>
             <Pressable

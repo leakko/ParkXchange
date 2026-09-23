@@ -8,6 +8,7 @@ import {
   cancelReservation,
   getMe,
   getReservation,
+  getUserProfile,
   peerVehiclePhotoUrl,
   reservationEnRoute,
   reservationReady,
@@ -70,6 +71,18 @@ export default function ReservationDetailScreen() {
     },
   });
 
+  const peerId =
+    reservation.data && me.data
+      ? reservation.data.owner_id === me.data.id
+        ? reservation.data.driver_id
+        : reservation.data.owner_id
+      : null;
+  const peerProfile = useQuery({
+    queryKey: ["user-profile", peerId],
+    queryFn: () => getUserProfile(String(peerId)),
+    enabled: signedIn && !!peerId,
+  });
+
   const invalidate = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["reservations"] }),
@@ -113,6 +126,13 @@ export default function ReservationDetailScreen() {
           message: t(completedMessageKey(owner)),
           confirmLabel: t("common.ok"),
         });
+        const fresh = await queryClient.fetchQuery({
+          queryKey: ["reservations", id],
+          queryFn: () => getReservation(id!),
+        });
+        if (fresh.can_rate && !(await isRatingDismissed(fresh.id))) {
+          setTimeout(() => setRateOpen(true), 10_000);
+        }
       }
     },
     onError: async (err) => {
@@ -175,7 +195,9 @@ export default function ReservationDetailScreen() {
   const myReady = isOwner ? res.owner_ready_at : res.driver_ready_at;
   const myEnRoute = isOwner ? res.owner_en_route_at : res.driver_en_route_at;
   const deadline = isOwner ? driverNoShowDeadline(res) : ownerNoShowDeadline(res);
-  const peerId = isOwner ? res.driver_id : res.owner_id;
+  const peerName =
+    peerProfile.data?.display_name?.trim() ||
+    t("account.reservations.peerFallback");
 
   const confirmReady = () => {
     void (async () => {
@@ -217,6 +239,7 @@ export default function ReservationDetailScreen() {
   };
 
   return (
+    <>
     <ScrollView
       style={accountStyles.screen}
       contentContainerStyle={[
@@ -241,12 +264,19 @@ export default function ReservationDetailScreen() {
         })}
       </Text>
 
-      <Pressable
-        onPress={() => router.push(`/user/${peerId}` as Href)}
-        style={{ marginTop: 8 }}
-      >
-        <Text style={accountStyles.link}>{t("profile.public.view")}</Text>
-      </Pressable>
+      <View style={{ marginTop: 12, gap: 4 }}>
+        <Text style={accountStyles.rowTitle}>{peerName}</Text>
+        {peerId ? (
+          <Pressable
+            onPress={() => router.push(`/user/${peerId}` as Href)}
+            accessibilityRole="link"
+          >
+            <Text style={[accountStyles.link, { textDecorationLine: "underline" }]}>
+              {t("profile.public.view")}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
 
       {res.status === "completed" && res.can_rate ? (
         <Pressable
@@ -344,12 +374,13 @@ export default function ReservationDetailScreen() {
         </View>
       ) : null}
 
-      <RateExchangeModal
-        reservationId={res.id}
-        visible={rateOpen}
-        onClose={() => setRateOpen(false)}
-        onSubmitted={() => void invalidate()}
-      />
     </ScrollView>
+    <RateExchangeModal
+      reservationId={res.id}
+      visible={rateOpen}
+      onClose={() => setRateOpen(false)}
+      onSubmitted={() => void invalidate()}
+    />
+    </>
   );
 }

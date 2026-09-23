@@ -21,6 +21,7 @@ import { ExchangePushBootstrap } from "@/push/ExchangePushBootstrap";
 import "@/push/geofence";
 import { OfflineGate } from "@/ui/OfflineGate";
 import { ConfirmProvider } from "@/ui/ConfirmModal";
+import { RatingPromptHost } from "@/ui/RatingPromptHost";
 import { ToastProvider } from "@/ui/toast";
 import { spotSheetSingularId } from "@/map/spotSheetHandoff";
 
@@ -74,30 +75,30 @@ export default function RootLayout() {
             <ThemeProvider value={navigationTheme}>
               <ToastProvider>
                 <ConfirmProvider>
-                <OfflineGate>
-                  <StatusBar style="light" />
-                  <OwnerOfferAlerts />
-                  <ExchangePushBootstrap />
-                  <Stack
-                    screenOptions={{
-                      headerShown: false,
-                      contentStyle: { backgroundColor: accountColors.bg },
-                      // Cover, don't crossfade: fade blends dark account chrome
-                      // with bright map tiles and looks harsh. Slide is what map
-                      // apps typically use (new screen covers the previous).
-                      animation: "slide_from_right",
-                    }}
-                  >
-                    <Stack.Screen
-                      name="account"
-                      options={{
+                  <OfflineGate>
+                    <StatusBar style="light" />
+                    <OwnerOfferAlerts />
+                    <ExchangePushBootstrap />
+                    <Stack
+                      screenOptions={{
+                        headerShown: false,
+                        contentStyle: { backgroundColor: accountColors.bg },
+                        // Cover, don't crossfade: fade blends dark account chrome
+                        // with bright map tiles and looks harsh. Slide is what map
+                        // apps typically use (new screen covers the previous).
                         animation: "slide_from_right",
                       }}
-                    />
-                    <Stack.Screen
-                      name="spot/[id]"
-                      // New singular id per closed→open so peek detent resets;
-                      // pin swaps while open still reuse the same instance.
+                    >
+                      <Stack.Screen
+                        name="account"
+                        options={{
+                          animation: "slide_from_right",
+                        }}
+                      />
+                      <Stack.Screen
+                        name="spot/[id]"
+                        // New singular id per closed→open so peek detent resets;
+                        // pin swaps while open still reuse the same instance.
                       dangerouslySingular={() => spotSheetSingularId()}
                       options={{
                         presentation: "formSheet",
@@ -126,8 +127,23 @@ export default function RootLayout() {
                         sheetExpandsWhenScrolledToEdge: false,
                       }}
                     />
+                    <Stack.Screen
+                      name="user/[id]"
+                      options={{
+                        headerShown: true,
+                        headerStyle: { backgroundColor: accountColors.bg },
+                        headerTintColor: accountColors.text,
+                        headerTitleStyle: {
+                          color: accountColors.text,
+                          fontWeight: "600",
+                        },
+                        headerShadowVisible: false,
+                        contentStyle: { backgroundColor: accountColors.bg },
+                      }}
+                    />
                   </Stack>
                 </OfflineGate>
+                  <RatingPromptHost />
                 </ConfirmProvider>
               </ToastProvider>
             </ThemeProvider>

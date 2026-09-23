@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { getMe, getUserProfile } from "@/api/client";
 import { accountColors, accountStyles } from "@/account/theme";
@@ -20,6 +21,7 @@ import { ReportModal, type ReportTarget } from "@/ui/ReportModal";
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const { alert } = useConfirm();
   const { signedIn } = useSession();
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
@@ -37,16 +39,27 @@ export default function UserProfileScreen() {
   const canReport =
     signedIn && !!id && !!me.data?.id && String(id) !== String(me.data.id);
 
+  const headerTitle =
+    profile.data?.display_name?.trim() || t("profile.public.title");
+
   return (
     <View style={accountStyles.screen}>
-      <Stack.Screen options={{ title: t("profile.public.title") }} />
+      <Stack.Screen options={{ title: headerTitle }} />
       {profile.isLoading ? (
-        <ActivityIndicator color={accountColors.accent} style={{ marginTop: 40 }} />
+        <ActivityIndicator
+          color={accountColors.accent}
+          style={{ marginTop: 40 }}
+        />
       ) : profile.isError || !profile.data ? (
-        <Text style={accountStyles.meta}>{t("profile.public.missing")}</Text>
+        <Text style={[accountStyles.meta, styles.pad]}>
+          {t("profile.public.missing")}
+        </Text>
       ) : (
         <FlatList
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[
+            styles.list,
+            { paddingBottom: 40 + insets.bottom },
+          ]}
           ListHeaderComponent={
             <View style={styles.header}>
               <Text style={accountStyles.title}>{profile.data.display_name}</Text>
@@ -73,13 +86,17 @@ export default function UserProfileScreen() {
           data={profile.data.reviews}
           keyExtractor={(item, i) => `${item.created_at}-${i}`}
           ListEmptyComponent={
-            <Text style={accountStyles.meta}>{t("profile.public.emptyReviews")}</Text>
+            <Text style={accountStyles.meta}>
+              {t("profile.public.emptyReviews")}
+            </Text>
           }
           renderItem={({ item }) => (
             <View style={styles.review}>
               <Text style={styles.reviewTitle}>
-                {"★".repeat(item.stars)}
-                {"☆".repeat(5 - item.stars)} · {item.rater_name}
+                <Text style={styles.starsOn}>{"★".repeat(item.stars)}</Text>
+                <Text style={styles.starsOff}>{"☆".repeat(5 - item.stars)}</Text>
+                {" · "}
+                {item.rater_name}
               </Text>
               {item.comment ? (
                 <Text style={accountStyles.meta}>{item.comment}</Text>
@@ -109,7 +126,8 @@ export default function UserProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  list: { padding: 16, gap: 12, paddingBottom: 40 },
+  pad: { padding: 16 },
+  list: { padding: 16, gap: 12 },
   header: { gap: 6, marginBottom: 12 },
   review: {
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -118,5 +136,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   reviewTitle: { color: accountColors.text, fontWeight: "600" },
+  starsOn: { color: "#F5C518" },
+  starsOff: { color: accountColors.muted },
   date: { color: accountColors.muted, fontSize: 12 },
 });

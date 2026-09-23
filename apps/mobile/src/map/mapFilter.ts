@@ -21,6 +21,18 @@ export function defaultMapFilter(now = new Date()): MapFilterState {
   };
 }
 
+/** Quick chip: only «Me voy ya» listings; time/flexible windows are ignored. */
+export function leavingNowOnlyMapFilter(now = new Date()): MapFilterState {
+  const base = defaultMapFilter(now);
+  return {
+    ...base,
+    includeFlexible: false,
+    includeLeavingNow: true,
+    leavingNowOnly: true,
+    isCustom: true,
+  };
+}
+
 export function mapFilterFromDayRange(
   dayLocal: Date,
   startHour: number,

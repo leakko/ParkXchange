@@ -1186,7 +1186,7 @@ components:
           maxLength: 60
         phone:
           type: string
-          description: Optional E.164 phone; required before announcing a spot
+          description: Optional E.164 phone; shown to the other party after accept when set
           example: "+34600111222"
 
     GoogleLoginRequest:
@@ -1894,8 +1894,9 @@ components:
           type: integer
         exact_location:
           type: boolean
-
-    ErrorEnvelope:
+        leaving_now:
+          type: boolean
+          description: Owner is leaving now («Me voy ya»)
       type: object
       required: [error]
       properties:

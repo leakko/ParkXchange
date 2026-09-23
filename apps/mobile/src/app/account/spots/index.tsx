@@ -1,4 +1,5 @@
 import { fetchMySpots, listOffers, withdrawSpot } from "@/api/client";
+import { notifySpotWithdrawn } from "@/map/spotWithdrawHandoff";
 import {
   fetchActiveReservations,
   fetchReservations,
@@ -82,7 +83,8 @@ export default function MySpotsScreen() {
 
   const withdraw = useMutation({
     mutationFn: (id: string) => withdrawSpot(id),
-    onSuccess: async () => {
+    onSuccess: async (_data, id) => {
+      notifySpotWithdrawn(id);
       await queryClient.invalidateQueries({ queryKey: ["spots", "mine"] });
     },
     onError: async (err) => {

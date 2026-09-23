@@ -2,6 +2,7 @@ package offers
 
 import (
 	"context"
+	"time"
 
 	"github.com/marco/parkxchange/services/api/internal/domain"
 )
@@ -18,6 +19,18 @@ type Store interface {
 
 	// EmailVerified reports whether the user has confirmed their email.
 	EmailVerified(ctx context.Context, userID string) (bool, error)
+
+	// HasBlockingSpotActivity reports whether userID already holds an available
+	// leaving_now listing or an accepted exchange (as owner or driver) whose
+	// exchange_at falls within domain.ActiveSpotHorizon of now. excludeSpotID
+	// skips that spot (accept path).
+	HasBlockingSpotActivity(ctx context.Context, userID, excludeSpotID string, now time.Time) (bool, error)
+
+	// HasOfferTimeConflict reports whether userID already holds a live
+	// reservation (as owner or driver) whose exchange_at conflicts with
+	// proposed (|Δt| < domain.OfferConflictWindow). excludeSpotID skips that
+	// spot on the accept path.
+	HasOfferTimeConflict(ctx context.Context, userID string, proposed time.Time, excludeSpotID string) (bool, error)
 
 	// CreateOffer verifies that the spot is still available, the vehicle still
 	// belongs to the driver, and the driver can still cover the amount.

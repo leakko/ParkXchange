@@ -712,7 +712,7 @@ export interface components {
             password: string;
             display_name: string;
             /**
-             * @description Optional E.164 phone; required before announcing a spot
+             * @description Optional E.164 phone; shown to the other party after accept when set
              * @example +34600111222
              */
             phone?: string;
@@ -1080,6 +1080,8 @@ export interface components {
             status?: string;
             price_cents?: number;
             exact_location: boolean;
+            /** @description Owner is leaving now («Me voy ya») */
+            leaving_now?: boolean;
         };
         ErrorEnvelope: {
             error: components["schemas"]["ErrorBody"];

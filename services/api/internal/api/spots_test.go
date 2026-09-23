@@ -610,14 +610,16 @@ func TestListSpotsRejectsABadTokenRatherThanIgnoringIt(t *testing.T) {
 func TestListSpotsHandlesTheAntimeridian(t *testing.T) {
 	server, db := newServer(t)
 
-	owner, _, _ := registerUser(t, server)
+	eastOwner, _, _ := registerUser(t, server)
+	westOwner, _, _ := registerUser(t, server)
 
 	// Just east of the date line, near Fiji.
 	east := testLocation{Lon: 179.995, Lat: -16.5}
 	west := testLocation{Lon: -179.995, Lat: -16.5}
 
-	eastSpot := createSpot(t, server, db, owner, east, nil)
-	westSpot := createSpot(t, server, db, owner, west, nil)
+	// Distinct owners: one available flexible listing per owner is enforced.
+	eastSpot := createSpot(t, server, db, eastOwner, east, nil)
+	westSpot := createSpot(t, server, db, westOwner, west, nil)
 
 	// A wrapping viewport: minLon greater than maxLon.
 	resp := get(t, server, "/v1/spots?bbox=179.99,-16.51,-179.99,-16.49")

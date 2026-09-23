@@ -2,6 +2,7 @@ package offers_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -15,8 +16,12 @@ type fakeStore struct {
 	balance  int64
 	vehicles map[string]string
 
-	createCalls   int
-	withdrawCalls int
+	createCalls      int
+	withdrawCalls    int
+	blockingActivity bool
+	timeConflict     bool
+	// timeConflictByUser overrides timeConflict when set (Accept driver vs owner).
+	timeConflictByUser map[string]bool
 }
 
 func (f *fakeStore) SpotForOffer(context.Context, string) (domain.Spot, error) {
@@ -36,6 +41,17 @@ func (f *fakeStore) BalanceAvailable(context.Context, string) (int64, error) {
 
 func (f *fakeStore) EmailVerified(context.Context, string) (bool, error) {
 	return true, nil
+}
+
+func (f *fakeStore) HasBlockingSpotActivity(context.Context, string, string, time.Time) (bool, error) {
+	return f.blockingActivity, nil
+}
+
+func (f *fakeStore) HasOfferTimeConflict(_ context.Context, userID string, _ time.Time, _ string) (bool, error) {
+	if f.timeConflictByUser != nil {
+		return f.timeConflictByUser[userID], nil
+	}
+	return f.timeConflict, nil
 }
 
 func (f *fakeStore) CreateOffer(_ context.Context, draft domain.OfferDraft) (domain.Offer, error) {
@@ -261,6 +277,86 @@ func TestAcceptNotifiesDriverAndSiblings(t *testing.T) {
 	rejected := byType[offers.EventRejected+":driver-2"]
 	if rejected.OfferID != "sibling" {
 		t.Fatalf("sibling reject notify = %+v", rejected)
+	}
+}
+
+func TestAcceptRejectsWhenOwnerAlreadyBusy(t *testing.T) {
+	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+	service, store, _ := newFixtureWithNotifier(now)
+	store.blockingActivity = true
+	store.offers["winner"] = domain.Offer{
+		ID: "winner", SpotID: "spot-1", DriverID: "driver-1",
+		VehicleID: "driver-car", ExchangeAt: now.Add(time.Hour),
+		AmountCents: 300, Status: domain.OfferPending,
+	}
+
+	_, err := service.Accept(context.Background(), "winner", domain.Claims{UserID: "owner-1"})
+	if domain.KindOf(err) != domain.KindConflict {
+		t.Fatalf("kind = %v, want KindConflict", domain.KindOf(err))
+	}
+	var domainErr *domain.Error
+	if !errors.As(err, &domainErr) || domainErr.Code != "active_spot_limit" {
+		t.Fatalf("err = %v, want active_spot_limit", err)
+	}
+}
+
+func TestCreateRejectsWhenOfferTimeConflicts(t *testing.T) {
+	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+	service, store := newFixture(now)
+	store.timeConflict = true
+
+	_, err := service.Create(context.Background(), "spot-1", domain.Claims{UserID: "driver-1"}, offers.CreateInput{
+		VehicleID: "driver-car", ExchangeAt: now.Add(time.Hour), AmountCents: 300,
+	})
+	if domain.KindOf(err) != domain.KindConflict {
+		t.Fatalf("kind = %v, want KindConflict", domain.KindOf(err))
+	}
+	var domainErr *domain.Error
+	if !errors.As(err, &domainErr) || domainErr.Code != "offer_time_conflict" {
+		t.Fatalf("err = %v, want offer_time_conflict", err)
+	}
+	if store.createCalls != 0 {
+		t.Fatalf("CreateOffer calls = %d, want 0", store.createCalls)
+	}
+}
+
+func TestAcceptRejectsWhenOwnerHasOfferTimeConflict(t *testing.T) {
+	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+	service, store, _ := newFixtureWithNotifier(now)
+	store.timeConflictByUser = map[string]bool{"owner-1": true}
+	store.offers["winner"] = domain.Offer{
+		ID: "winner", SpotID: "spot-1", DriverID: "driver-1",
+		VehicleID: "driver-car", ExchangeAt: now.Add(time.Hour),
+		AmountCents: 300, Status: domain.OfferPending,
+	}
+
+	_, err := service.Accept(context.Background(), "winner", domain.Claims{UserID: "owner-1"})
+	if domain.KindOf(err) != domain.KindConflict {
+		t.Fatalf("kind = %v, want KindConflict", domain.KindOf(err))
+	}
+	var domainErr *domain.Error
+	if !errors.As(err, &domainErr) || domainErr.Code != "offer_time_conflict" {
+		t.Fatalf("err = %v, want offer_time_conflict", err)
+	}
+}
+
+func TestAcceptRejectsWhenDriverHasOfferTimeConflict(t *testing.T) {
+	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+	service, store, _ := newFixtureWithNotifier(now)
+	store.timeConflictByUser = map[string]bool{"driver-1": true}
+	store.offers["winner"] = domain.Offer{
+		ID: "winner", SpotID: "spot-1", DriverID: "driver-1",
+		VehicleID: "driver-car", ExchangeAt: now.Add(time.Hour),
+		AmountCents: 300, Status: domain.OfferPending,
+	}
+
+	_, err := service.Accept(context.Background(), "winner", domain.Claims{UserID: "owner-1"})
+	if domain.KindOf(err) != domain.KindConflict {
+		t.Fatalf("kind = %v, want KindConflict", domain.KindOf(err))
+	}
+	var domainErr *domain.Error
+	if !errors.As(err, &domainErr) || domainErr.Code != "offer_time_conflict" {
+		t.Fatalf("err = %v, want offer_time_conflict", err)
 	}
 }
 

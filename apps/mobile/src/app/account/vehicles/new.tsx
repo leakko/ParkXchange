@@ -11,6 +11,9 @@ import { accountStyles } from "@/account/theme";
 import { AuthScroll } from "@/auth/AuthScroll";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
+import {
+  notifyVehicleCreated,
+} from "@/map/vehicleCreateHandoff";
 import { useConfirm } from "@/ui/ConfirmModal";
 
 const empty: VehicleFormValues = {
@@ -28,7 +31,8 @@ export default function NewVehicleScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ from?: string }>();
   const gateStarted = useRef(false);
-  const fromAnnounce = params.from === "announce" || params.from === "offer";
+  const from = Array.isArray(params.from) ? params.from[0] : params.from;
+  const fromAnnounce = from === "announce" || from === "offer";
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -36,7 +40,6 @@ export default function NewVehicleScreen() {
       return;
     }
     gateStarted.current = true;
-    const from = Array.isArray(params.from) ? params.from[0] : params.from;
     const returnTo = from
       ? `/account/vehicles/new?from=${encodeURIComponent(from)}`
       : "/account/vehicles/new";
@@ -56,7 +59,7 @@ export default function NewVehicleScreen() {
         router.back();
       }
     })();
-  }, [confirm, params.from, ready, router, signedIn, t]);
+  }, [confirm, from, ready, router, signedIn, t]);
 
   const create = useMutation({
     mutationFn: async ({
@@ -81,6 +84,11 @@ export default function NewVehicleScreen() {
     },
     onSuccess: async ({ photoFailed }) => {
       await queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+      if (from === "offer") {
+        notifyVehicleCreated("offer");
+      } else if (from === "announce") {
+        notifyVehicleCreated("announce");
+      }
       if (photoFailed) {
         await alert({
           title: t("account.vehicles.create.photoFailed.title"),

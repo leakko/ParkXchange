@@ -16,7 +16,6 @@ import type {
   VehicleResponse,
 } from "@/api/client";
 import { listOffers, peerVehiclePhotoUrl, spotVehiclePhotoUrl } from "@/api/client";
-import { useAuthImage } from "@/hooks/useAuthImage";
 import { useTranslation } from "@/i18n";
 import { carSizeLabel, spotStatusLabel } from "@/i18n/catalogLabels";
 import { formatPoints, parsePointsInput } from "@/i18n/formatPoints";
@@ -32,11 +31,12 @@ import {
   shouldShowNoShowDeadline,
 } from "@/map/exchangeLeave";
 import { ExchangeStatusPanel } from "@/map/ExchangeStatusPanel";
+import { OccupyingVehiclePanel } from "@/map/OccupyingVehiclePanel";
 import { OtherDetailsPanel } from "@/map/OtherDetailsPanel";
 import { PeerVehiclePanel } from "@/map/PeerVehiclePanel";
 import { DateTimeField } from "@/ui/DateTimeField";
-import { FixedHeightFillImage } from "@/ui/FixedBoxImage";
 import { useConfirm } from "@/ui/ConfirmModal";
+import { leavingNowExchangeFromChip } from "@/map/leavingNowOffer";
 
 export type SpotSheetBodyProps = {
   spot: SpotFeature | null;
@@ -117,11 +117,10 @@ export function SpotSheetBody({
     !!active && !!spot && String(active.spot_id) === String(spot.id);
   const vehicle = exact ? spot?.properties.vehicle : undefined;
   const ownerPhone = exact ? spot?.properties.owner_phone : undefined;
-  const photoUrl =
+  const vehiclePhotoUrl =
     vehicle?.has_photo && spot?.id
       ? spotVehiclePhotoUrl(String(spot.id))
       : null;
-  const { uri: photoUri } = useAuthImage(photoUrl);
   const showInlineSpotVehicle =
     !!vehicle &&
     !!(vehicle.plate || vehicle.make_model) &&
@@ -158,19 +157,61 @@ export function SpotSheetBody({
         : active.driver_en_route_at
       : null;
 
+  // Reset offer form when the spot or pending offer changes — not when the
+  // vehicle list refreshes after adding a car mid-flow.
   useEffect(() => {
     setMakingOffer(false);
-    setVehicleId(pendingOffer?.vehicle_id ?? vehicles[0]?.id ?? "");
+    setVehicleId(pendingOffer?.vehicle_id ?? "");
     setAmount(
       pendingOffer ? formatPoints(pendingOffer.amount_cents) : points,
     );
     const suggested = pendingOffer
       ? new Date(pendingOffer.exchange_at)
-      : spot?.properties.preferred_departure_at
-        ? new Date(spot.properties.preferred_departure_at)
-        : new Date(Date.now() + 60 * 60 * 1000);
+      : spot?.properties.leaving_now
+        ? new Date(Date.now() + 5 * 60_000)
+        : spot?.properties.preferred_departure_at
+          ? new Date(spot.properties.preferred_departure_at)
+          : new Date(Date.now() + 60 * 60 * 1000);
     setExchangeAt(suggested);
-  }, [points, spot, vehicles, pendingOffer, setMakingOffer]);
+  }, [
+    points,
+    spot?.id,
+    pendingOffer,
+    setMakingOffer,
+    spot?.properties.leaving_now,
+    spot?.properties.preferred_departure_at,
+  ]);
+
+  // After “add car”, makingOffer flips on with a possibly stale exchangeAt
+  // (soft-gate returned before beginOffer set the +5 min chip).
+  useEffect(() => {
+    if (!makingOffer || !spot?.properties.leaving_now || pendingOffer) {
+      return;
+    }
+    const now = Date.now();
+    const nearChip = ([5, 15, 30] as const).some(
+      (mins) => Math.abs(exchangeAt.getTime() - (now + mins * 60_000)) < 45_000,
+    );
+    if (!nearChip) {
+      setAmount(formatPoints(spot.properties.price_cents));
+      setExchangeAt(new Date(now + 5 * 60_000));
+    }
+  }, [makingOffer]); // eslint-disable-line react-hooks/exhaustive-deps -- snap once when form opens
+
+  useEffect(() => {
+    setVehicleId((current) => {
+      if (
+        pendingOffer?.vehicle_id &&
+        vehicles.some((v) => v.id === pendingOffer.vehicle_id)
+      ) {
+        return pendingOffer.vehicle_id;
+      }
+      if (current && vehicles.some((v) => v.id === current)) {
+        return current;
+      }
+      return vehicles[0]?.id ?? "";
+    });
+  }, [vehicles, pendingOffer?.vehicle_id]);
 
   useEffect(() => {
     if (
@@ -281,7 +322,12 @@ export function SpotSheetBody({
     const offerPoints = spot.properties.leaving_now
       ? spot.properties.price_cents
       : parsePointsInput(amount);
-    if (!Number.isFinite(exchangeAt.getTime())) {
+    // Leaving-now chips are relative to "now": re-resolve at submit so a pause
+    // (e.g. add vehicle) cannot send a stale absolute timestamp outside 5/15/30.
+    const submitExchangeAt = spot.properties.leaving_now
+      ? leavingNowExchangeFromChip(exchangeAt)
+      : exchangeAt;
+    if (!Number.isFinite(submitExchangeAt.getTime())) {
       await alert({
         title: t("announce.alert.invalidDate.title"),
         message: t("announce.alert.invalidDate.message"),
@@ -289,7 +335,7 @@ export function SpotSheetBody({
       });
       return;
     }
-    if (exchangeAt.getTime() <= Date.now()) {
+    if (submitExchangeAt.getTime() <= Date.now()) {
       await alert({
         title: t("spotSheet.offer.exchangeInPast.title"),
         message: t("spotSheet.offer.exchangeInPast.message"),
@@ -308,7 +354,7 @@ export function SpotSheetBody({
     if (pendingOffer) {
       await onWithdrawOffer(pendingOffer);
     }
-    await onMakeOffer(spot, vehicleId, exchangeAt.toISOString(), offerPoints);
+    await onMakeOffer(spot, vehicleId, submitExchangeAt.toISOString(), offerPoints);
     setMakingOffer(false);
   };
 
@@ -329,16 +375,20 @@ export function SpotSheetBody({
       <Text style={styles.freeAt}>
         {t("spotSheet.offer.pending.meta", {
           points: formatPoints(pendingOffer.amount_cents),
-          datetime: formatDateTime(pendingOffer.exchange_at),
+          datetime: spot.properties.leaving_now
+            ? t("spotSheet.leavingNowDeparture")
+            : formatDateTime(pendingOffer.exchange_at),
         })}
       </Text>
     ) : (
       <Text style={styles.freeAt}>
-        {spot.properties.preferred_departure_at
-          ? t("spotSheet.freeAt", {
-              datetime: formatDateTime(spot.properties.preferred_departure_at),
-            })
-          : t("spotSheet.flexibleDeparture")}
+        {spot.properties.leaving_now
+          ? t("spotSheet.leavingNowDeparture")
+          : spot.properties.preferred_departure_at
+            ? t("spotSheet.freeAt", {
+                datetime: formatDateTime(spot.properties.preferred_departure_at),
+              })
+            : t("spotSheet.flexibleDeparture")}
       </Text>
     );
 
@@ -579,17 +629,7 @@ export function SpotSheetBody({
               <Pressable
                 style={[styles.secondary, busy && styles.primaryDisabled]}
                 disabled={busy}
-                onPress={() => {
-                  void (async () => {
-                    const ok = await confirm({
-                      title: t("exchange.confirm.title"),
-                      message: t("exchange.confirm.enRoute"),
-                      cancelLabel: t("common.cancel"),
-                      confirmLabel: t("common.confirm"),
-                    });
-                    if (ok) onEnRoute();
-                  })();
-                }}
+                onPress={onEnRoute}
               >
                 <Text style={styles.secondaryText}>
                   {t("exchange.actions.enRoute")}
@@ -600,19 +640,7 @@ export function SpotSheetBody({
               <Pressable
                 style={[styles.primary, busy && styles.primaryDisabled]}
                 disabled={busy}
-                onPress={() => {
-                  void (async () => {
-                    const ok = await confirm({
-                      title: t("exchange.confirm.title"),
-                      message: isOwner
-                        ? t("exchange.confirm.ownerReady")
-                        : t("exchange.confirm.driverReady"),
-                      cancelLabel: t("common.cancel"),
-                      confirmLabel: t("common.confirm"),
-                    });
-                    if (ok) onReady();
-                  })();
-                }}
+                onPress={onReady}
               >
                 {busy ? (
                   <ActivityIndicator color="#fff" />
@@ -735,31 +763,7 @@ export function SpotSheetBody({
       ) : null}
 
       {showInlineSpotVehicle ? (
-        <View style={styles.vehicleBlock}>
-          <Text style={styles.vehicleTitle}>
-            {vehicle.plate}
-            {vehicle.make_model ? ` · ${vehicle.make_model}` : ""}
-          </Text>
-          <Text style={styles.vehicleMeta}>
-            {[
-              vehicle.color,
-              vehicle.year || null,
-              vehicle.size_class
-                ? carSizeLabel(t, vehicle.size_class)
-                : null,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </Text>
-          {photoUri ? (
-            <FixedHeightFillImage
-              uri={photoUri}
-              height={140}
-              borderRadius={12}
-              style={styles.photoFrame}
-            />
-          ) : null}
-        </View>
+        <OccupyingVehiclePanel vehicle={vehicle} photoUrl={vehiclePhotoUrl} />
       ) : null}
 
       <OtherDetailsPanel
@@ -817,12 +821,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#2A1520",
     borderRadius: 10,
     overflow: "hidden",
-  },
-  vehicleBlock: { marginTop: 10, gap: 4 },
-  vehicleTitle: { color: "#F4F7FA", fontSize: 15, fontWeight: "600" },
-  vehicleMeta: { color: "#9DB4C0", fontSize: 13 },
-  photoFrame: {
-    marginTop: 8,
   },
   freeAt: {
     color: "#F4F7FA",

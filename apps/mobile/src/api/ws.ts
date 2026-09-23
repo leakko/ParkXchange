@@ -144,6 +144,7 @@ export function applySpotEvent(
         price_cents: event.price_cents ?? props?.price_cents ?? 0,
         listed_until: props?.listed_until ?? new Date().toISOString(),
         auto_cancel_no_show: props?.auto_cancel_no_show ?? true,
+        leaving_now: event.leaving_now ?? props?.leaving_now ?? false,
         exact_location: event.exact_location,
         is_mine: props?.is_mine ?? false,
         ...(event.exact_location && props?.vehicle ? { vehicle: props.vehicle } : {}),

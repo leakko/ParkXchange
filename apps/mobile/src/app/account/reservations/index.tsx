@@ -346,8 +346,16 @@ export default function MyReservationsScreen() {
                   status: reservationStatusLabel(t, res.status),
                 })}
               </Text>
-              {canNav || canReannounce ? (
+              {res.can_rate || canNav || canReannounce ? (
                 <View style={{ flexDirection: "row", gap: 10, marginTop: 1 }}>
+                  {res.can_rate ? (
+                    <Ionicons
+                      name="star"
+                      size={22}
+                      color="#F5C518"
+                      accessibilityLabel={t("account.reservations.ratePendingA11y")}
+                    />
+                  ) : null}
                   {canNav ? (
                     <Pressable
                       accessibilityRole="button"

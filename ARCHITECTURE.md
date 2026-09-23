@@ -461,7 +461,7 @@ Two mechanisms carry the weight, and each fixes a different half:
   the payment — and writes a matching `credit` to the owner. A fair cancel
   before `starts_at` writes a `release` that unwinds the hold. A forfeit
   (missed reconfirm, or cancelling after the window opens) leaves the hold and
-  credits the owner. New accounts receive a `credit` of 500 cents on
+  credits the owner. New accounts receive a `credit` of 10 points on
   registration, otherwise nobody could ever make their first claim. Hoarding is
   self-limiting: every live claim ties up its own deposit.
 - **A reconfirmation.** A reservation made well before the handover starts as

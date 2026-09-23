@@ -20,7 +20,29 @@ const codeToKey: Record<string, TranslationKey> = {
   vehicle_in_use: "account.vehicles.deleteFailed.inUse",
   vehicle_has_pending_offer: "account.vehicles.deleteFailed.pendingOffer",
   vehicle_in_live_reservation: "account.vehicles.deleteFailed.liveReservation",
+  internal_error: "common.error.internal",
+  active_spot_limit: "activeSpotLimit.message",
+  offer_time_conflict: "offerTimeConflict.message",
+  listing_conflict: "listingConflict.message",
 };
+
+/** Optional alert title for known API error codes. */
+export function apiErrorTitle(
+  err: unknown,
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string,
+  fallback: TranslationKey,
+): string {
+  if (err instanceof ApiError && err.code === "active_spot_limit") {
+    return t("activeSpotLimit.title");
+  }
+  if (err instanceof ApiError && err.code === "offer_time_conflict") {
+    return t("offerTimeConflict.title");
+  }
+  if (err instanceof ApiError && err.code === "listing_conflict") {
+    return t("listingConflict.title");
+  }
+  return t(fallback);
+}
 
 export function apiErrorMessage(
   err: unknown,

@@ -65,6 +65,28 @@ func TestDiscoveryFiltersDepartureWindowAndFlexibleListings(t *testing.T) {
 	}
 }
 
+// Phone is optional on accounts; scanning NULL into string used to 500 every
+// discovery / create-spot response for those owners.
+func TestScanSpotAllowsNullOwnerPhone(t *testing.T) {
+	ctx, tx := testdb.Begin(t)
+
+	ownerID := testdb.InsertUser(t, ctx, tx, "null-phone-owner")
+	if _, err := tx.Exec(ctx, `UPDATE users SET phone = NULL WHERE id = $1`, ownerID); err != nil {
+		t.Fatalf("clear phone: %v", err)
+	}
+	spotID := testdb.InsertSpot(t, ctx, tx, ownerID, 2.175, 41.385)
+
+	got, err := scanSpot(tx.QueryRow(ctx, `
+		SELECT `+spotColumns+spotFrom+`
+		 WHERE s.id = $1`, spotID))
+	if err != nil {
+		t.Fatalf("scanSpot: %v", err)
+	}
+	if got.OwnerPhone != "" {
+		t.Fatalf("OwnerPhone = %q, want empty", got.OwnerPhone)
+	}
+}
+
 func spotIDs(found []domain.Spot) []string {
 	ids := make([]string, 0, len(found))
 	for _, spot := range found {

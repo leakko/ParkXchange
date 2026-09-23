@@ -63,6 +63,13 @@ func NewWithNotifier(store Store, locationFuzzSecret []byte, notifier Notifier, 
 	}
 }
 
+// NewWithClock builds the service with an explicit clock (tests).
+func NewWithClock(store Store, locationFuzzSecret []byte, now func() time.Time) *Service {
+	s := New(store, locationFuzzSecret)
+	s.now = now
+	return s
+}
+
 func (s *Service) push(ctx context.Context, n Notification) {
 	if err := s.notifier.Notify(ctx, n); err != nil && s.log != nil {
 		s.log.Warn("spot push notify failed",
@@ -153,15 +160,6 @@ func (s *Service) Offer(ctx context.Context, in domain.NewSpotInput) (domain.Spo
 		return domain.Spot{}, err
 	}
 
-	phone, err := s.store.OwnerPhone(ctx, draft.OwnerID)
-	if err != nil {
-		return domain.Spot{}, domain.Internal(err)
-	}
-	if !phone.Present() {
-		return domain.Spot{}, domain.Invalid("phone_required",
-			"add a phone number to your profile before announcing a spot")
-	}
-
 	verified, err := s.store.EmailVerified(ctx, draft.OwnerID)
 	if err != nil {
 		return domain.Spot{}, domain.Internal(err)
@@ -179,8 +177,32 @@ func (s *Service) Offer(ctx context.Context, in domain.NewSpotInput) (domain.Spo
 		return domain.Spot{}, domain.NotFound("vehicle_not_found", "that vehicle does not exist")
 	}
 
+	mine, err := s.store.SpotsByOwner(ctx, draft.OwnerID, 50)
+	if err != nil {
+		return domain.Spot{}, domain.Internal(err)
+	}
+	if domain.ListingConflicts(mine, domain.ProposedListingFromDraft(draft), s.now()) {
+		return domain.Spot{}, domain.Conflict("listing_conflict",
+			"you already have a listing that conflicts with that departure")
+	}
+
+	if draft.LeavingNow {
+		blocked, err := s.store.HasBlockingSpotActivity(ctx, draft.OwnerID, "", s.now())
+		if err != nil {
+			return domain.Spot{}, domain.Internal(err)
+		}
+		if blocked {
+			return domain.Spot{}, domain.Conflict("active_spot_limit",
+				"you already have a leaving-now listing or an accepted exchange within 2 hours")
+		}
+	}
+
 	created, err := s.store.CreateSpot(ctx, draft)
 	if err != nil {
+		if errors.Is(err, domain.ErrDuplicate) {
+			return domain.Spot{}, domain.Conflict("active_spot_limit",
+				"you already have a leaving-now listing or an accepted exchange within 2 hours")
+		}
 		return domain.Spot{}, domain.Internal(err)
 	}
 	return created, nil

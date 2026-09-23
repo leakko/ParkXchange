@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { useTranslation } from "@/i18n";
 import {
   isValidMapFilterDayRange,
+  leavingNowOnlyMapFilter,
   mapFilterFromDayRange,
   type MapFilterState,
 } from "@/map/mapFilter";
@@ -54,6 +55,10 @@ export function MapFilterSheetBody({
   );
 
   const apply = () => {
+    if (leavingNowOnly) {
+      onApply(leavingNowOnlyMapFilter());
+      return;
+    }
     if (!rangeValid) {
       return;
     }
@@ -66,52 +71,68 @@ export function MapFilterSheetBody({
         toTime.getMinutes(),
         includeFlexible,
         includeLeavingNow,
-        leavingNowOnly,
+        false,
       ),
     );
   };
 
+  const canApply = leavingNowOnly || rangeValid;
+
   return (
     <View style={styles.body}>
-      <Pressable style={styles.soon} onPress={onReset}>
-        <Text style={styles.soonText}>{t("map.filter.soon")}</Text>
-      </Pressable>
+      <View style={styles.chipRow}>
+        <Pressable
+          style={[styles.chip, styles.chipLeavingNow]}
+          onPress={() => onApply(leavingNowOnlyMapFilter())}
+        >
+          <Text style={styles.chipLeavingNowText}>{t("map.filter.leavingNow")}</Text>
+        </Pressable>
+        <Pressable style={styles.chip} onPress={onReset}>
+          <Text style={styles.chipSoonText}>{t("map.filter.soon")}</Text>
+        </Pressable>
+      </View>
 
-      <Text style={styles.label}>{t("map.filter.day")}</Text>
-      <DateTimeField value={day} onChange={setDay} mode="date" />
+      <View
+        style={[styles.scheduleSection, leavingNowOnly ? styles.sectionDimmed : null]}
+        pointerEvents={leavingNowOnly ? "none" : "auto"}
+      >
+        <Text style={styles.label}>{t("map.filter.day")}</Text>
+        <DateTimeField value={day} onChange={setDay} mode="date" />
 
-      <View style={styles.timeRow}>
-        <View style={styles.timeField}>
-          <Text style={styles.label}>{t("map.filter.from")}</Text>
-          <DateTimeField value={fromTime} onChange={setFromTime} mode="time" />
+        <View style={styles.timeRow}>
+          <View style={styles.timeField}>
+            <Text style={styles.label}>{t("map.filter.from")}</Text>
+            <DateTimeField value={fromTime} onChange={setFromTime} mode="time" />
+          </View>
+          <View style={styles.timeField}>
+            <Text style={styles.label}>{t("map.filter.to")}</Text>
+            <DateTimeField value={toTime} onChange={setToTime} mode="time" />
+          </View>
         </View>
-        <View style={styles.timeField}>
-          <Text style={styles.label}>{t("map.filter.to")}</Text>
-          <DateTimeField value={toTime} onChange={setToTime} mode="time" />
+
+        <View style={styles.toggleRow}>
+          <Text style={styles.toggleLabel}>{t("map.filter.includeFlexible")}</Text>
+          <Switch
+            value={includeFlexible}
+            onValueChange={setIncludeFlexible}
+            trackColor={{ false: "#1F3A56", true: "#1B9AAA" }}
+          />
+        </View>
+        <View style={styles.toggleRow}>
+          <Text style={styles.toggleLabel}>{t("map.filter.includeLeavingNow")}</Text>
+          <Switch
+            value={includeLeavingNow}
+            onValueChange={(v) => {
+              setIncludeLeavingNow(v);
+              if (!v) {
+                setLeavingNowOnly(false);
+              }
+            }}
+            trackColor={{ false: "#1F3A56", true: "#1B9AAA" }}
+          />
         </View>
       </View>
 
-      <View style={styles.toggleRow}>
-        <Text style={styles.toggleLabel}>{t("map.filter.includeFlexible")}</Text>
-        <Switch
-          value={includeFlexible}
-          onValueChange={setIncludeFlexible}
-          trackColor={{ false: "#1F3A56", true: "#1B9AAA" }}
-        />
-      </View>
-      <View style={styles.toggleRow}>
-        <Text style={styles.toggleLabel}>{t("map.filter.includeLeavingNow")}</Text>
-        <Switch
-          value={includeLeavingNow}
-          onValueChange={(v) => {
-            setIncludeLeavingNow(v);
-            if (!v) {
-              setLeavingNowOnly(false);
-            }
-          }}
-          trackColor={{ false: "#1F3A56", true: "#1B9AAA" }}
-        />
-      </View>
       <View style={styles.toggleRow}>
         <Text style={styles.toggleLabel}>{t("map.filter.leavingNowOnly")}</Text>
         <Switch
@@ -127,8 +148,8 @@ export function MapFilterSheetBody({
       </View>
 
       <Pressable
-        style={[styles.apply, !rangeValid ? styles.applyDisabled : null]}
-        disabled={!rangeValid}
+        style={[styles.apply, !canApply ? styles.applyDisabled : null]}
+        disabled={!canApply}
         onPress={apply}
       >
         <Text style={styles.applyText}>{t("map.filter.apply")}</Text>
@@ -143,15 +164,19 @@ export function MapFilterSheetBody({
 const styles = StyleSheet.create({
   body: { gap: 10 },
   label: { color: "#D6E2E9", fontSize: 13, fontWeight: "600" },
-  soon: {
-    alignSelf: "flex-start",
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: {
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "#1B9AAA",
     paddingHorizontal: 14,
     paddingVertical: 9,
   },
-  soonText: { color: "#6ED6E0", fontSize: 14, fontWeight: "700" },
+  chipSoonText: { color: "#6ED6E0", fontSize: 14, fontWeight: "700" },
+  chipLeavingNow: { borderColor: "#E85D04" },
+  chipLeavingNowText: { color: "#FF9F1C", fontSize: 14, fontWeight: "700" },
+  scheduleSection: { gap: 10 },
+  sectionDimmed: { opacity: 0.4 },
   timeRow: { flexDirection: "row", gap: 12 },
   timeField: { flex: 1, gap: 6 },
   toggleRow: {

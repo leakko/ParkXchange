@@ -51,6 +51,9 @@ type fakeStore struct {
 	// emailVerified overrides EmailVerified; nil/missing defaults to true.
 	emailVerified map[string]bool
 
+	// blockingActivity is returned by HasBlockingSpotActivity.
+	blockingActivity bool
+
 	// reservationDrivers maps spotID → set of driver user IDs with any reservation.
 	reservationDrivers map[string]map[string]bool
 
@@ -190,6 +193,10 @@ func (f *fakeStore) EmailVerified(_ context.Context, userID string) (bool, error
 		}
 	}
 	return true, nil
+}
+
+func (f *fakeStore) HasBlockingSpotActivity(_ context.Context, _, _ string, _ time.Time) (bool, error) {
+	return f.blockingActivity, nil
 }
 
 func (f *fakeStore) UpdateAvailableSpot(_ context.Context, spotID, ownerID string, patch spots.SpotPatch) (domain.Spot, error) {
@@ -721,6 +728,58 @@ func TestOfferPersistsAnAvailableSpot(t *testing.T) {
 	}
 	if spot.VehicleID != "vehicle-1" {
 		t.Errorf("VehicleID = %q, want vehicle-1", spot.VehicleID)
+	}
+}
+
+func TestOfferLeavingNowRejectsWhenAlreadyBusy(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	store.blockingActivity = true
+	store.ownedVehicles = map[string]map[string]bool{
+		"owner-1": {"vehicle-1": true},
+	}
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
+
+	_, err := service.Offer(context.Background(), domain.NewSpotInput{
+		OwnerID: "owner-1", VehicleID: "vehicle-1",
+		Lon: 2.17, Lat: 41.40, Size: "medium", PriceCents: 100,
+		LeavingNow: true,
+	})
+	if domain.KindOf(err) != domain.KindConflict {
+		t.Fatalf("kind = %v, want KindConflict", domain.KindOf(err))
+	}
+	var domainErr *domain.Error
+	if !errors.As(err, &domainErr) || domainErr.Code != "active_spot_limit" {
+		t.Fatalf("err = %v, want active_spot_limit", err)
+	}
+}
+
+func TestOfferRejectsWhenListingConflicts(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
+	store := newFakeStore()
+	store.ownedVehicles = map[string]map[string]bool{
+		"owner-1": {"vehicle-1": true},
+	}
+	store.spots["flex-1"] = domain.Spot{
+		ID: "flex-1", OwnerID: "owner-1", Status: domain.SpotAvailable,
+		ExpiresAt: now.Add(24 * time.Hour), CreatedAt: now,
+	}
+	service := spots.NewWithClock(store, []byte("test-location-fuzz-secret-32bytes!!"), func() time.Time { return now })
+
+	_, err := service.Offer(context.Background(), domain.NewSpotInput{
+		OwnerID: "owner-1", VehicleID: "vehicle-1",
+		Lon: 2.17, Lat: 41.40, Size: "medium", PriceCents: 100,
+		LeavingNow: true,
+	})
+	if domain.KindOf(err) != domain.KindConflict {
+		t.Fatalf("kind = %v, want KindConflict", domain.KindOf(err))
+	}
+	var domainErr *domain.Error
+	if !errors.As(err, &domainErr) || domainErr.Code != "listing_conflict" {
+		t.Fatalf("err = %v, want listing_conflict", err)
 	}
 }
 

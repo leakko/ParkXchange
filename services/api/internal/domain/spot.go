@@ -33,6 +33,10 @@ const (
 	// LeavingNowOfferSkew is the allowed clock skew when matching 5/15/30 chips.
 	LeavingNowOfferSkew = 30 * time.Second
 
+	// ActiveSpotHorizon is how far ahead an accepted exchange still counts as the
+	// single "active" commitment alongside an open «Me voy ya» listing.
+	ActiveSpotHorizon = 2 * time.Hour
+
 	// MaxLeadTime is how far ahead a preferred departure may be set.
 	// Independent of the 24h unreserved visibility clock.
 	MaxLeadTime = 7 * 24 * time.Hour

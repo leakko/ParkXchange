@@ -5,6 +5,7 @@ import {
   defaultMapFilter,
   isDefaultMapFilter,
   isValidMapFilterDayRange,
+  leavingNowOnlyMapFilter,
   mapFilterFromDayRange,
 } from "./mapFilter.ts";
 
@@ -19,6 +20,21 @@ describe("defaultMapFilter", () => {
       includeLeavingNow: true,
       leavingNowOnly: false,
       isCustom: false,
+    });
+  });
+});
+
+describe("leavingNowOnlyMapFilter", () => {
+  it("marks only leaving-now mode as a custom filter", () => {
+    const now = new Date("2026-09-22T12:30:00.000Z");
+
+    assert.deepEqual(leavingNowOnlyMapFilter(now), {
+      from: "2026-09-22T12:30:00.000Z",
+      to: "2026-09-22T14:30:00.000Z",
+      includeFlexible: false,
+      includeLeavingNow: true,
+      leavingNowOnly: true,
+      isCustom: true,
     });
   });
 });

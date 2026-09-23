@@ -76,8 +76,9 @@ export function AnnounceModal({
 }: Props) {
   const { t, locale } = useTranslation();
   const { alert } = useConfirm();
-  const [price, setPrice] = useState("50");
+  const [price, setPrice] = useState("2");
   const [hasPreferredTime, setHasPreferredTime] = useState(false);
+  const [leavingNow, setLeavingNow] = useState(false);
   const [preferredTime, setPreferredTime] = useState(defaultPreferred);
   const [autoCancel, setAutoCancel] = useState(true);
   const [vehicleId, setVehicleId] = useState<string | null>(null);
@@ -125,9 +126,10 @@ export function AnnounceModal({
       ) {
         setPrice(String(Math.round(initialGuidePriceCents)));
       } else {
-        setPrice("50");
+        setPrice("2");
       }
       setHasPreferredTime(false);
+      setLeavingNow(false);
       setAutoCancel(true);
       const prefVehicle =
         (initialVehicleId &&
@@ -221,7 +223,7 @@ export function AnnounceModal({
       });
       return;
     }
-    if (hasPreferredTime && !Number.isFinite(preferredTime.getTime())) {
+    if (!leavingNow && hasPreferredTime && !Number.isFinite(preferredTime.getTime())) {
       await alert({
         title: t("announce.alert.invalidDate.title"),
         message: t("announce.alert.invalidDate.message"),
@@ -229,7 +231,7 @@ export function AnnounceModal({
       });
       return;
     }
-    if (hasPreferredTime && preferredTime.getTime() <= Date.now()) {
+    if (!leavingNow && hasPreferredTime && preferredTime.getTime() <= Date.now()) {
       await alert({
         title: t("announce.alert.dateInPast.title"),
         message: t("announce.alert.dateInPast.message"),
@@ -239,49 +241,10 @@ export function AnnounceModal({
     }
     await onSubmit({
       guidePriceCents: points,
-      preferredDepartureAt: hasPreferredTime
-        ? preferredTime.toISOString()
-        : null,
+      preferredDepartureAt:
+        !leavingNow && hasPreferredTime ? preferredTime.toISOString() : null,
       autoCancelNoShow: autoCancel,
-      leavingNow: false,
-      vehicleId,
-      lon: coords[0],
-      lat: coords[1],
-      addressHint: addressLabel,
-    });
-  };
-
-  const submitLeavingNow = async () => {
-    if (!vehicleId) {
-      await alert({
-        title: t("announce.needVehicle.title"),
-        message: t("announce.needVehicle.message"),
-        confirmLabel: t("common.ok"),
-      });
-      return;
-    }
-    if (!coords) {
-      await alert({
-        title: t("announce.location.required.title"),
-        message: t("announce.location.required.message"),
-        confirmLabel: t("common.ok"),
-      });
-      return;
-    }
-    const points = parsePointsInput(price);
-    if (points == null) {
-      await alert({
-        title: t("announce.alert.invalidPrice.title"),
-        message: t("announce.alert.invalidPrice.message"),
-        confirmLabel: t("common.ok"),
-      });
-      return;
-    }
-    await onSubmit({
-      guidePriceCents: points,
-      preferredDepartureAt: null,
-      autoCancelNoShow: autoCancel,
-      leavingNow: true,
+      leavingNow,
       vehicleId,
       lon: coords[0],
       lat: coords[1],
@@ -430,10 +393,32 @@ export function AnnounceModal({
               placeholderTextColor="#7A93A0"
             />
             <View style={styles.toggleRow}>
-              <Text style={styles.label}>{t("announce.preferredDeparture")}</Text>
-              <Switch value={hasPreferredTime} onValueChange={setHasPreferredTime} />
+              <Text style={styles.label}>{t("announce.leavingNow")}</Text>
+              <Switch
+                value={leavingNow}
+                onValueChange={(v) => {
+                  setLeavingNow(v);
+                  if (v) {
+                    setHasPreferredTime(false);
+                  }
+                }}
+                trackColor={{ false: "#1F3A56", true: "#E85D04" }}
+              />
             </View>
-            {hasPreferredTime ? (
+            <View style={styles.toggleRow}>
+              <Text style={styles.label}>{t("announce.preferredDeparture")}</Text>
+              <Switch
+                value={hasPreferredTime}
+                disabled={leavingNow}
+                onValueChange={(v) => {
+                  setHasPreferredTime(v);
+                  if (v) {
+                    setLeavingNow(false);
+                  }
+                }}
+              />
+            </View>
+            {hasPreferredTime && !leavingNow ? (
               <DateTimeField
                 value={preferredTime}
                 onChange={setPreferredTime}
@@ -441,19 +426,9 @@ export function AnnounceModal({
               />
             ) : null}
             <View style={styles.toggleRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.label}>{t("announce.autoCancel.label")}</Text>
-                <Text style={styles.help}>{t("announce.autoCancel.help")}</Text>
-              </View>
+              <Text style={styles.label}>{t("announce.autoCancel.label")}</Text>
               <Switch value={autoCancel} onValueChange={setAutoCancel} />
             </View>
-            <Pressable style={styles.leavingNow} disabled={busy} onPress={() => void submitLeavingNow()}>
-              {busy ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.leavingNowText}>{t("announce.leavingNow")}</Text>
-              )}
-            </Pressable>
             <Pressable style={styles.primary} disabled={busy} onPress={() => void submit()}>
               {busy ? (
                 <ActivityIndicator color="#fff" />
@@ -585,14 +560,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 4,
   },
-  leavingNow: {
-    backgroundColor: "#E85D04",
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    marginTop: 4,
-  },
-  leavingNowText: { color: "#fff", fontSize: 15, fontWeight: "700" },
   primaryText: { color: "#fff", fontSize: 15, fontWeight: "600" },
   cancel: { color: "#9DB4C0", textAlign: "center", paddingVertical: 8 },
 });

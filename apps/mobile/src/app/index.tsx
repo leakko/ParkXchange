@@ -24,7 +24,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { OfferResponse, SpotFeature, VehicleResponse } from "@/api/client";
 import { ApiError, fetchMySpots, getSpot, listMyOffers, listOffers, listVehicles, withdrawSpot } from "@/api/client";
-import { apiErrorMessage } from "@/api/errors";
+import { apiErrorMessage, apiErrorTitle } from "@/api/errors";
 import { getAccessToken } from "@/api/session";
 import { ensureEmailVerified } from "@/auth/requireEmailVerified";
 import { defaultMapCenter, fallbackZoom, mapStyleUrl, userZoom } from "@/config";
@@ -77,10 +77,15 @@ import {
   type CategoryHint,
   type ViewBox,
 } from "@/map/geocode";
-import { bannerNextStep, bannerPeerStatusKey } from "@/map/exchangeCopy";
+import { bannerPeerStatusKey } from "@/map/exchangeCopy";
 import { passAuthGate } from "@/map/authGate";
 import { SpotLayers } from "@/map/SpotLayers";
 import { stageSpotForSheet, beginSpotSheetPresentation } from "@/map/spotSheetHandoff";
+import { subscribeSpotWithdrawn } from "@/map/spotWithdrawHandoff";
+import {
+  consumeResumeAnnounceAfterVehicle,
+  subscribeVehicleCreated,
+} from "@/map/vehicleCreateHandoff";
 import { defaultMapFilter } from "@/map/mapFilter";
 import {
   stageMapFilter,
@@ -121,6 +126,9 @@ export default function MapScreen() {
   /** Query that produced the current searchHits — editing away clears results. */
   const lastSearchedQueryRef = useRef("");
   const [mapFilter, setMapFilter] = useState(() => defaultMapFilter());
+  /** Always-current filter for debounced publishViewport (avoid stale overwrite). */
+  const mapFilterRef = useRef(mapFilter);
+  mapFilterRef.current = mapFilter;
 
   const { ready, signedIn, error: sessionError, retry: retrySession } = useSession();
   const location = useMapLocation();
@@ -268,7 +276,10 @@ export default function MapScreen() {
     [openSpotDetail],
   );
 
-  const { collection, featureById, isLoading, error, refetch } = useDiscovery(viewport, signedIn);
+  const { collection, featureById, isLoading, error, refetch, forgetSpot } = useDiscovery(
+    viewport,
+    signedIn,
+  );
   const {
     active,
     activeSpot,
@@ -358,6 +369,24 @@ export default function MapScreen() {
     }
   }, [signedIn]);
 
+  /** Drop a withdrawn listing from discovery + own-pin overlay immediately. */
+  const removeSpotFromMap = useCallback(
+    async (spotId: string) => {
+      const id = String(spotId);
+      forgetSpot(id);
+      setMySpotFeatures((prev) => prev.filter((f) => String(f.id) !== id));
+      setSelected((prev) => (prev && String(prev.id) === id ? null : prev));
+      await Promise.all([refetch(), refreshMySpotsOverlay()]);
+    },
+    [forgetSpot, refetch, refreshMySpotsOverlay],
+  );
+
+  useEffect(() => {
+    return subscribeSpotWithdrawn((spotId) => {
+      void removeSpotFromMap(spotId);
+    });
+  }, [removeSpotFromMap]);
+
   useEffect(() => {
     void refreshMyOffers();
     void refreshMySpotsOverlay();
@@ -425,6 +454,8 @@ export default function MapScreen() {
           status: string;
           is_mine: boolean;
           has_my_offer: boolean;
+          exact_location: boolean;
+          leaving_now: boolean;
         };
         geometry: { type: "Point"; coordinates: [number, number] };
       }
@@ -445,6 +476,8 @@ export default function MapScreen() {
           status: feature.properties.status,
           is_mine: Boolean(feature.properties.is_mine),
           has_my_offer: pendingOfferBySpotId.has(id),
+          exact_location: Boolean(feature.properties.exact_location),
+          leaving_now: Boolean(feature.properties.leaving_now),
         },
         geometry: {
           type: "Point",
@@ -474,6 +507,8 @@ export default function MapScreen() {
           status,
           is_mine: true,
           has_my_offer: false,
+          exact_location: Boolean(feature.properties.exact_location),
+          leaving_now: Boolean(feature.properties.leaving_now),
         },
         geometry: {
           type: "Point",
@@ -555,6 +590,8 @@ export default function MapScreen() {
             status: activeSpot.properties.status,
             is_mine: true,
             has_my_offer: false,
+            exact_location: Boolean(activeSpot.properties.exact_location),
+            leaving_now: Boolean(activeSpot.properties.leaving_now),
           },
           geometry: {
             type: "Point" as const,
@@ -635,17 +672,18 @@ export default function MapScreen() {
     if (east - west > 0.5 || north - south > 0.5) {
       return;
     }
+    const filter = mapFilterRef.current;
     setViewport({
       bbox: bounds,
       zoom,
-      from: mapFilter.from,
-      to: mapFilter.to,
-      includeFlexible: mapFilter.includeFlexible,
-      includeLeavingNow: mapFilter.includeLeavingNow,
-      leavingNowOnly: mapFilter.leavingNowOnly,
+      from: filter.from,
+      to: filter.to,
+      includeFlexible: filter.includeFlexible,
+      includeLeavingNow: filter.includeLeavingNow,
+      leavingNowOnly: filter.leavingNowOnly,
     });
     setMapViewbox(bounds as ViewBox);
-  }, [mapFilter]);
+  }, []);
 
   const onRegionDidChange = useCallback(
     (event: NativeSyntheticEvent<ViewStateChangeEvent>) => {
@@ -1073,6 +1111,19 @@ export default function MapScreen() {
     [alert, confirm, requireEmailVerified, requireSignIn, router, signedIn, t],
   );
 
+  // After “add car” from the announce soft-gate, reopen the form with the new list.
+  useEffect(() => {
+    return subscribeVehicleCreated((kind) => {
+      if (kind !== "announce") {
+        return;
+      }
+      if (!consumeResumeAnnounceAfterVehicle()) {
+        return;
+      }
+      void openAnnounce(null, null);
+    });
+  }, [openAnnounce]);
+
   // Deep-link from reservation history “re-announce” → open form prefilled.
   useEffect(() => {
     const lon = Number.parseFloat(String(focusParams.announceLon ?? ""));
@@ -1133,7 +1184,7 @@ export default function MapScreen() {
         await afterAnnounce(spot, t("map.alert.announced.message"));
       } catch (err) {
         await alert({
-          title: t("map.alert.announceFailed.title"),
+          title: apiErrorTitle(err, t, "map.alert.announceFailed.title"),
           message: apiErrorMessage(err, t),
           confirmLabel: t("common.ok"),
         });
@@ -1398,23 +1449,51 @@ export default function MapScreen() {
             </Text>
           </View>
           {(() => {
-            const next = bannerNextStep({ res: active, iAmOwner: isOwner });
+            const myEnRoute = isOwner
+              ? active.owner_en_route_at
+              : active.driver_en_route_at;
+            const myReady = isOwner
+              ? active.owner_ready_at
+              : active.driver_ready_at;
+            if (myReady) {
+              return (
+                <View style={styles.activeBannerActions}>
+                  <Pressable
+                    style={[styles.bannerBtn, busy && styles.bannerBtnDisabled]}
+                    disabled={busy}
+                    onPress={() => void clearReady()}
+                  >
+                    <Text style={styles.bannerBtnText}>
+                      {t("map.banner.unready")}
+                    </Text>
+                  </Pressable>
+                </View>
+              );
+            }
             return (
               <View style={styles.activeBannerActions}>
                 <Pressable
+                  style={[
+                    styles.bannerBtn,
+                    styles.bannerBtnSecondary,
+                    busy && styles.bannerBtnDisabled,
+                    myEnRoute ? styles.bannerBtnDone : null,
+                  ]}
+                  disabled={busy}
+                  onPress={() => void markEnRoute()}
+                >
+                  <Text style={styles.bannerBtnText}>
+                    {t("map.banner.enRoute")}
+                  </Text>
+                </Pressable>
+                <Pressable
                   style={[styles.bannerBtn, busy && styles.bannerBtnDisabled]}
                   disabled={busy}
-                  onPress={() => {
-                    if (next.action === "en_route") {
-                      void markEnRoute();
-                    } else if (next.action === "ready") {
-                      void markReady();
-                    } else {
-                      void clearReady();
-                    }
-                  }}
+                  onPress={() => void markReady()}
                 >
-                  <Text style={styles.bannerBtnText}>{t(next.labelKey)}</Text>
+                  <Text style={styles.bannerBtnText}>
+                    {t("map.banner.ready")}
+                  </Text>
                 </Pressable>
               </View>
             );
@@ -1461,7 +1540,7 @@ export default function MapScreen() {
                   }
                   try {
                     await withdrawSpot(String(leavingNowSpot.id));
-                    await refetch();
+                    await removeSpotFromMap(String(leavingNowSpot.id));
                   } catch (err) {
                     await alert({
                       title: t("map.alert.withdrawFailed.title"),
@@ -1751,6 +1830,13 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     minWidth: 160,
     alignItems: "center",
+  },
+  bannerBtnSecondary: {
+    borderColor: "rgba(255,232,214,0.55)",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  bannerBtnDone: {
+    opacity: 0.72,
   },
   bannerBtnDisabled: { opacity: 0.5 },
   bannerBtnText: {

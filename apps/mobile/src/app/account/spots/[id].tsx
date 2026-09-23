@@ -18,14 +18,15 @@ import {
   updateSpot,
   withdrawSpot,
 } from "@/api/client";
-import { apiErrorMessage } from "@/api/errors";
+import { apiErrorMessage, apiErrorTitle } from "@/api/errors";
+import { notifySpotWithdrawn } from "@/map/spotWithdrawHandoff";
 import { accountStyles } from "@/account/theme";
 import { AuthScroll } from "@/auth/AuthScroll";
 import { AuthTextInput } from "@/auth/AuthTextInput";
 import { ensureEmailVerified } from "@/auth/requireEmailVerified";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
-import { spotStatusLabel } from "@/i18n/catalogLabels";
+import { spotStatusLabel, firstGivenName } from "@/i18n/catalogLabels";
 import { formatPoints, parsePointsInput } from "@/i18n/formatPoints";
 import { matchesPreferredMinute } from "@/map/exchange";
 import { useConfirm } from "@/ui/ConfirmModal";
@@ -155,7 +156,7 @@ export default function EditSpotScreen() {
     },
     onError: async (err) => {
       await alert({
-        title: t("account.spots.offer.updateFailed.title"),
+        title: apiErrorTitle(err, t, "account.spots.offer.updateFailed.title"),
         message: apiErrorMessage(err, t),
         confirmLabel: t("common.ok"),
       });
@@ -170,6 +171,9 @@ export default function EditSpotScreen() {
       await withdrawSpot(id);
     },
     onSuccess: async () => {
+      if (id) {
+        notifySpotWithdrawn(id);
+      }
       await queryClient.invalidateQueries({ queryKey: ["spots", "mine"] });
       router.back();
     },
@@ -325,27 +329,36 @@ export default function EditSpotScreen() {
             return (
               <View key={offer.id} style={accountStyles.row}>
                 <View style={{ flex: 1, gap: 4 }}>
+                  <Text style={accountStyles.rowTitle}>
+                    {offer.driver_name?.trim()
+                      ? offer.driver_name
+                      : t("account.spots.edit.offerDriverFallback")}
+                  </Text>
+                  <Text style={accountStyles.meta}>
+                    {offer.driver_rating != null &&
+                    (offer.driver_rating_count ?? 0) > 0
+                      ? t("account.rating.withScore", {
+                          score: offer.driver_rating.toFixed(1),
+                          count: offer.driver_rating_count ?? 0,
+                        })
+                      : t("profile.public.noRatings")}
+                  </Text>
                   <Pressable
                     onPress={() =>
                       router.push(`/user/${offer.driver_id}` as Href)
                     }
                     accessibilityRole="link"
                   >
-                    <Text style={accountStyles.rowTitle}>
-                      {offer.driver_name?.trim()
-                        ? offer.driver_name
-                        : t("account.spots.edit.offerDriverFallback")}
-                    </Text>
-                    <Text style={accountStyles.link}>
-                      {offer.driver_rating != null &&
-                      (offer.driver_rating_count ?? 0) > 0
-                        ? t("account.rating.withScore", {
-                            score: offer.driver_rating.toFixed(1),
-                            count: offer.driver_rating_count ?? 0,
-                          })
-                        : t("profile.public.noRatings")}
-                      {" · "}
-                      {t("profile.public.view")}
+                    <Text
+                      style={[accountStyles.link, { textDecorationLine: "underline" }]}
+                    >
+                      {t("profile.public.viewOf", {
+                        name: firstGivenName(
+                          offer.driver_name?.trim()
+                            ? offer.driver_name
+                            : t("account.spots.edit.offerDriverFallback"),
+                        ),
+                      })}
                     </Text>
                   </Pressable>
                   <Text style={accountStyles.rowMeta}>
