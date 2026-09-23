@@ -36,6 +36,7 @@ import {
   subscribeOpenSpot,
 } from "@/map/spotSheetHandoff";
 import { useConfirm } from "@/ui/ConfirmModal";
+import { ReportModal, type ReportTarget } from "@/ui/ReportModal";
 
 /**
  * Spot form sheet: resize only via the top grabber.
@@ -60,6 +61,7 @@ export default function SpotDetailScreen() {
   const [pendingOffer, setPendingOffer] = useState<OfferResponse | null>(null);
   const [offerBusy, setOfferBusy] = useState(false);
   const [makingOffer, setMakingOffer] = useState(false);
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
 
   const {
     active,
@@ -377,9 +379,25 @@ export default function SpotDetailScreen() {
                 router.push("/account/reservations" as Href);
               })();
             }}
+            onReportListing={(s) => {
+              setReportTarget({ kind: "spot", spotId: String(s.id) });
+            }}
           />
         </ScrollView>
       )}
+
+      <ReportModal
+        target={reportTarget}
+        visible={!!reportTarget}
+        onClose={() => setReportTarget(null)}
+        onSubmitted={() => {
+          void alert({
+            title: t("report.sent.title"),
+            message: t("report.sent.message"),
+            confirmLabel: t("common.ok"),
+          });
+        }}
+      />
     </View>
   );
 }

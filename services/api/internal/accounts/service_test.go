@@ -191,6 +191,9 @@ func (f *fakeStore) UpsertPushToken(context.Context, string, string, string) err
 func (f *fakeStore) ListRatingsForUser(context.Context, string, int, int) ([]domain.Rating, error) {
 	return nil, nil
 }
+func (f *fakeStore) InsertReport(context.Context, domain.ReportDraft) error {
+	return nil
+}
 
 // plainHasher stores the password itself so unit tests stay cheap.
 type plainHasher struct{}
@@ -422,6 +425,38 @@ func TestDeleteAccountMissingUser(t *testing.T) {
 	err := svc.DeleteAccount(context.Background(), domain.Claims{UserID: "missing"})
 	if domain.KindOf(err) != domain.KindUnauthenticated {
 		t.Errorf("kind = %v, want KindUnauthenticated", domain.KindOf(err))
+	}
+}
+
+func TestCreateReportProblem(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore()
+	svc := newService(t, store)
+	err := svc.CreateReport(
+		context.Background(),
+		domain.Claims{UserID: "user-1"},
+		"something is wrong",
+		"",
+		"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateReportRejectsSelf(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore()
+	svc := newService(t, store)
+	err := svc.CreateReport(
+		context.Background(),
+		domain.Claims{UserID: "user-1"},
+		"bad",
+		"",
+		"user-1",
+	)
+	if domain.KindOf(err) != domain.KindInvalid {
+		t.Fatalf("kind = %v, want KindInvalid", domain.KindOf(err))
 	}
 }
 

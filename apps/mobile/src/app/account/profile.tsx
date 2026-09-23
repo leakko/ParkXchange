@@ -21,6 +21,7 @@ import {
 } from "@/push/settings";
 import { disarmArrivalGeofence } from "@/push/geofence";
 import { useConfirm } from "@/ui/ConfirmModal";
+import { ReportModal, type ReportTarget } from "@/ui/ReportModal";
 
 export default function ProfileScreen() {
   const { t, locale, setLocale } = useTranslation();
@@ -39,6 +40,7 @@ export default function ProfileScreen() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [locationAssistance, setLocationAssistance] = useState(true);
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
 
   useEffect(() => {
     if (me.data) {
@@ -264,6 +266,26 @@ export default function ProfileScreen() {
           )}
         </Pressable>
       </View>
+
+      <Pressable
+        style={[accountStyles.secondary, { marginTop: 24 }]}
+        onPress={() => setReportTarget({ kind: "problem" })}
+      >
+        <Text style={accountStyles.secondaryText}>{t("report.problem.cta")}</Text>
+      </Pressable>
+
+      <ReportModal
+        target={reportTarget}
+        visible={!!reportTarget}
+        onClose={() => setReportTarget(null)}
+        onSubmitted={() => {
+          void alert({
+            title: t("report.sent.title"),
+            message: t("report.sent.message"),
+            confirmLabel: t("common.ok"),
+          });
+        }}
+      />
     </AuthScroll>
   );
 }

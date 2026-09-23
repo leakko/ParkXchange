@@ -568,6 +568,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** File a moderation report (problem, listing, or profile) */
+        post: operations["createReport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/reservations/{id}/peer-vehicle/photo": {
         parameters: {
             query?: never;
@@ -986,6 +1003,20 @@ export interface components {
             comment?: string;
             /** Format: date-time */
             created_at: string;
+        };
+        CreateReportRequest: {
+            /** @description Free-text complaint */
+            body: string;
+            /**
+             * Format: uuid
+             * @description Set to report a listing (mutually exclusive with reported_user_id)
+             */
+            spot_id?: string;
+            /**
+             * Format: uuid
+             * @description Set to report a public profile (mutually exclusive with spot_id)
+             */
+            reported_user_id?: string;
         };
         ReservationSpotSummary: {
             /** Format: double */
@@ -2132,6 +2163,31 @@ export interface operations {
                 };
             };
             404: components["responses"]["Error"];
+        };
+    };
+    createReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Report recorded */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     getReservationPeerVehiclePhoto: {

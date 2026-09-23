@@ -63,6 +63,7 @@ export type SpotSheetBodyProps = {
   onEdit: (spot: SpotFeature) => void;
   onViewOffers: (spot: SpotFeature) => void;
   onWithdraw: (spot: SpotFeature) => void;
+  onReportListing?: (spot: SpotFeature) => void;
   onManageExchange?: () => void;
   makingOffer: boolean;
   setMakingOffer: (v: boolean) => void;
@@ -93,6 +94,7 @@ export function SpotSheetBody({
   onEdit,
   onViewOffers,
   onWithdraw,
+  onReportListing,
   onManageExchange,
   makingOffer,
   setMakingOffer,
@@ -200,7 +202,10 @@ export function SpotSheetBody({
   }, [spot?.id, spot?.properties.is_mine, spot?.properties.status]);
 
   const requireAuth = async (
-    messageKey: "auth.required.offer" | "auth.required.addVehicle",
+    messageKey:
+      | "auth.required.offer"
+      | "auth.required.addVehicle"
+      | "auth.required.report",
   ): Promise<boolean> =>
     passAuthGate({
       signedIn,
@@ -726,6 +731,23 @@ export function SpotSheetBody({
         comments={spot.properties.notes}
       />
 
+      {!spot.properties.is_mine && onReportListing ? (
+        <Pressable
+          style={styles.reportHit}
+          disabled={busy}
+          onPress={() => {
+            void (async () => {
+              if (!(await requireAuth("auth.required.report"))) {
+                return;
+              }
+              onReportListing(spot);
+            })();
+          }}
+        >
+          <Text style={styles.reportText}>{t("report.spot.cta")}</Text>
+        </Pressable>
+      ) : null}
+
       {!isActiveForSpot &&
       !pendingOffer &&
       spot.properties.status === "available" ? (
@@ -772,6 +794,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   listedUntil: { color: "#7A93A0", fontSize: 12, marginTop: 10 },
+  reportHit: { marginTop: 14, paddingVertical: 8, alignItems: "center" },
+  reportText: { color: "#9DB4C0", fontSize: 13, fontWeight: "600" },
   actions: { marginTop: 12, gap: 8 },
   offerForm: { gap: 8 },
   formLabel: { color: "#9DB4C0", fontSize: 12, marginTop: 4 },

@@ -26,11 +26,11 @@ If that test fails, fix the code, not the test.
   mobile smoke). Ops handoff **smoke passed**.
 - **Also open:** payments deferred. Location permission policy — device demo
   pending. Account-delete confirm is now an in-app modal (pushed).
-- **Ratings + public profile:** **coded** on `feature/ratings-public-profile`
-  (merge to main in this commit set) per
-  [2026-09-23-ratings-public-profile-design.md](docs/superpowers/specs/2026-09-23-ratings-public-profile-design.md):
-  optional mutual post-complete ratings; `GET /v1/users/{id}/profile`; spot
-  offerer name and reservation peer link open the public profile.
+- **Ratings + public profile:** **on main**. Owner pending offers show
+  driver name/rating and open `/user/{driver_id}` before accept.
+- **Reports (problem / listing / profile):** **coded** — table `reports`,
+  `POST /v1/reports`; mobile CTAs on own profile, spot sheet, public profile.
+  Review via TablePlus. Pending migrate when Docker/PostGIS is up.
 - **Listing expiry / public Get filter:** **on main**, pending PostGIS smoke when
   Docker is up.
 - **Arrival background location:** **on main**, pending **device smoke** (Android×2 +
@@ -676,6 +676,14 @@ instead; the container then became ready in about a second.
 ---
 
 ## Session log
+
+### 2026-09-23 — User reports (problem / listing / profile)
+
+- `reports` table + `POST /v1/reports` (body required; optional `spot_id` or
+  `reported_user_id`, mutually exclusive). Review in TablePlus.
+- Mobile: Report a problem (own profile), Report listing (spot sheet), Report
+  profile (public `/user/[id]`).
+- Also: owner offer list shows driver name/rating → public profile before accept.
 
 ### 2026-09-23 — Ratings + public offerer profile
 

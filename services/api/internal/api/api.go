@@ -159,6 +159,7 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("DELETE /v1/reservations/{id}/ready", a.requireAuth(a.handleReservationUnready))
 	mux.Handle("POST /v1/reservations/{id}/cancel", a.requireAuth(a.handleCancelReservation))
 	mux.Handle("GET /v1/users/{id}/profile", a.optionalAuth(a.handlePublicProfile))
+	mux.Handle("POST /v1/reports", a.requireAuth(a.handleCreateReport))
 	mux.Handle("POST "+pathWSTickets, a.requireAuth(a.handleIssueTicket))
 	mux.HandleFunc("GET "+pathWS, a.handleWS)
 

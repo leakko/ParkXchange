@@ -32,7 +32,7 @@ type Service struct {
 	verifyLinkBase string
 	resetTokenTTL  time.Duration
 	verifyTokenTTL time.Duration
-	resendCooldown    time.Duration
+	resendCooldown time.Duration
 
 	// dummyHash is verified against when a login names an address that does
 	// not exist, so that the response takes the same time either way.
@@ -48,7 +48,7 @@ type Service struct {
 const (
 	defaultResetTokenTTL  = time.Hour
 	defaultVerifyTokenTTL = 24 * time.Hour
-	defaultResendCooldown    = time.Minute
+	defaultResendCooldown = time.Minute
 )
 
 // New builds the service. google and mailer may be nil when those flows are
@@ -83,7 +83,7 @@ func New(
 		verifyLinkBase: strings.TrimRight(verifyLinkBase, "?&"),
 		resetTokenTTL:  defaultResetTokenTTL,
 		verifyTokenTTL: defaultVerifyTokenTTL,
-		resendCooldown:    defaultResendCooldown,
+		resendCooldown: defaultResendCooldown,
 		dummyHash:      dummyHash,
 	}, nil
 }
@@ -606,6 +606,34 @@ func (s *Service) PublicProfile(ctx context.Context, userID string, limit, offse
 		out.Rating = &avg
 	}
 	return out, nil
+}
+
+// CreateReport records a user complaint about the product, a listing, or a peer.
+func (s *Service) CreateReport(ctx context.Context, viewer domain.Claims, body, spotID, reportedUserID string) error {
+	if !viewer.Authenticated() {
+		return domain.Unauthenticated("unauthorized", "an access token is required")
+	}
+	draft, err := domain.NewReport(domain.NewReportInput{
+		ReporterID:     viewer.UserID,
+		Body:           body,
+		SpotID:         spotID,
+		ReportedUserID: reportedUserID,
+	})
+	if err != nil {
+		return err
+	}
+	if err := s.store.InsertReport(ctx, draft); err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			if draft.Kind == domain.ReportSpot {
+				return domain.NotFound("spot_not_found", "that listing does not exist")
+			}
+			if draft.Kind == domain.ReportProfile {
+				return domain.NotFound("user_not_found", "that user does not exist")
+			}
+		}
+		return domain.Internal(err)
+	}
+	return nil
 }
 
 // DeleteAccount closes the signed-in user's account: cancels active marketplace

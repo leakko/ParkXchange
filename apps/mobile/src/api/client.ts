@@ -574,6 +574,21 @@ export async function getUserProfile(
   return (await res.json()) as PublicUserProfile;
 }
 
+export async function createReport(body: {
+  body: string;
+  spot_id?: string;
+  reported_user_id?: string;
+}): Promise<void> {
+  const res = await apiFetch("/v1/reports", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+}
+
 /** @deprecated Prefer reservationReady — owner “listo en el punto”. */
 export async function ownerReady(id: string): Promise<void> {
   await reservationReady(id);

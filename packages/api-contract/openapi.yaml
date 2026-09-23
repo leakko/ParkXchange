@@ -16,6 +16,7 @@ tags:
   - name: spots
   - name: offers
   - name: reservations
+  - name: accounts
   - name: realtime
 
 security:
@@ -884,6 +885,27 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
 
+  /v1/reports:
+    post:
+      tags: [accounts]
+      operationId: createReport
+      summary: File a moderation report (problem, listing, or profile)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReportRequest"
+      responses:
+        "204":
+          description: Report recorded
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+
   /v1/reservations/{id}/peer-vehicle/photo:
     get:
       tags: [reservations]
@@ -1729,6 +1751,24 @@ components:
         created_at:
           type: string
           format: date-time
+
+    CreateReportRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: Free-text complaint
+        spot_id:
+          type: string
+          format: uuid
+          description: Set to report a listing (mutually exclusive with reported_user_id)
+        reported_user_id:
+          type: string
+          format: uuid
+          description: Set to report a public profile (mutually exclusive with spot_id)
 
     ReservationSpotSummary:
       type: object

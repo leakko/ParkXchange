@@ -294,6 +294,18 @@ type CreateOfferRequest struct {
 	VehicleId   openapi_types.UUID `json:"vehicle_id"`
 }
 
+// CreateReportRequest defines model for CreateReportRequest.
+type CreateReportRequest struct {
+	// Body Free-text complaint
+	Body string `json:"body"`
+
+	// ReportedUserId Set to report a public profile (mutually exclusive with spot_id)
+	ReportedUserId *openapi_types.UUID `json:"reported_user_id,omitempty"`
+
+	// SpotId Set to report a listing (mutually exclusive with reported_user_id)
+	SpotId *openapi_types.UUID `json:"spot_id,omitempty"`
+}
+
 // CreateSpotRequest defines model for CreateSpotRequest.
 type CreateSpotRequest struct {
 	AddressHint          *string    `json:"address_hint,omitempty"`
@@ -796,6 +808,9 @@ type ChangePasswordJSONRequestBody = ChangePasswordRequest
 
 // PutPushTokenJSONRequestBody defines body for PutPushToken for application/json ContentType.
 type PutPushTokenJSONRequestBody PutPushTokenJSONBody
+
+// CreateReportJSONRequestBody defines body for CreateReport for application/json ContentType.
+type CreateReportJSONRequestBody = CreateReportRequest
 
 // RateReservationJSONRequestBody defines body for RateReservation for application/json ContentType.
 type RateReservationJSONRequestBody = RateReservationRequest

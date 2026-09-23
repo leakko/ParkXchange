@@ -1,19 +1,41 @@
 import { useQuery } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams } from "expo-router";
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
-import { getUserProfile } from "@/api/client";
+import { getMe, getUserProfile } from "@/api/client";
 import { accountColors, accountStyles } from "@/account/theme";
+import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
+import { useConfirm } from "@/ui/ConfirmModal";
+import { ReportModal, type ReportTarget } from "@/ui/ReportModal";
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { t } = useTranslation();
+  const { alert } = useConfirm();
+  const { signedIn } = useSession();
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+  const me = useQuery({
+    queryKey: ["me"],
+    queryFn: getMe,
+    enabled: signedIn,
+  });
   const profile = useQuery({
     queryKey: ["user-profile", id],
     queryFn: () => getUserProfile(String(id)),
     enabled: !!id,
   });
+
+  const canReport =
+    signedIn && !!id && !!me.data?.id && String(id) !== String(me.data.id);
 
   return (
     <View style={accountStyles.screen}>
@@ -36,6 +58,16 @@ export default function UserProfileScreen() {
                     })
                   : t("profile.public.noRatings")}
               </Text>
+              {canReport ? (
+                <Pressable
+                  style={{ marginTop: 12 }}
+                  onPress={() =>
+                    setReportTarget({ kind: "profile", userId: String(id) })
+                  }
+                >
+                  <Text style={accountStyles.link}>{t("report.profile.cta")}</Text>
+                </Pressable>
+              ) : null}
             </View>
           }
           data={profile.data.reviews}
@@ -59,6 +91,19 @@ export default function UserProfileScreen() {
           )}
         />
       )}
+
+      <ReportModal
+        target={reportTarget}
+        visible={!!reportTarget}
+        onClose={() => setReportTarget(null)}
+        onSubmitted={() => {
+          void alert({
+            title: t("report.sent.title"),
+            message: t("report.sent.message"),
+            confirmLabel: t("common.ok"),
+          });
+        }}
+      />
     </View>
   );
 }
