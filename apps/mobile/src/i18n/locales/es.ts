@@ -8,6 +8,8 @@ export const es = {
   "location.always.title": "Ubicación siempre activa",
   "location.always.message":
     "Para avisar cuando llegues al punto de intercambio con la app cerrada, elige «Permitir siempre» (o «Permitir todo el tiempo») en la siguiente pantalla. Así la ayuda de llegada funciona bien.",
+  "location.enRoute.notificationTitle": "ParkXchange",
+  "location.enRoute.notificationBody": "En camino al intercambio. Te avisaremos al llegar.",
 
   "map.search.placeholder": "Calle, sitio, etc.",
   "map.search.button": "Buscar",

@@ -10,6 +10,9 @@ export const en: Record<TranslationKey, string> = {
   "location.always.title": "Always-on location",
   "location.always.message":
     "To notify you when you arrive at the exchange with the app closed, choose “Allow all the time” on the next screen. That keeps arrival assistance working.",
+  "location.enRoute.notificationTitle": "ParkXchange",
+  "location.enRoute.notificationBody":
+    "On the way to the exchange. We'll notify you when you arrive.",
 
   "map.search.placeholder": "Street, place, etc.",
   "map.search.button": "Search",

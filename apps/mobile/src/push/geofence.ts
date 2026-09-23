@@ -4,26 +4,22 @@ import * as Notifications from "expo-notifications";
 import * as TaskManager from "expo-task-manager";
 import { Platform } from "react-native";
 
-import { distanceMeters } from "@/map/exchange";
-import { getLocationAssistanceEnabled } from "@/push/settings";
 import { loadStoredLocale } from "@/i18n/storage";
-
-/** GPS is often ±15–40 m outdoors; 30 m alone misses many real arrivals. */
-const RADIUS_M = 75;
-
-const GEOFENCE_TASK = "parkxchange-arrival-geofence";
+import {
+  ARRIVAL_RADIUS_M,
+  type ArmedRegion,
+  isInsideArrivalRadius,
+  parseArmedRegion,
+  serializeArmedRegion,
+} from "@/push/arrivalAssistLogic";
+import { getLocationAssistanceEnabled } from "@/push/settings";
 
 /** Survives process death so oscillating the fence cannot re-fire. */
 const FIRED_KEY = "parkxchange.geofence.arrivalFired";
+const ARRIVAL_UPDATES_TASK = "parkxchange-arrival-updates";
+const ARMED_KEY = "parkxchange.arrival.armedRegion";
 
-type Armed = {
-  reservationId: string;
-  lon: number;
-  lat: number;
-};
-
-let armed: Armed | null = null;
-let watchSub: Location.LocationSubscription | null = null;
+let armed: ArmedRegion | null = null;
 /** In-process guard — claim synchronously before any await. */
 let promptedReservationId: string | null = null;
 
@@ -38,18 +34,29 @@ const copy = {
   },
 } as const;
 
-async function stopWatch(): Promise<void> {
-  if (watchSub) {
-    watchSub.remove();
-    watchSub = null;
+async function persistArmed(region: ArmedRegion | null): Promise<void> {
+  if (!region) {
+    await AsyncStorage.removeItem(ARMED_KEY);
+    return;
+  }
+  await AsyncStorage.setItem(ARMED_KEY, serializeArmedRegion(region));
+}
+
+async function loadArmed(): Promise<ArmedRegion | null> {
+  try {
+    return parseArmedRegion(await AsyncStorage.getItem(ARMED_KEY));
+  } catch {
+    return null;
   }
 }
 
-async function stopNativeGeofence(): Promise<void> {
+async function stopLocationUpdates(): Promise<void> {
   try {
-    const started = await Location.hasStartedGeofencingAsync(GEOFENCE_TASK);
+    const started = await Location.hasStartedLocationUpdatesAsync(
+      ARRIVAL_UPDATES_TASK,
+    );
     if (started) {
-      await Location.stopGeofencingAsync(GEOFENCE_TASK);
+      await Location.stopLocationUpdatesAsync(ARRIVAL_UPDATES_TASK);
     }
   } catch {
     /* best-effort */
@@ -122,12 +129,29 @@ async function arrivalCopy(): Promise<{ title: string; body: string }> {
   return copy[locale === "en" ? "en" : "es"];
 }
 
+async function enRouteNotificationCopy(): Promise<{
+  title: string;
+  body: string;
+}> {
+  const locale = (await loadStoredLocale()) ?? "es";
+  if (locale === "en") {
+    return {
+      title: "ParkXchange",
+      body: "On the way to the exchange. We'll notify you when you arrive.",
+    };
+  }
+  return {
+    title: "ParkXchange",
+    body: "En camino al intercambio. Te avisaremos al llegar.",
+  };
+}
+
 /**
- * One geofence / proximity push per active exchange. After this, coaching tips
+ * One proximity push per active exchange. After this, coaching tips
  * come from the server (1 min after each manual state change), not GPS.
  */
 export async function fireArrivalPrompt(reservationId: string): Promise<void> {
-  // Claim before any await so racing Enter / watch callbacks collapse to one.
+  // Claim before any await so racing location callbacks collapse to one.
   if (promptedReservationId === reservationId) {
     return;
   }
@@ -140,11 +164,11 @@ export async function fireArrivalPrompt(reservationId: string): Promise<void> {
     await persistFiredIds(ids);
   }
 
-  await stopWatch();
-  await stopNativeGeofence();
+  await stopLocationUpdates();
   if (armed?.reservationId === reservationId) {
     armed = null;
   }
+  await persistArmed(null);
 
   if (alreadyPersisted) {
     return;
@@ -167,35 +191,44 @@ export async function fireArrivalPrompt(reservationId: string): Promise<void> {
   });
 }
 
-/** Task must be defined at module load for background geofence events. */
-TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }) => {
+/** Task must be defined at module load for background location updates. */
+TaskManager.defineTask(ARRIVAL_UPDATES_TASK, async ({ data, error }) => {
   if (error) {
     return;
   }
+  const region = armed ?? (await loadArmed());
+  if (!region) {
+    return;
+  }
+  if (await hasArrivalPromptFired(region.reservationId)) {
+    await disarmArrivalGeofence();
+    return;
+  }
   const payload = data as {
-    eventType?: Location.GeofencingEventType;
-    region?: { identifier?: string };
+    locations?: { coords: { longitude: number; latitude: number } }[];
   };
-  if (payload.eventType !== Location.GeofencingEventType.Enter) {
-    return;
+  const locs = payload.locations ?? [];
+  for (const loc of locs) {
+    if (
+      isInsideArrivalRadius(
+        loc.coords.longitude,
+        loc.coords.latitude,
+        region.lon,
+        region.lat,
+        ARRIVAL_RADIUS_M,
+      )
+    ) {
+      await fireArrivalPrompt(region.reservationId);
+      return;
+    }
   }
-  const reservationId = payload.region?.identifier ?? armed?.reservationId;
-  if (!reservationId) {
-    return;
-  }
-  await fireArrivalPrompt(reservationId);
 });
 
 /**
- * One-shot arrival watch after the caller marks «Voy de camino».
- * Prefers OS geofencing (works with screen off) + foreground watch as backup.
+ * One-shot background location tracking after the caller marks «Voy de camino».
  * Never re-arms for a reservation that already fired its arrival push.
  */
-export async function armArrivalGeofence(opts: {
-  reservationId: string;
-  lon: number;
-  lat: number;
-}): Promise<void> {
+export async function armArrivalGeofence(opts: ArmedRegion): Promise<void> {
   if (Platform.OS === "web") {
     return;
   }
@@ -212,7 +245,8 @@ export async function armArrivalGeofence(opts: {
     return;
   }
 
-  // Background geofencing needs "always" on Android 10+ / iOS.
+  // Background location updates need "always" on Android 10+ / iOS.
+  let alwaysOk = false;
   try {
     const { ensureAlwaysLocation, hasAlwaysLocation } = await import(
       "@/push/locationPermissions"
@@ -240,8 +274,43 @@ export async function armArrivalGeofence(opts: {
     } else {
       await Location.requestBackgroundPermissionsAsync();
     }
+    alwaysOk = await hasAlwaysLocation();
   } catch {
-    /* foreground watch still helps while the app is open */
+    alwaysOk = false;
+  }
+  if (!alwaysOk) {
+    // Still allow an immediate in-radius check while foregrounded.
+    try {
+      const here = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      if (
+        isInsideArrivalRadius(
+          here.coords.longitude,
+          here.coords.latitude,
+          opts.lon,
+          opts.lat,
+        )
+      ) {
+        await fireArrivalPrompt(opts.reservationId);
+      }
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+
+  const already =
+    (await Location.hasStartedLocationUpdatesAsync(
+      ARRIVAL_UPDATES_TASK,
+    ).catch(() => false)) === true;
+  if (already) {
+    const stored = await loadArmed();
+    if (stored?.reservationId === opts.reservationId) {
+      armed = stored;
+      return;
+    }
+    await stopLocationUpdates();
   }
 
   await disarmArrivalGeofence();
@@ -249,68 +318,58 @@ export async function armArrivalGeofence(opts: {
     return;
   }
   armed = { ...opts };
+  await persistArmed(armed);
 
   // Already inside the radius → prompt immediately (once).
   try {
     const here = await Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.High,
     });
-    const d = distanceMeters(
-      [here.coords.longitude, here.coords.latitude],
-      [opts.lon, opts.lat],
-    );
-    if (d <= RADIUS_M) {
+    if (
+      isInsideArrivalRadius(
+        here.coords.longitude,
+        here.coords.latitude,
+        opts.lon,
+        opts.lat,
+      )
+    ) {
       await fireArrivalPrompt(opts.reservationId);
       return;
     }
   } catch {
-    /* continue watching */
+    /* continue */
   }
 
+  const notif = await enRouteNotificationCopy();
   try {
-    await Location.startGeofencingAsync(GEOFENCE_TASK, [
-      {
-        identifier: opts.reservationId,
-        latitude: opts.lat,
-        longitude: opts.lon,
-        radius: RADIUS_M,
-        notifyOnEnter: true,
-        notifyOnExit: false,
-      },
-    ]);
-  } catch {
-    /* fall back to watch below */
-  }
-
-  watchSub = await Location.watchPositionAsync(
-    {
-      accuracy: Location.Accuracy.High,
+    await Location.startLocationUpdatesAsync(ARRIVAL_UPDATES_TASK, {
+      accuracy: Location.Accuracy.Balanced,
       distanceInterval: 10,
       timeInterval: 5_000,
-    },
-    (pos) => {
-      if (!armed || promptedReservationId === armed.reservationId) {
-        return;
-      }
-      const d = distanceMeters(
-        [pos.coords.longitude, pos.coords.latitude],
-        [armed.lon, armed.lat],
-      );
-      if (d <= RADIUS_M) {
-        void fireArrivalPrompt(armed.reservationId);
-      }
-    },
-  );
+      deferredUpdatesInterval: 5_000,
+      deferredUpdatesDistance: 10,
+      showsBackgroundLocationIndicator: true,
+      foregroundService: {
+        notificationTitle: notif.title,
+        notificationBody: notif.body,
+        killServiceOnDestroy: false,
+      },
+    });
+  } catch (err) {
+    console.warn("[arrival] startLocationUpdatesAsync failed", err);
+    armed = null;
+    await persistArmed(null);
+  }
 }
 
-/** Stop watching; does not clear the per-reservation fired flag. */
+/** Stop background updates; does not clear the per-reservation fired flag. */
 export async function disarmArrivalGeofence(): Promise<void> {
-  await stopWatch();
-  await stopNativeGeofence();
+  await stopLocationUpdates();
   armed = null;
+  await persistArmed(null);
 }
 
-/** True if a geofence/watch is currently armed for this reservation. */
+/** True if background arrival updates are armed for this reservation. */
 export function isArrivalGeofenceArmed(reservationId?: string): boolean {
   if (!armed) {
     return false;
@@ -322,7 +381,7 @@ export function isArrivalGeofenceArmed(reservationId?: string): boolean {
 }
 
 /**
- * Resolve spot coordinates and arm arrival geofencing. Call after every
+ * Resolve spot coordinates and arm background arrival updates. Call after every
  * successful «Voy de camino» (banner, sheet, detail, or push action).
  * No-ops if this reservation already fired its arrival push.
  */
