@@ -1897,6 +1897,8 @@ components:
         leaving_now:
           type: boolean
           description: Owner is leaving now («Me voy ya»)
+
+    ErrorEnvelope:
       type: object
       required: [error]
       properties:

@@ -68,7 +68,7 @@ func TestOfferAcceptanceAndHandshakePayOwner(t *testing.T) {
 	exchangeAt := time.Now().Add(30 * time.Minute).UTC().Truncate(time.Second)
 
 	offer := createOffer(t, server, db, driver,
-		spot.ID, driverVehicleID, exchangeAt, 200)
+		spot.ID, driverVehicleID, exchangeAt, 2)
 
 	listed := authedRequest(t, server, http.MethodGet,
 		"/v1/spots/"+spot.ID+"/offers", owner.AccessToken, nil)
@@ -120,7 +120,7 @@ func TestOfferAcceptanceAndHandshakePayOwner(t *testing.T) {
 	if err := json.NewDecoder(me.Body).Decode(&profile); err != nil {
 		t.Fatalf("decode owner profile: %v", err)
 	}
-	if want := domain.SignupGrantCents + 200; profile.BalanceCents != want {
+	if want := domain.SignupGrantCents + 2; profile.BalanceCents != want {
 		t.Errorf("owner balance = %d, want %d", profile.BalanceCents, want)
 	}
 }
@@ -134,9 +134,9 @@ func TestOfferRejectAndWithdraw(t *testing.T) {
 	exchangeAt := time.Now().Add(time.Hour).UTC()
 
 	withdrawn := createOffer(t, server, db, firstDriver,
-		spot.ID, insertTestVehicle(t, db, firstDriver.User.ID), exchangeAt, 100)
+		spot.ID, insertTestVehicle(t, db, firstDriver.User.ID), exchangeAt, 2)
 	rejected := createOffer(t, server, db, secondDriver,
-		spot.ID, insertTestVehicle(t, db, secondDriver.User.ID), exchangeAt, 150)
+		spot.ID, insertTestVehicle(t, db, secondDriver.User.ID), exchangeAt, 3)
 
 	resp := authedRequest(t, server, http.MethodPost,
 		"/v1/offers/"+withdrawn.ID+"/withdraw", firstDriver.AccessToken, nil)

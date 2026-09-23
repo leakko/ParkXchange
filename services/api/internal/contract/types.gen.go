@@ -532,14 +532,16 @@ type SnapshotMessageType string
 
 // SpotEventMessage Server to client incremental event
 type SpotEventMessage struct {
-	ExactLocation bool                 `json:"exact_location"`
-	Id            openapi_types.UUID   `json:"id"`
-	Lat           float64              `json:"lat"`
-	LeavingNow    *bool                `json:"leaving_now,omitempty"`
-	Lon           float64              `json:"lon"`
-	PriceCents    *int                 `json:"price_cents,omitempty"`
-	Status        *string              `json:"status,omitempty"`
-	Type          SpotEventMessageType `json:"type"`
+	ExactLocation bool               `json:"exact_location"`
+	Id            openapi_types.UUID `json:"id"`
+	Lat           float64            `json:"lat"`
+
+	// LeavingNow Owner is leaving now («Me voy ya»)
+	LeavingNow *bool                `json:"leaving_now,omitempty"`
+	Lon        float64              `json:"lon"`
+	PriceCents *int                 `json:"price_cents,omitempty"`
+	Status     *string              `json:"status,omitempty"`
+	Type       SpotEventMessageType `json:"type"`
 }
 
 // SpotEventMessageType defines model for SpotEventMessage.Type.

@@ -877,7 +877,7 @@ func TestUpdateSpotRejectsAReservedOffer(t *testing.T) {
 	created := createSpot(t, server, db, owner, uniqueLocation(), nil)
 
 	offer := createOffer(t, server, db, driver, created.ID,
-		insertTestVehicle(t, db, driver.User.ID), time.Now().Add(15*time.Minute), 150)
+		insertTestVehicle(t, db, driver.User.ID), time.Now().Add(15*time.Minute), 2)
 	accept := authedRequest(t, server, http.MethodPost,
 		"/v1/offers/"+offer.ID+"/accept", owner.AccessToken, nil)
 	if accept.StatusCode != http.StatusCreated {
