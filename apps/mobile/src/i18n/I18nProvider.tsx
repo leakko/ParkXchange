@@ -16,7 +16,7 @@ import { getMe, updateMe } from "@/api/client";
 import { getAccessToken } from "@/api/session";
 import { useSession } from "@/hooks/useSession";
 
-import { formatDateTime } from "./formatDateTime.ts";
+import { formatDate, formatDateTime } from "./formatDateTime.ts";
 import { en } from "./locales/en.ts";
 import { es, type TranslationKey } from "./locales/es.ts";
 import { pickLocale, type AppLocale } from "./resolveLocale.ts";
@@ -30,6 +30,7 @@ type I18nValue = {
   ready: boolean;
   t: (key: TranslationKey, params?: Record<string, string | number>) => string;
   setLocale: (locale: AppLocale) => void;
+  formatDate: (iso: string) => string;
   formatDateTime: (iso: string) => string;
 };
 
@@ -108,6 +109,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       ready,
       t: (key, params) => translate(messages, key, params),
       setLocale,
+      formatDate: (iso) => formatDate(locale, iso),
       formatDateTime: (iso) => formatDateTime(locale, iso),
     };
   }, [locale, ready, setLocale]);

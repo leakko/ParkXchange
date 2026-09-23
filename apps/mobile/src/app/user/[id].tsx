@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -20,7 +20,7 @@ import { ReportModal, type ReportTarget } from "@/ui/ReportModal";
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { t } = useTranslation();
+  const { t, formatDate } = useTranslation();
   const insets = useSafeAreaInsets();
   const { alert } = useConfirm();
   const { signedIn } = useSession();
@@ -35,6 +35,14 @@ export default function UserProfileScreen() {
     queryFn: () => getUserProfile(String(id)),
     enabled: !!id,
   });
+
+  // Newest first — same convention as reservations and spots lists.
+  const reviews = useMemo(() => {
+    const list = profile.data?.reviews ?? [];
+    return [...list].sort((a, b) =>
+      String(b.created_at).localeCompare(String(a.created_at)),
+    );
+  }, [profile.data?.reviews]);
 
   const canReport =
     signedIn && !!id && !!me.data?.id && String(id) !== String(me.data.id);
@@ -83,7 +91,7 @@ export default function UserProfileScreen() {
               ) : null}
             </View>
           }
-          data={profile.data.reviews}
+          data={reviews}
           keyExtractor={(item, i) => `${item.created_at}-${i}`}
           ListEmptyComponent={
             <Text style={accountStyles.meta}>
@@ -101,9 +109,7 @@ export default function UserProfileScreen() {
               {item.comment ? (
                 <Text style={accountStyles.meta}>{item.comment}</Text>
               ) : null}
-              <Text style={styles.date}>
-                {new Date(item.created_at).toLocaleDateString()}
-              </Text>
+              <Text style={styles.date}>{formatDate(item.created_at)}</Text>
             </View>
           )}
         />

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useTranslation } from "@/i18n";
+import { dateLanguageTag } from "@/i18n/formatDateTime";
 
 type Props = {
   value: Date;
@@ -57,10 +58,14 @@ export function DateTimeField({ value, onChange, minimumDate, mode = "datetime" 
     onChange(selected);
   };
 
-  const languageTag = locale === "en" ? "en-GB" : "es-ES";
+  const languageTag = dateLanguageTag(locale);
   const displayValue =
     mode === "date"
-      ? value.toLocaleDateString(languageTag)
+      ? value.toLocaleDateString(languageTag, {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        })
       : mode === "time"
         ? value.toLocaleTimeString(languageTag, {
             hour: "2-digit",
@@ -82,7 +87,7 @@ export function DateTimeField({ value, onChange, minimumDate, mode = "datetime" 
           onValueChange={onValueChange}
           onDismiss={closePicker}
           {...(minimumDate ? { minimumDate } : {})}
-          locale={locale === "en" ? "en-GB" : "es-ES"}
+          locale={languageTag}
           themeVariant="dark"
         />
       ) : null}

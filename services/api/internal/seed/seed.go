@@ -93,6 +93,10 @@ func Load(ctx context.Context, conn *pgx.Conn) (Result, error) {
 		return result, fmt.Errorf("insert demo ratings: %w", err)
 	}
 
+	if _, err := conn.Exec(ctx, syncRatingAggregatesSQL); err != nil {
+		return result, fmt.Errorf("sync rating aggregates: %w", err)
+	}
+
 	return result, nil
 }
 
@@ -119,35 +123,73 @@ SELECT id, 'credit', $1::bigint, 'signup grant'
   FROM users
 `
 
-// Two named accounts for manual testing, plus $2 generated ones so spots have
-// a realistic spread of owners.
+// Two named accounts for screenshots / manual testing, plus $2 generated ones.
+// Emails stay stable (owner@, driver@, driver01@…) so landmark SQL can join them;
+// display names are realistic Spanish names for Play Store captures.
+// rating_sum/count start at 0 and are recomputed after demo ratings insert.
 const insertUsersSQL = `
-INSERT INTO users (email, password_hash, display_name, phone, rating_sum, rating_count)
-SELECT email, $1::text, display_name, phone, rating_sum, rating_count
+WITH first_names(i, n) AS (
+    VALUES (0, 'Ana'), (1, 'Javier'), (2, 'Elena'), (3, 'Miguel'), (4, 'Sofía'),
+           (5, 'Pablo'), (6, 'Marta'), (7, 'Diego'), (8, 'Laura'), (9, 'Álvaro'),
+           (10, 'Nuria'), (11, 'Raúl'), (12, 'Irene'), (13, 'Sergio'), (14, 'Claudia'),
+           (15, 'Hugo'), (16, 'Patricia'), (17, 'Iván'), (18, 'Beatriz'), (19, 'Adrián')
+),
+last_names(i, n) AS (
+    VALUES (0, 'Beltrán'), (1, 'Ortega'), (2, 'Vargas'), (3, 'Romero'), (4, 'Castillo'),
+           (5, 'Herrera'), (6, 'Delgado'), (7, 'Moreno'), (8, 'Serrano'), (9, 'Giménez'),
+           (10, 'Ramos'), (11, 'Vidal'), (12, 'Crespo'), (13, 'Molina'), (14, 'Suárez'),
+           (15, 'Pascual'), (16, 'Navarro'), (17, 'Ibáñez'), (18, 'Cano'), (19, 'León')
+)
+INSERT INTO users (email, password_hash, display_name, phone, email_verified_at, rating_sum, rating_count)
+SELECT email, $1::text, display_name, phone, now(), 0, 0
   FROM (VALUES
-           ('owner@parkxchange.test',  'Owner Demo',  '+34600111001', 27, 6),
-           ('driver@parkxchange.test', 'Driver Demo', '+34600111002', 22, 5)
-       ) AS demo(email, display_name, phone, rating_sum, rating_count)
+           ('owner@parkxchange.test',  'Lucía Navarro',  '+34600111001'),
+           ('driver@parkxchange.test', 'Carlos Méndez',  '+34600111002')
+       ) AS demo(email, display_name, phone)
 UNION ALL
 SELECT 'driver' || lpad(g.i::text, 2, '0') || '@parkxchange.test',
        $1::text,
-       'Driver ' || lpad(g.i::text, 2, '0'),
+       f.n || ' ' || l.n,
        '+34600' || lpad((100000 + g.i)::text, 6, '0'),
-       (12 + (g.i % 8))::int,
-       (3 + (g.i % 5))::int
+       now(),
+       0,
+       0
   FROM generate_series(1, $2::int) AS g(i)
+  JOIN first_names f ON f.i = (g.i - 1) % 20
+  JOIN last_names  l ON l.i = ((g.i - 1) * 3) % 20
 `
 
 // One vehicle per seeded user so every spot can reference an owned car.
 const insertVehiclesSQL = `
+WITH fleet(i, plate_letters, make_model, size_class, color, year) AS (
+    VALUES
+        (0,  'BBC', 'SEAT León',           'medium', 'gris',     2021),
+        (1,  'CDF', 'Volkswagen Golf',     'medium', 'blanco',   2019),
+        (2,  'FGH', 'Renault Clio',        'small',  'azul',     2020),
+        (3,  'JKL', 'Toyota Corolla',      'medium', 'negro',    2022),
+        (4,  'MNP', 'Peugeot 308',         'medium', 'rojo',     2018),
+        (5,  'RST', 'Hyundai Tucson',      'large',  'plata',    2021),
+        (6,  'TVW', 'Fiat 500',            'small',  'blanco',   2017),
+        (7,  'XYZ', 'Kia Sportage',        'large',  'gris',     2023),
+        (8,  'BDF', 'Citroën C3',          'small',  'beige',    2020),
+        (9,  'GHJ', 'Ford Focus',          'medium', 'azul',     2019),
+        (10, 'KLM', 'Opel Corsa',          'small',  'negro',    2021),
+        (11, 'NPR', 'SEAT Ateca',          'large',  'verde',    2022)
+),
+numbered AS (
+    SELECT u.id,
+           (row_number() OVER (ORDER BY u.email) - 1)::int AS rn
+      FROM users u
+)
 INSERT INTO vehicles (owner_id, plate, make_model, size_class, color, year)
-SELECT id,
-       'SEED-' || lpad((row_number() OVER (ORDER BY email))::text, 4, '0'),
-       'Seed Car',
-       'medium',
-       'silver',
-       2020
-  FROM users
+SELECT n.id,
+       lpad(((1000 + n.rn) % 9000 + 1000)::text, 4, '0') || ' ' || f.plate_letters,
+       f.make_model,
+       f.size_class,
+       f.color,
+       f.year
+  FROM numbered n
+  JOIN fleet f ON f.i = n.rn % 12
 `
 
 // Spots are clustered around real Sevilla neighbourhoods rather than scattered
@@ -185,6 +227,8 @@ owners AS (
            count(*) OVER ()                        AS total
       FROM users u
       JOIN vehicles v ON v.owner_id = u.id
+     -- Carlos Méndez stays free of open listings so he can announce in demos.
+     WHERE u.email <> 'driver@parkxchange.test'
 ),
 generated AS (
     SELECT g.i,
@@ -223,6 +267,13 @@ candidates AS (
            END AS leaving_rn
       FROM generated gen
       JOIN owners o ON o.rn = gen.i % o.total
+),
+streets(i, name) AS (
+    VALUES (0, 'Calle Betis'), (1, 'Calle Asunción'), (2, 'Calle Pureza'),
+           (3, 'Calle Pagés del Corro'), (4, 'Avenida de la Constitución'),
+           (5, 'Calle San Fernando'), (6, 'Calle Imagen'), (7, 'Calle Trajano'),
+           (8, 'Calle Luis Montoto'), (9, 'Calle Eduardo Dato'),
+           (10, 'Avenida Kansas City'), (11, 'Calle Torneo')
 )
 INSERT INTO spots (owner_id, vehicle_id, geom, address_hint, size_class, status,
                    price_cents, preferred_departure_at, auto_cancel_no_show,
@@ -230,7 +281,7 @@ INSERT INTO spots (owner_id, vehicle_id, geom, address_hint, size_class, status,
 SELECT c.owner_id,
        c.vehicle_id,
        ST_SetSRID(ST_MakePoint(c.lon, c.lat), 4326),
-       c.district || ', calle de muestra ' || c.i,
+       st.name || ' ' || (12 + (c.i % 80))::text || ', ' || c.district,
        (ARRAY['small', 'medium', 'large'])[1 + floor(c.size_roll * 3)::int],
        CASE WHEN c.status_roll < 0.85 THEN 'available' ELSE 'expired' END,
        1 + floor(c.price_roll * 4)::int,
@@ -274,6 +325,7 @@ SELECT c.owner_id,
             ELSE now() - interval '8 days'
        END
   FROM candidates c
+  JOIN streets st ON st.i = c.i % 12
 `
 
 // Spots at recognisable landmarks. Non-leaving pins belong to the demo owner;
@@ -305,170 +357,164 @@ SELECT u.id,
        END,
        s.bucket = 'leaving'
   FROM (VALUES
-           (-5.97315::double precision, 37.37185::double precision, 'Calle Malvaloca 5, 41013 Sevilla',     'medium', 3, 'soon',    'owner@parkxchange.test'),
-           (-5.99250::double precision, 37.38610::double precision, 'Catedral / Giralda',                 'small',  4, 'later',   'owner@parkxchange.test'),
-           (-5.98690::double precision, 37.37720::double precision, 'Plaza de Espana',                    'medium', 2, 'twoday',  'owner@parkxchange.test'),
-           (-5.99190::double precision, 37.39300::double precision, 'Metropol Parasol (Setas)',           'medium', 2, 'flex',    'owner@parkxchange.test'),
-           (-5.99650::double precision, 37.38240::double precision, 'Torre del Oro',                      'small',  3, 'soon',    'owner@parkxchange.test'),
-           (-5.98850::double precision, 37.37550::double precision, 'Parque de Maria Luisa',              'large',  2, 'later',   'owner@parkxchange.test'),
-           (-5.97050::double precision, 37.38410::double precision, 'Estadio Ramon Sanchez-Pizjuan',      'large',  1, 'twoday',  'owner@parkxchange.test'),
-           (-6.00900::double precision, 37.40500::double precision, 'Isla de la Cartuja',                 'medium', 2, 'flex',    'owner@parkxchange.test'),
-           (-5.97315::double precision, 37.37185::double precision, 'Me voy ya — Malvaloca 5',            'medium', 2, 'leaving', 'owner@parkxchange.test'),
-           (-5.97295::double precision, 37.37170::double precision, 'Me voy ya — Malvaloca 3',            'small',  2, 'leaving', 'driver01@parkxchange.test'),
-           (-5.97335::double precision, 37.37200::double precision, 'Me voy ya — Malvaloca 8',            'medium', 3, 'leaving', 'driver02@parkxchange.test'),
-           (-5.97280::double precision, 37.37215::double precision, 'Me voy ya — esquina Malvaloca',      'large',  1, 'leaving', 'driver03@parkxchange.test'),
-           (-5.97350::double precision, 37.37155::double precision, 'Me voy ya — Malvaloca sur',          'small',  2, 'leaving', 'driver04@parkxchange.test'),
-           (-5.97260::double precision, 37.37195::double precision, 'Me voy ya — junto a Malvaloca',      'medium', 2, 'leaving', 'driver05@parkxchange.test'),
-           (-5.97300::double precision, 37.37235::double precision, 'Me voy ya — Los Remedios',           'medium', 3, 'leaving', 'driver06@parkxchange.test'),
-           (-5.99420::double precision, 37.38360::double precision, 'Me voy ya — Triana',                 'small',  2, 'leaving', 'driver07@parkxchange.test')
+           (-5.97315::double precision, 37.37185::double precision, 'Calle Malvaloca 5, 41013 Sevilla',           'medium', 3, 'soon',    'owner@parkxchange.test'),
+           (-5.99250::double precision, 37.38610::double precision, 'Catedral / Giralda, Centro',                  'small',  4, 'later',   'owner@parkxchange.test'),
+           (-5.98690::double precision, 37.37720::double precision, 'Plaza de España, Parque María Luisa',         'medium', 2, 'twoday',  'owner@parkxchange.test'),
+           (-5.99190::double precision, 37.39300::double precision, 'Metropol Parasol (Setas), Plaza Encarnación', 'medium', 2, 'flex',    'owner@parkxchange.test'),
+           (-5.99650::double precision, 37.38240::double precision, 'Paseo de Colón, Torre del Oro',               'small',  3, 'soon',    'owner@parkxchange.test'),
+           (-5.98850::double precision, 37.37550::double precision, 'Parque de María Luisa, Avenida de Isabel',    'large',  2, 'later',   'owner@parkxchange.test'),
+           (-5.97050::double precision, 37.38410::double precision, 'Estadio Ramón Sánchez-Pizjuán, Nervión',      'large',  1, 'twoday',  'owner@parkxchange.test'),
+           (-6.00900::double precision, 37.40500::double precision, 'Isla de la Cartuja, Camino de los Descubrimientos', 'medium', 2, 'flex', 'owner@parkxchange.test'),
+           (-5.97315::double precision, 37.37185::double precision, 'Calle Malvaloca 5, Los Remedios',             'medium', 2, 'leaving', 'owner@parkxchange.test'),
+           (-5.97295::double precision, 37.37170::double precision, 'Calle Malvaloca 3, Los Remedios',             'small',  2, 'leaving', 'driver01@parkxchange.test'),
+           (-5.97335::double precision, 37.37200::double precision, 'Calle Malvaloca 8, Los Remedios',             'medium', 3, 'leaving', 'driver02@parkxchange.test'),
+           (-5.97280::double precision, 37.37215::double precision, 'Calle Virgen de Luján 12, Los Remedios',      'large',  1, 'leaving', 'driver03@parkxchange.test'),
+           (-5.97350::double precision, 37.37155::double precision, 'Calle Niebla 7, Los Remedios',                'small',  2, 'leaving', 'driver04@parkxchange.test'),
+           (-5.97260::double precision, 37.37195::double precision, 'Avenida República Argentina 22',              'medium', 2, 'leaving', 'driver05@parkxchange.test'),
+           (-5.97300::double precision, 37.37235::double precision, 'Calle Asunción 41, Los Remedios',             'medium', 3, 'leaving', 'driver06@parkxchange.test'),
+           (-5.99420::double precision, 37.38360::double precision, 'Calle Betis 18, Triana',                      'small',  2, 'leaving', 'driver07@parkxchange.test')
        ) AS s(lon, lat, hint, size_class, price_cents, bucket, owner_email)
   JOIN users u ON u.email = s.owner_email
   JOIN vehicles v ON v.owner_id = u.id
 `
 
-// Completed exchanges + review rows so public profiles show comments that match
-// the demo users' rating_sum / rating_count aggregates (Owner 27/6, Driver 22/5).
-// Every timestamp is an offset from now() so a re-seed is always coherent.
+// Completed exchanges + reviews for screenshot-ready public profiles.
+// Featured accounts (owner, driver, driver01–07) get real comments; aggregates
+// on users are recomputed from the ratings rows at the end.
 const insertDemoRatingsSQL = `
-WITH owner AS (
-    SELECT u.id, v.id AS vehicle_id
+WITH reviews(ratee_email, ord, stars, comment) AS (
+    VALUES
+        -- Lucía Navarro (owner)
+        ('owner@parkxchange.test', 1, 5, 'Muy puntual, el intercambio fue rapidísimo.'),
+        ('owner@parkxchange.test', 2, 5, 'Indicaciones claras y plaza justo donde decía.'),
+        ('owner@parkxchange.test', 3, 5, 'Amable y organizado. Repetiría.'),
+        ('owner@parkxchange.test', 4, 4, 'Todo bien; un poco de espera al final.'),
+        ('owner@parkxchange.test', 5, 5, 'Perfecto cerca de Los Remedios.'),
+        ('owner@parkxchange.test', 6, 4, 'Buena comunicación por la app.'),
+        -- Carlos Méndez (driver demo)
+        ('driver@parkxchange.test', 1, 5, 'Llegó a tiempo y dejó el hueco limpio.'),
+        ('driver@parkxchange.test', 2, 5, 'Muy correcto, recomiendo.'),
+        ('driver@parkxchange.test', 3, 4, 'Bien organizado, sin líos.'),
+        ('driver@parkxchange.test', 4, 5, 'Fácil de encontrar el coche.'),
+        ('driver@parkxchange.test', 5, 4, 'Intercambio fluido.'),
+        -- Map «me voy ya» owners (driver01–07)
+        ('driver01@parkxchange.test', 1, 5, 'Súper puntual en Malvaloca.'),
+        ('driver01@parkxchange.test', 2, 5, 'Plaza fácil de meter.'),
+        ('driver01@parkxchange.test', 3, 4, 'Todo correcto.'),
+        ('driver01@parkxchange.test', 4, 5, 'Muy amable.'),
+        ('driver02@parkxchange.test', 1, 5, 'Genial, justo a la hora.'),
+        ('driver02@parkxchange.test', 2, 4, 'Buen sitio para dejar el coche.'),
+        ('driver02@parkxchange.test', 3, 5, 'Sin complicaciones.'),
+        ('driver03@parkxchange.test', 1, 4, 'Correcto y cercano.'),
+        ('driver03@parkxchange.test', 2, 5, 'Excelente experiencia.'),
+        ('driver03@parkxchange.test', 3, 5, 'Repetiré si hace falta.'),
+        ('driver04@parkxchange.test', 1, 5, 'Rápido y claro.'),
+        ('driver04@parkxchange.test', 2, 4, 'Todo ok.'),
+        ('driver04@parkxchange.test', 3, 5, 'Muy buena señalización.'),
+        ('driver05@parkxchange.test', 1, 5, 'Ideal en República Argentina.'),
+        ('driver05@parkxchange.test', 2, 5, 'Puntualísimo.'),
+        ('driver05@parkxchange.test', 3, 4, 'Buen trato.'),
+        ('driver06@parkxchange.test', 1, 4, 'Bien cerca de Asunción.'),
+        ('driver06@parkxchange.test', 2, 5, 'Fácil el intercambio.'),
+        ('driver06@parkxchange.test', 3, 5, 'Recomendable.'),
+        ('driver07@parkxchange.test', 1, 5, 'En Betis, perfecto.'),
+        ('driver07@parkxchange.test', 2, 4, 'Todo salió bien.'),
+        ('driver07@parkxchange.test', 3, 5, 'Muy contento con el hueco.')
+),
+ratees AS (
+    SELECT u.id AS ratee_id, u.email AS ratee_email, v.id AS ratee_vehicle_id
       FROM users u
       JOIN vehicles v ON v.owner_id = u.id
-     WHERE u.email = 'owner@parkxchange.test'
-     LIMIT 1
+     WHERE u.email IN (
+        'owner@parkxchange.test', 'driver@parkxchange.test',
+        'driver01@parkxchange.test', 'driver02@parkxchange.test',
+        'driver03@parkxchange.test', 'driver04@parkxchange.test',
+        'driver05@parkxchange.test', 'driver06@parkxchange.test',
+        'driver07@parkxchange.test'
+     )
 ),
-driver_demo AS (
-    SELECT u.id, v.id AS vehicle_id
-      FROM users u
-      JOIN vehicles v ON v.owner_id = u.id
-     WHERE u.email = 'driver@parkxchange.test'
-     LIMIT 1
-),
-owner_reviews(ord, stars, comment) AS (
-    VALUES
-        (1, 5, 'Muy puntual, intercambio fácil.'),
-        (2, 5, 'Claro con la ubicación y el coche.'),
-        (3, 5, ''),
-        (4, 4, 'Todo bien, un poco de espera.'),
-        (5, 4, 'Recomendable.'),
-        (6, 4, '')
-),
-driver_reviews(ord, stars, comment) AS (
-    VALUES
-        (1, 5, 'Correcto y amable.'),
-        (2, 5, ''),
-        (3, 4, 'Bien organizado.'),
-        (4, 4, 'Sin problemas.'),
-        (5, 4, '')
-),
-owner_raters AS (
-    SELECT r.ord, r.stars, r.comment, u.id AS rater_id, v.id AS rater_vehicle_id,
-           now() - make_interval(days => r.ord) AS exchange_at
-      FROM owner_reviews r
+enriched AS (
+    SELECT rv.ratee_email, rv.ord, rv.stars, rv.comment,
+           re.ratee_id, re.ratee_vehicle_id,
+           rater.u_id AS rater_id,
+           rater.v_id AS rater_vehicle_id,
+           now() - make_interval(days => rv.ord + (abs(hashtext(rv.ratee_email)) % 5)) AS exchange_at
+      FROM reviews rv
+      JOIN ratees re ON re.ratee_email = rv.ratee_email
       JOIN LATERAL (
-          SELECT id FROM users
-           WHERE email LIKE 'driver%@parkxchange.test'
-             AND email <> 'driver@parkxchange.test'
-           ORDER BY email
-           OFFSET r.ord - 1 LIMIT 1
-      ) u ON true
-      JOIN vehicles v ON v.owner_id = u.id
+          SELECT u.id AS u_id, v.id AS v_id
+            FROM users u
+            JOIN vehicles v ON v.owner_id = u.id
+           WHERE u.email LIKE '%@parkxchange.test'
+             AND u.email <> rv.ratee_email
+           ORDER BY u.email
+           OFFSET (rv.ord + abs(hashtext(rv.ratee_email))) % 40
+           LIMIT 1
+      ) rater ON true
 ),
-driver_raters AS (
-    SELECT r.ord, r.stars, r.comment, u.id AS rater_id, v.id AS rater_vehicle_id,
-           now() - make_interval(days => r.ord + 7) AS exchange_at
-      FROM driver_reviews r
-      JOIN LATERAL (
-          SELECT id FROM users
-           WHERE email LIKE 'driver%@parkxchange.test'
-             AND email <> 'driver@parkxchange.test'
-           ORDER BY email DESC
-           OFFSET r.ord - 1 LIMIT 1
-      ) u ON true
-      JOIN vehicles v ON v.owner_id = u.id
-),
-owner_spots AS (
+review_spots AS (
     INSERT INTO spots (
         owner_id, vehicle_id, geom, address_hint, size_class, status,
         price_cents, created_at, expires_at
     )
-    SELECT o.id, o.vehicle_id,
-           ST_SetSRID(ST_MakePoint(-5.974 + r.ord * 0.0003, 37.372), 4326),
-           'Reseña owner ' || r.ord,
+    SELECT e.ratee_id, e.ratee_vehicle_id,
+           ST_SetSRID(ST_MakePoint(
+               -5.974 + (e.ord * 0.00025) + ((abs(hashtext(e.ratee_email)) % 20) * 0.0001),
+               37.372 + ((abs(hashtext(e.ratee_email)) % 15) * 0.0001)
+           ), 4326),
+           'Intercambio reseñado · ' || e.ratee_email || ' · ' || e.ord,
            'medium', 'completed', 2,
-           r.exchange_at - interval '1 day',
-           r.exchange_at + interval '30 minutes'
-      FROM owner o CROSS JOIN owner_raters r
-    RETURNING id, address_hint
+           e.exchange_at - interval '1 day',
+           e.exchange_at + interval '30 minutes'
+      FROM enriched e
+    RETURNING id, address_hint, owner_id
 ),
-owner_res AS (
+review_res AS (
     INSERT INTO reservations (
         spot_id, driver_id, status, price_cents,
         created_at, expires_at, completed_at,
         exchange_at, starts_at, ends_at, reconfirm_by, reconfirmed_at,
         driver_vehicle_id
     )
-    SELECT s.id, r.rater_id, 'completed', 2,
-           r.exchange_at - interval '1 day',
-           r.exchange_at + interval '30 minutes',
-           r.exchange_at + interval '30 minutes',
-           r.exchange_at,
-           r.exchange_at,
-           r.exchange_at + interval '30 minutes',
-           r.exchange_at,
-           r.exchange_at,
-           r.rater_vehicle_id
-      FROM owner_spots s
-      JOIN owner_raters r
-        ON s.address_hint = 'Reseña owner ' || r.ord
-    RETURNING id, driver_id
+    SELECT s.id, e.rater_id, 'completed', 2,
+           e.exchange_at - interval '1 day',
+           e.exchange_at + interval '30 minutes',
+           e.exchange_at + interval '30 minutes',
+           e.exchange_at,
+           e.exchange_at,
+           e.exchange_at + interval '30 minutes',
+           e.exchange_at,
+           e.exchange_at,
+           e.rater_vehicle_id
+      FROM review_spots s
+      JOIN enriched e
+        ON s.owner_id = e.ratee_id
+       AND s.address_hint = 'Intercambio reseñado · ' || e.ratee_email || ' · ' || e.ord
+    RETURNING id, spot_id, driver_id
 ),
-owner_rated AS (
+inserted AS (
     INSERT INTO ratings (reservation_id, rater_id, ratee_id, stars, comment, created_at)
-    SELECT res.id, r.rater_id, (SELECT id FROM owner), r.stars, r.comment,
-           r.exchange_at + interval '1 hour'
-      FROM owner_res res
-      JOIN owner_raters r ON r.rater_id = res.driver_id
-),
-driver_spots AS (
-    INSERT INTO spots (
-        owner_id, vehicle_id, geom, address_hint, size_class, status,
-        price_cents, created_at, expires_at
-    )
-    SELECT d.id, d.vehicle_id,
-           ST_SetSRID(ST_MakePoint(-5.990 + r.ord * 0.0003, 37.380), 4326),
-           'Reseña driver ' || r.ord,
-           'medium', 'completed', 2,
-           r.exchange_at - interval '1 day',
-           r.exchange_at + interval '30 minutes'
-      FROM driver_demo d CROSS JOIN driver_raters r
-    RETURNING id, address_hint
-),
-driver_res AS (
-    INSERT INTO reservations (
-        spot_id, driver_id, status, price_cents,
-        created_at, expires_at, completed_at,
-        exchange_at, starts_at, ends_at, reconfirm_by, reconfirmed_at,
-        driver_vehicle_id
-    )
-    SELECT s.id, r.rater_id, 'completed', 2,
-           r.exchange_at - interval '1 day',
-           r.exchange_at + interval '30 minutes',
-           r.exchange_at + interval '30 minutes',
-           r.exchange_at,
-           r.exchange_at,
-           r.exchange_at + interval '30 minutes',
-           r.exchange_at,
-           r.exchange_at,
-           r.rater_vehicle_id
-      FROM driver_spots s
-      JOIN driver_raters r
-        ON s.address_hint = 'Reseña driver ' || r.ord
-    RETURNING id, driver_id
+    SELECT res.id, e.rater_id, e.ratee_id, e.stars, e.comment,
+           e.exchange_at + interval '1 hour'
+      FROM review_res res
+      JOIN review_spots s ON s.id = res.spot_id
+      JOIN enriched e
+        ON e.ratee_id = s.owner_id
+       AND e.rater_id = res.driver_id
+       AND s.address_hint = 'Intercambio reseñado · ' || e.ratee_email || ' · ' || e.ord
+    RETURNING ratee_id
 )
-INSERT INTO ratings (reservation_id, rater_id, ratee_id, stars, comment, created_at)
-SELECT res.id, r.rater_id, (SELECT id FROM driver_demo), r.stars, r.comment,
-       r.exchange_at + interval '1 hour'
-  FROM driver_res res
-  JOIN driver_raters r ON r.rater_id = res.driver_id
+SELECT count(*) FROM inserted
+`
+
+const syncRatingAggregatesSQL = `
+UPDATE users u
+   SET rating_sum = agg.sum_stars,
+       rating_count = agg.cnt
+  FROM (
+      SELECT ratee_id, SUM(stars)::int AS sum_stars, COUNT(*)::int AS cnt
+        FROM ratings
+       GROUP BY ratee_id
+  ) agg
+ WHERE u.id = agg.ratee_id
 `
