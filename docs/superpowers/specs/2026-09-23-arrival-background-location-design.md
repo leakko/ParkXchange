@@ -91,9 +91,9 @@ Cold start / poll while en-route & !ready & !fired & !already running
 
 ## Acceptance
 
-1. Android: Yendo → ongoing notification appears; force-stop or leave app; walk into ~75 m → **local arrival notification without opening the app**; ongoing notification clears.
+1. Android: Yendo → ongoing notification appears; swipe the app away, leave it backgrounded, or turn the screen off; walk into ~75 m → **local arrival notification without opening the app**; ongoing notification clears. Android force-stop is excluded because the OS intentionally prevents background work afterward.
 2. Same on a second Android device.
-3. iOS: same arrival-with-app-in-background behaviour (system UI for ongoing updates may differ).
+3. iOS: same arrival-with-app-backgrounded behaviour (not necessarily killed from the app switcher; system UI for ongoing updates may differ).
 4. Second entry into the radius in the same exchange does not re-fire.
 5. Kill after Yendo while still far → reopen → updates resume → close again → arrival still fires once.
 6. Assistance OFF → no updates and no ongoing notification.

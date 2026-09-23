@@ -8,6 +8,36 @@ export type ArmedRegion = {
   lat: number;
 };
 
+type ArrivalTrackingReservation = {
+  status: string;
+  owner_id: string;
+  driver_id: string;
+  owner_en_route_at?: string | null;
+  driver_en_route_at?: string | null;
+  owner_ready_at?: string | null;
+  driver_ready_at?: string | null;
+};
+
+export function shouldTrackArrival(
+  reservation: ArrivalTrackingReservation | null,
+  userId: string,
+): boolean {
+  if (!reservation || !["pending", "confirmed", "arrived"].includes(reservation.status)) {
+    return false;
+  }
+  if (reservation.owner_id === userId) {
+    return !!reservation.owner_en_route_at && !reservation.owner_ready_at;
+  }
+  if (reservation.driver_id === userId) {
+    return !!reservation.driver_en_route_at && !reservation.driver_ready_at;
+  }
+  return false;
+}
+
+export function isAccurateEnoughForArrival(accuracyM: number | null | undefined): boolean {
+  return !Number.isFinite(accuracyM) || Number(accuracyM) <= ARRIVAL_RADIUS_M * 2;
+}
+
 export function isInsideArrivalRadius(
   fromLon: number,
   fromLat: number,
@@ -15,9 +45,7 @@ export function isInsideArrivalRadius(
   toLat: number,
   radiusM: number = ARRIVAL_RADIUS_M,
 ): boolean {
-  return (
-    distanceMeters([fromLon, fromLat], [toLon, toLat]) <= radiusM
-  );
+  return distanceMeters([fromLon, fromLat], [toLon, toLat]) <= radiusM;
 }
 
 export function serializeArmedRegion(region: ArmedRegion): string {

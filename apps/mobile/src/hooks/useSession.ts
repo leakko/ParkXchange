@@ -8,6 +8,7 @@ import {
   onSessionCleared,
   setSession,
 } from "@/api/session";
+import { clearArrivalPromptFired, disarmArrivalGeofence } from "@/push/geofence";
 
 type SessionSnapshot = {
   /** True once the initial SecureStore / /v1/me check finished. */
@@ -84,6 +85,7 @@ export async function applySession(accessToken: string, refreshToken: string): P
 }
 
 export async function signOutSession(): Promise<void> {
+  await Promise.allSettled([disarmArrivalGeofence(), clearArrivalPromptFired()]);
   await clearSession();
   publish({ ready: true, signedIn: false, error: null });
 }

@@ -10,6 +10,7 @@ import { loadStoredLocale } from "@/i18n/storage";
 import {
   ARRIVAL_RADIUS_M,
   type ArmedRegion,
+  isAccurateEnoughForArrival,
   isInsideArrivalRadius,
   parseArmedRegion,
   serializeArmedRegion,
@@ -20,6 +21,7 @@ import { getLocationAssistanceEnabled } from "@/push/settings";
 const FIRED_KEY = "parkxchange.geofence.arrivalFired";
 const ARRIVAL_UPDATES_TASK = "parkxchange-arrival-updates";
 const ARMED_KEY = "parkxchange.arrival.armedRegion";
+const ALWAYS_DENIED_KEY = "parkxchange.arrival.alwaysDenied";
 
 let armed: ArmedRegion | null = null;
 /** In-process guard — claim synchronously before any await. */
@@ -54,9 +56,7 @@ async function loadArmed(): Promise<ArmedRegion | null> {
 
 async function stopLocationUpdates(): Promise<void> {
   try {
-    const started = await Location.hasStartedLocationUpdatesAsync(
-      ARRIVAL_UPDATES_TASK,
-    );
+    const started = await Location.hasStartedLocationUpdatesAsync(ARRIVAL_UPDATES_TASK);
     if (started) {
       await Location.stopLocationUpdatesAsync(ARRIVAL_UPDATES_TASK);
     }
@@ -86,9 +86,7 @@ async function persistFiredIds(ids: Set<string>): Promise<void> {
 }
 
 /** True if this exchange already got its one-shot arrival push. */
-export async function hasArrivalPromptFired(
-  reservationId: string,
-): Promise<boolean> {
+export async function hasArrivalPromptFired(reservationId: string): Promise<boolean> {
   if (promptedReservationId === reservationId) {
     return true;
   }
@@ -100,9 +98,7 @@ export async function hasArrivalPromptFired(
  * Forget the one-shot flag when the exchange ends (cancel / complete / expire).
  * Safe to call if it never fired.
  */
-export async function clearArrivalPromptFired(
-  reservationId?: string,
-): Promise<void> {
+export async function clearArrivalPromptFired(reservationId?: string): Promise<void> {
   if (reservationId && promptedReservationId === reservationId) {
     promptedReservationId = null;
   } else if (!reservationId) {
@@ -166,6 +162,7 @@ export async function fireArrivalPrompt(reservationId: string): Promise<void> {
     armed = null;
   }
   await persistArmed(null);
+  await AsyncStorage.removeItem(ALWAYS_DENIED_KEY);
 
   if (alreadyPersisted) {
     return;
@@ -202,11 +199,18 @@ TaskManager.defineTask(ARRIVAL_UPDATES_TASK, async ({ data, error }) => {
     return;
   }
   const payload = data as {
-    locations?: { coords: { longitude: number; latitude: number } }[];
+    locations?: {
+      coords: {
+        longitude: number;
+        latitude: number;
+        accuracy?: number | null;
+      };
+    }[];
   };
   const locs = payload.locations ?? [];
   for (const loc of locs) {
     if (
+      isAccurateEnoughForArrival(loc.coords.accuracy) &&
       isInsideArrivalRadius(
         loc.coords.longitude,
         loc.coords.latitude,
@@ -225,7 +229,10 @@ TaskManager.defineTask(ARRIVAL_UPDATES_TASK, async ({ data, error }) => {
  * One-shot background location tracking after the caller marks «Voy de camino».
  * Never re-arms for a reservation that already fired its arrival push.
  */
-export async function armArrivalGeofence(opts: ArmedRegion): Promise<void> {
+export async function armArrivalGeofence(
+  opts: ArmedRegion,
+  requestAlwaysPermission = true,
+): Promise<void> {
   if (Platform.OS === "web") {
     return;
   }
@@ -236,18 +243,25 @@ export async function armArrivalGeofence(opts: ArmedRegion): Promise<void> {
     // Exchange already got the GPS nudge — coaching continues via server tips.
     return;
   }
+  if (requestAlwaysPermission) {
+    await AsyncStorage.removeItem(ALWAYS_DENIED_KEY);
+  } else if ((await AsyncStorage.getItem(ALWAYS_DENIED_KEY)) === opts.reservationId) {
+    // A poll/cold-start recovery must not reopen the Always permission flow.
+    armed = { ...opts };
+    return;
+  }
 
   const foreground = await Location.requestForegroundPermissionsAsync();
   if (foreground.status !== "granted") {
+    armed = { ...opts };
+    await AsyncStorage.setItem(ALWAYS_DENIED_KEY, opts.reservationId);
     return;
   }
 
   // Background location updates need "always" on Android 10+ / iOS.
   let alwaysOk = false;
   try {
-    const { ensureAlwaysLocation, hasAlwaysLocation } = await import(
-      "@/push/locationPermissions"
-    );
+    const { ensureAlwaysLocation, hasAlwaysLocation } = await import("@/push/locationPermissions");
     const { loadStoredLocale } = await import("@/i18n/storage");
     const locale = (await loadStoredLocale()) ?? "es";
     const t = (key: string) => {
@@ -265,30 +279,26 @@ export async function armArrivalGeofence(opts: ArmedRegion): Promise<void> {
       };
       return (locale === "en" ? en : es)[key] ?? key;
     };
-    if (!(await hasAlwaysLocation())) {
+    if (!(await hasAlwaysLocation()) && requestAlwaysPermission) {
       // Explain at most once per install; never nag on every «Voy de camino».
       await ensureAlwaysLocation({ t, forceExplain: false });
-    } else {
-      await Location.requestBackgroundPermissionsAsync();
     }
     alwaysOk = await hasAlwaysLocation();
   } catch {
     alwaysOk = false;
   }
   if (!alwaysOk) {
+    // Soft-arm this reservation so the 5-second refresh cannot request Always
+    // again. Persist the denial across process death, but not the region: no
+    // native updates are running.
+    armed = { ...opts };
+    await AsyncStorage.setItem(ALWAYS_DENIED_KEY, opts.reservationId);
     // Still allow an immediate in-radius check while foregrounded.
     try {
       const here = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.High,
       });
-      if (
-        isInsideArrivalRadius(
-          here.coords.longitude,
-          here.coords.latitude,
-          opts.lon,
-          opts.lat,
-        )
-      ) {
+      if (isInsideArrivalRadius(here.coords.longitude, here.coords.latitude, opts.lon, opts.lat)) {
         await fireArrivalPrompt(opts.reservationId);
       }
     } catch {
@@ -296,11 +306,11 @@ export async function armArrivalGeofence(opts: ArmedRegion): Promise<void> {
     }
     return;
   }
+  await AsyncStorage.removeItem(ALWAYS_DENIED_KEY);
 
   const already =
-    (await Location.hasStartedLocationUpdatesAsync(
-      ARRIVAL_UPDATES_TASK,
-    ).catch(() => false)) === true;
+    (await Location.hasStartedLocationUpdatesAsync(ARRIVAL_UPDATES_TASK).catch(() => false)) ===
+    true;
   if (already) {
     const stored = await loadArmed();
     if (stored?.reservationId === opts.reservationId) {
@@ -322,14 +332,7 @@ export async function armArrivalGeofence(opts: ArmedRegion): Promise<void> {
     const here = await Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.High,
     });
-    if (
-      isInsideArrivalRadius(
-        here.coords.longitude,
-        here.coords.latitude,
-        opts.lon,
-        opts.lat,
-      )
-    ) {
+    if (isInsideArrivalRadius(here.coords.longitude, here.coords.latitude, opts.lon, opts.lat)) {
       await fireArrivalPrompt(opts.reservationId);
       return;
     }
@@ -340,7 +343,7 @@ export async function armArrivalGeofence(opts: ArmedRegion): Promise<void> {
   const notif = await enRouteNotificationCopy();
   try {
     await Location.startLocationUpdatesAsync(ARRIVAL_UPDATES_TASK, {
-      accuracy: Location.Accuracy.Balanced,
+      accuracy: Location.Accuracy.High,
       distanceInterval: 10,
       timeInterval: 5_000,
       deferredUpdatesInterval: 5_000,
@@ -354,7 +357,8 @@ export async function armArrivalGeofence(opts: ArmedRegion): Promise<void> {
     });
   } catch (err) {
     console.warn("[arrival] startLocationUpdatesAsync failed", err);
-    armed = null;
+    // Keep an in-process soft arm so refresh does not retry every five seconds.
+    armed = { ...opts };
     await persistArmed(null);
   }
 }
@@ -364,6 +368,7 @@ export async function disarmArrivalGeofence(): Promise<void> {
   await stopLocationUpdates();
   armed = null;
   await persistArmed(null);
+  await AsyncStorage.removeItem(ALWAYS_DENIED_KEY);
 }
 
 /** True if background arrival updates are armed for this reservation. */
@@ -385,16 +390,20 @@ export function isArrivalGeofenceArmed(reservationId?: string): boolean {
 export async function armGeofenceForReservation(
   reservationId: string,
   coords?: { lon: number; lat: number } | null,
+  requestAlwaysPermission = true,
 ): Promise<void> {
   if (await hasArrivalPromptFired(reservationId)) {
     return;
   }
   if (coords && Number.isFinite(coords.lon) && Number.isFinite(coords.lat)) {
-    await armArrivalGeofence({
-      reservationId,
-      lon: coords.lon,
-      lat: coords.lat,
-    });
+    await armArrivalGeofence(
+      {
+        reservationId,
+        lon: coords.lon,
+        lat: coords.lat,
+      },
+      requestAlwaysPermission,
+    );
     return;
   }
   try {
@@ -407,7 +416,7 @@ export async function armGeofenceForReservation(
     if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
       return;
     }
-    await armArrivalGeofence({ reservationId, lon, lat });
+    await armArrivalGeofence({ reservationId, lon, lat }, requestAlwaysPermission);
   } catch {
     /* best-effort */
   }

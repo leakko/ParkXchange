@@ -17,32 +17,19 @@ import {
 import { useTranslation } from "@/i18n";
 import { distanceMeters } from "@/map/exchange";
 import { detectExchangeNotif } from "@/map/exchangeNotifs";
-import { armGeofenceForReservation, disarmArrivalGeofence, clearArrivalPromptFired, hasArrivalPromptFired, isArrivalGeofenceArmed } from "@/push/geofence";
+import { shouldTrackArrival } from "@/push/arrivalAssistLogic";
+import {
+  armGeofenceForReservation,
+  clearArrivalPromptFired,
+  disarmArrivalGeofence,
+  hasArrivalPromptFired,
+  isArrivalGeofenceArmed,
+} from "@/push/geofence";
 import { useConfirm } from "@/ui/ConfirmModal";
 import { useToast } from "@/ui/toast";
 
 function isLiveStatus(status: string | undefined): boolean {
   return status === "pending" || status === "confirmed" || status === "arrived";
-}
-
-function myEnRouteAt(res: ReservationResponse, meId: string): string | null {
-  if (res.owner_id === meId) {
-    return res.owner_en_route_at ?? null;
-  }
-  if (res.driver_id === meId) {
-    return res.driver_en_route_at ?? null;
-  }
-  return null;
-}
-
-function myReadyAt(res: ReservationResponse, meId: string): string | null {
-  if (res.owner_id === meId) {
-    return res.owner_ready_at ?? null;
-  }
-  if (res.driver_id === meId) {
-    return res.driver_ready_at ?? null;
-  }
-  return null;
 }
 
 /** Poll/WS often return equal payloads with new object identity — skip those. */
@@ -103,9 +90,7 @@ export function useActiveReservation(enabled: boolean) {
   const { t } = useTranslation();
   const { show } = useToast();
   const { confirm, alert } = useConfirm();
-  const [active, setActive] = useState<ReservationResponse | null>(
-    () => cachedActiveReservation,
-  );
+  const [active, setActive] = useState<ReservationResponse | null>(() => cachedActiveReservation);
   const [spot, setSpot] = useState<SpotFeature | null>(() => cachedActiveSpot);
   const [userId, setUserId] = useState<string | null>(() => cachedActiveUserId);
   const [busy, setBusy] = useState(false);
@@ -150,9 +135,7 @@ export function useActiveReservation(enabled: boolean) {
       }
       lastNotifKeyRef.current = dedupe;
       const title =
-        event.kind === "completed"
-          ? t("exchange.completed.title")
-          : t("exchange.notif.title");
+        event.kind === "completed" ? t("exchange.completed.title") : t("exchange.notif.title");
       show({ title, body: t(event.key), durationMs: 5500 });
     },
     [show, t],
@@ -176,6 +159,7 @@ export function useActiveReservation(enabled: boolean) {
           publishActive(null);
           publishUserId(me.id);
           publishSpot(null);
+          await Promise.all([disarmArrivalGeofence(), clearArrivalPromptFired(prev.id)]);
           return;
         } catch {
           /* fall through */
@@ -193,27 +177,25 @@ export function useActiveReservation(enabled: boolean) {
 
       // Recover geofence only if this exchange never got its one-shot arrival
       // push — otherwise oscillating the fence would keep re-arming and firing.
-      if (
-        next &&
-        spotFeature &&
-        isLiveStatus(next.status) &&
-        myEnRouteAt(next, me.id) &&
-        !myReadyAt(next, me.id) &&
-        !isArrivalGeofenceArmed(next.id)
-      ) {
+      const shouldTrack = !!next && !!spotFeature && shouldTrackArrival(next, me.id);
+      if (shouldTrack && next && spotFeature && !isArrivalGeofenceArmed(next.id)) {
         const coords = spotFeature.geometry.coordinates;
         const lon = Number(coords[0]);
         const lat = Number(coords[1]);
         if (Number.isFinite(lon) && Number.isFinite(lat)) {
           void hasArrivalPromptFired(next.id).then((fired) => {
             if (!fired) {
-              void armGeofenceForReservation(next.id, { lon, lat });
+              void armGeofenceForReservation(next.id, { lon, lat }, false);
             }
           });
         }
-      } else if (prev && (!next || !isLiveStatus(next.status))) {
-        void clearArrivalPromptFired(prev.id);
-        void disarmArrivalGeofence();
+      } else if (!shouldTrack) {
+        await Promise.all([
+          disarmArrivalGeofence(),
+          prev && (!next || !isLiveStatus(next.status))
+            ? clearArrivalPromptFired(prev.id)
+            : Promise.resolve(),
+        ]);
       }
     } catch {
       /* keep previous */
@@ -428,8 +410,6 @@ export async function announceAt(
     auto_cancel_no_show: opts.autoCancelNoShow,
     vehicle_id: opts.vehicleId,
     notes: opts.notes,
-    ...(opts.addressHint?.trim()
-      ? { address_hint: opts.addressHint.trim() }
-      : {}),
+    ...(opts.addressHint?.trim() ? { address_hint: opts.addressHint.trim() } : {}),
   });
 }
