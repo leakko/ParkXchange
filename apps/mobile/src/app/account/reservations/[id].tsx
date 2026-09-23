@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -22,6 +23,10 @@ import { ExchangeStatusPanel } from "@/map/ExchangeStatusPanel";
 import { PeerVehiclePanel } from "@/map/PeerVehiclePanel";
 import { useConfirm } from "@/ui/ConfirmModal";
 import {
+  RateExchangeModal,
+  isRatingDismissed,
+} from "@/ui/RateExchangeModal";
+import {
   completedMessageKey,
   driverCancelMessageKey,
   ownerCancelMessageKey,
@@ -42,6 +47,7 @@ export default function ReservationDetailScreen() {
   const router = useRouter();
   const { signedIn } = useSession();
   const queryClient = useQueryClient();
+  const [rateOpen, setRateOpen] = useState(false);
 
   const me = useQuery({
     queryKey: ["me"],
@@ -118,6 +124,22 @@ export default function ReservationDetailScreen() {
     },
   });
 
+  useEffect(() => {
+    const current = reservation.data;
+    if (!current || current.status !== "completed" || !current.can_rate) {
+      return;
+    }
+    let cancelled = false;
+    void isRatingDismissed(current.id).then((dismissed) => {
+      if (!cancelled && !dismissed) {
+        setRateOpen(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [reservation.data?.id, reservation.data?.status, reservation.data?.can_rate]);
+
   if (!signedIn || reservation.isLoading || me.isLoading) {
     return (
       <View style={[accountStyles.screen, { justifyContent: "center", alignItems: "center" }]}>
@@ -153,6 +175,7 @@ export default function ReservationDetailScreen() {
   const myReady = isOwner ? res.owner_ready_at : res.driver_ready_at;
   const myEnRoute = isOwner ? res.owner_en_route_at : res.driver_en_route_at;
   const deadline = isOwner ? driverNoShowDeadline(res) : ownerNoShowDeadline(res);
+  const peerId = isOwner ? res.driver_id : res.owner_id;
 
   const confirmReady = () => {
     void (async () => {
@@ -217,6 +240,22 @@ export default function ReservationDetailScreen() {
           datetime: formatDateTime(res.exchange_at),
         })}
       </Text>
+
+      <Pressable
+        onPress={() => router.push(`/user/${peerId}` as Href)}
+        style={{ marginTop: 8 }}
+      >
+        <Text style={accountStyles.link}>{t("profile.public.view")}</Text>
+      </Pressable>
+
+      {res.status === "completed" && res.can_rate ? (
+        <Pressable
+          style={[accountStyles.primary, { marginTop: 12 }]}
+          onPress={() => setRateOpen(true)}
+        >
+          <Text style={accountStyles.primaryText}>{t("rating.cta")}</Text>
+        </Pressable>
+      ) : null}
 
       {live && (isOwner || isDriver) ? (
         <View style={{ gap: 10, marginTop: 16 }}>
@@ -304,6 +343,13 @@ export default function ReservationDetailScreen() {
           </Pressable>
         </View>
       ) : null}
+
+      <RateExchangeModal
+        reservationId={res.id}
+        visible={rateOpen}
+        onClose={() => setRateOpen(false)}
+        onSubmitted={() => void invalidate()}
+      />
     </ScrollView>
   );
 }

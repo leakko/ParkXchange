@@ -568,6 +568,46 @@ func (s *Service) Profile(ctx context.Context, userID string) (domain.User, erro
 	return user, nil
 }
 
+// PublicProfile is the non-sensitive card shown when tapping another user.
+type PublicProfile struct {
+	UserID      string
+	DisplayName string
+	Rating      *float64
+	RatingCount int
+	Reviews     []domain.Rating
+}
+
+// PublicProfile loads display name, aggregates, and a page of named reviews.
+func (s *Service) PublicProfile(ctx context.Context, userID string, limit, offset int) (PublicProfile, error) {
+	if userID == "" {
+		return PublicProfile{}, domain.NotFound("user_not_found", "that user does not exist")
+	}
+	user, err := s.store.UserByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			return PublicProfile{}, domain.NotFound("user_not_found", "that user does not exist")
+		}
+		return PublicProfile{}, domain.Internal(err)
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	reviews, err := s.store.ListRatingsForUser(ctx, userID, limit, offset)
+	if err != nil {
+		return PublicProfile{}, domain.Internal(err)
+	}
+	out := PublicProfile{
+		UserID:      user.ID,
+		DisplayName: user.DisplayName,
+		RatingCount: user.RatingCount,
+		Reviews:     reviews,
+	}
+	if avg, ok := user.Rating(); ok {
+		out.Rating = &avg
+	}
+	return out, nil
+}
+
 // DeleteAccount closes the signed-in user's account: cancels active marketplace
 // commitments, erases personal data, and tombstones the row so the ledger can
 // stay append-only.

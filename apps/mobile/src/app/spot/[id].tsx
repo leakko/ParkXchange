@@ -190,7 +190,18 @@ export default function SpotDetailScreen() {
       </View>
 
       <View style={styles.header}>
-        <View style={styles.titleRow}>
+        <Pressable
+          disabled={!spot?.properties.owner_id || !!spot.properties.is_mine}
+          onPress={() => {
+            const oid = spot?.properties.owner_id;
+            if (oid) {
+              router.push(`/user/${oid}` as Href);
+            }
+          }}
+          style={styles.titleRow}
+          accessibilityRole="link"
+          accessibilityLabel={title}
+        >
           <Text style={styles.title} numberOfLines={1}>
             {title}
           </Text>
@@ -199,7 +210,7 @@ export default function SpotDetailScreen() {
               {ratingLabel}
             </Text>
           ) : null}
-        </View>
+        </Pressable>
         <Pressable
           onPress={close}
           hitSlop={12}

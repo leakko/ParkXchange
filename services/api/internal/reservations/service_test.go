@@ -67,6 +67,48 @@ func (f *fakeStore) SpotOwnerVehicleSummary(context.Context, string) (domain.Veh
 func (f *fakeStore) VehiclePhoto(context.Context, string) ([]byte, string, error) {
 	return nil, "", domain.ErrNoRows
 }
+func (f *fakeStore) RecordRating(_ context.Context, draft domain.RatingDraft) (domain.Rating, error) {
+	return domain.Rating{
+		ID: "rating-1", ReservationID: draft.ReservationID,
+		RaterID: draft.RaterID, RateeID: draft.RateeID,
+		Stars: draft.Stars, Comment: draft.Comment, CreatedAt: time.Now(),
+	}, nil
+}
+func (f *fakeStore) RatingsForReservation(context.Context, string) ([]domain.Rating, error) {
+	return nil, nil
+}
+
+func TestRateCompletedExchange(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{
+		res: domain.Reservation{
+			ID: "r1", OwnerID: "o1", DriverID: "d1", Status: domain.ResCompleted,
+		},
+	}
+	svc := reservations.New(store)
+	rating, err := svc.Rate(context.Background(), "r1", domain.Claims{UserID: "d1"}, 5, "great")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rating.RateeID != "o1" || rating.Stars != 5 || rating.Comment != "great" {
+		t.Fatalf("rating = %+v", rating)
+	}
+}
+
+func TestRateRejectedWhenNotCompleted(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{
+		res: domain.Reservation{
+			ID: "r1", OwnerID: "o1", DriverID: "d1", Status: domain.ResConfirmed,
+		},
+	}
+	_, err := reservations.New(store).Rate(
+		context.Background(), "r1", domain.Claims{UserID: "d1"}, 4, "")
+	var d *domain.Error
+	if !errors.As(err, &d) || d.Code != "reservation_not_completed" {
+		t.Fatalf("err = %v", err)
+	}
+}
 
 func TestReadyCompletesWhenStoreSaysSo(t *testing.T) {
 	t.Parallel()

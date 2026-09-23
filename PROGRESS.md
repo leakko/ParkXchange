@@ -26,12 +26,14 @@ If that test fails, fix the code, not the test.
   mobile smoke). Ops handoff **smoke passed**.
 - **Also open:** payments deferred. Location permission policy — device demo
   pending. Account-delete confirm is now an in-app modal (pushed).
-- **Listing expiry / public Get filter:** **coded** on branch (merge pending
-  PostGIS smoke when Docker is up) per
-  [2026-09-23-listing-expiry-public-filter-design.md](docs/superpowers/specs/2026-09-23-listing-expiry-public-filter-design.md):
-  preferred create → `expires_at = preferred+24h`; MaxLeadTime stays 7d;
-  strangers 404 on terminal/clock-dead spots unless reservation party.
-- **Arrival background location:** **coded**, pending **device smoke** (Android×2 +
+- **Ratings + public profile:** **coded** on `feature/ratings-public-profile`
+  (merge to main in this commit set) per
+  [2026-09-23-ratings-public-profile-design.md](docs/superpowers/specs/2026-09-23-ratings-public-profile-design.md):
+  optional mutual post-complete ratings; `GET /v1/users/{id}/profile`; spot
+  offerer name and reservation peer link open the public profile.
+- **Listing expiry / public Get filter:** **on main**, pending PostGIS smoke when
+  Docker is up.
+- **Arrival background location:** **on main**, pending **device smoke** (Android×2 +
   iOS) per
   [2026-09-23-arrival-background-location-design.md](docs/superpowers/specs/2026-09-23-arrival-background-location-design.md)
   acceptance. Requires **rebuild** of preview/dev client after `app.config`
@@ -55,13 +57,13 @@ If that test fails, fix the code, not the test.
 1. Finish Play Console App content + store listing; produce production AAB;
    internal testing track.
 2. Start PostGIS and run the pending full API suite/seed verification; deploy
-   the departure filter + flexible expiry + listing Get-filter API, then
-   device-smoke the map filter and guest login gates. Rebuild the preview APK
-   only when asked.
+   the departure filter + flexible expiry + listing Get-filter + ratings API,
+   then device-smoke the map filter, guest login gates, and rating/profile flows.
+   Rebuild the preview APK only when asked.
 3. Device smoke for location policy (foreground vs «Voy de camino»).
 4. Rebuild preview/dev client; device smoke arrival background location
    (Android×2 + iOS) per arrival-background-location design acceptance.
-5. Next product: ratings + public offerer profile, then «Me voy ya».
+5. Next product: «Me voy ya» in-car modality.
 
 
 ---
@@ -674,6 +676,18 @@ instead; the container then became ready in about a second.
 ---
 
 ## Session log
+
+### 2026-09-23 — Ratings + public offerer profile
+
+- Optional mutual ratings after `completed` only: `POST /v1/reservations/{id}/rating`
+  writes `ratings` and bumps `users.rating_*` in one transaction.
+- Public `GET /v1/users/{id}/profile` returns display name, average, count, and
+  named reviews (no email/phone/vehicles/balance).
+- Mobile: post-complete modal + reservation CTA, peer “View profile”, spot
+  sheet offerer name → `/user/[id]`.
+- **Verified:** mobile typecheck; domain + reservations + accounts + arch unit
+  tests; `cmd/api` build. Docker was down — full `task api:test` / migrate
+  against PostGIS still pending before deploy.
 
 ### 2026-09-23 — Map departure filter + guest auth gate
 

@@ -381,6 +381,37 @@ type OfferResponse struct {
 // OfferResponseStatus defines model for OfferResponse.Status.
 type OfferResponseStatus string
 
+// PublicReview defines model for PublicReview.
+type PublicReview struct {
+	Comment   *string   `json:"comment,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	RaterName string    `json:"rater_name"`
+	Stars     int       `json:"stars"`
+}
+
+// PublicUserProfile defines model for PublicUserProfile.
+type PublicUserProfile struct {
+	DisplayName string             `json:"display_name"`
+	Id          openapi_types.UUID `json:"id"`
+	Rating      *float64           `json:"rating,omitempty"`
+	RatingCount int                `json:"rating_count"`
+	Reviews     []PublicReview     `json:"reviews"`
+}
+
+// RateReservationRequest defines model for RateReservationRequest.
+type RateReservationRequest struct {
+	Comment *string `json:"comment,omitempty"`
+	Stars   int     `json:"stars"`
+}
+
+// RatingSummary defines model for RatingSummary.
+type RatingSummary struct {
+	Comment   *string   `json:"comment,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	RaterName *string   `json:"rater_name,omitempty"`
+	Stars     int       `json:"stars"`
+}
+
 // ReadyResponse defines model for ReadyResponse.
 type ReadyResponse struct {
 	Database string `json:"database"`
@@ -404,6 +435,9 @@ type RegisterRequest struct {
 
 // ReservationResponse defines model for ReservationResponse.
 type ReservationResponse struct {
+	// CanRate True when the caller may still submit a rating
+	CanRate *bool `json:"can_rate,omitempty"`
+
 	// CancelReason Why the reservation ended when status is cancelled/expired. Values include owner, driver, driver_late, driver_no_show, owner_no_show, safety_net, safety_net_owner_ready.
 	CancelReason    *string            `json:"cancel_reason,omitempty"`
 	CreatedAt       time.Time          `json:"created_at"`
@@ -416,6 +450,7 @@ type ReservationResponse struct {
 	DriverVehicleId *openapi_types.UUID `json:"driver_vehicle_id,omitempty"`
 	ExchangeAt      time.Time           `json:"exchange_at"`
 	Id              openapi_types.UUID  `json:"id"`
+	MyRating        *RatingSummary      `json:"my_rating,omitempty"`
 	OfferId         *openapi_types.UUID `json:"offer_id,omitempty"`
 	OwnerEnRouteAt  *time.Time          `json:"owner_en_route_at,omitempty"`
 	OwnerId         openapi_types.UUID  `json:"owner_id"`
@@ -423,6 +458,7 @@ type ReservationResponse struct {
 
 	// OwnerVehicle Car occupying the spot (owner) — visible to both parties
 	OwnerVehicle *VehicleSummary    `json:"owner_vehicle,omitempty"`
+	PeerRating   *RatingSummary     `json:"peer_rating,omitempty"`
 	PriceCents   int                `json:"price_cents"`
 	SpotId       openapi_types.UUID `json:"spot_id"`
 
@@ -707,6 +743,12 @@ type ListSpotsParams struct {
 	IncludeFlexible *IncludeFlexible `form:"include_flexible,omitempty" json:"include_flexible,omitempty"`
 }
 
+// GetUserProfileParams defines parameters for GetUserProfile.
+type GetUserProfileParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // OpenWebSocketParams defines parameters for OpenWebSocket.
 type OpenWebSocketParams struct {
 	// Ticket Ticket from POST /v1/ws/tickets; not an access token
@@ -745,6 +787,9 @@ type ChangePasswordJSONRequestBody = ChangePasswordRequest
 
 // PutPushTokenJSONRequestBody defines body for PutPushToken for application/json ContentType.
 type PutPushTokenJSONRequestBody PutPushTokenJSONBody
+
+// RateReservationJSONRequestBody defines body for RateReservation for application/json ContentType.
+type RateReservationJSONRequestBody = RateReservationRequest
 
 // CreateSpotJSONRequestBody defines body for CreateSpot for application/json ContentType.
 type CreateSpotJSONRequestBody = CreateSpotRequest

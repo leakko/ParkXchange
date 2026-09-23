@@ -100,6 +100,9 @@ type Store interface {
 
 	// UpsertPushToken registers an Expo push token for the user.
 	UpsertPushToken(ctx context.Context, userID, token, platform string) error
+
+	// ListRatingsForUser returns newest ratings of rateeID, with rater names.
+	ListRatingsForUser(ctx context.Context, rateeID string, limit, offset int) ([]domain.Rating, error)
 }
 
 // GoogleIdentity is what a verified ID token asserts about the Google account.

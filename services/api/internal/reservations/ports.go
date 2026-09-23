@@ -35,6 +35,13 @@ type Store interface {
 	SpotOwnerVehicleSummary(ctx context.Context, spotID string) (domain.VehicleSummary, error)
 	// VehiclePhoto returns stored image bytes for a vehicle id, or ErrNoRows.
 	VehiclePhoto(ctx context.Context, vehicleID string) (photo []byte, contentType string, err error)
+
+	// RecordRating inserts a rating and bumps the ratee's aggregates in one
+	// transaction. ErrDuplicate when the rater already rated this reservation.
+	RecordRating(ctx context.Context, draft domain.RatingDraft) (domain.Rating, error)
+
+	// RatingsForReservation returns all ratings for the exchange (0–2).
+	RatingsForReservation(ctx context.Context, reservationID string) ([]domain.Rating, error)
 }
 
 // SweepResult is what one pass of the sweeper did, for logs and tests.

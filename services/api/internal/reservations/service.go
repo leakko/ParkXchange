@@ -99,6 +99,71 @@ func (s *Service) Get(ctx context.Context, id string, viewer domain.Claims) (dom
 	return res, nil
 }
 
+// RatingView is rating state for a reservation party.
+type RatingView struct {
+	CanRate    bool
+	MyRating   *domain.Rating
+	PeerRating *domain.Rating
+}
+
+// Rate records the caller's optional score of the other party after complete.
+func (s *Service) Rate(ctx context.Context, id string, viewer domain.Claims, stars int, comment string) (domain.Rating, error) {
+	if !viewer.Authenticated() {
+		return domain.Rating{}, domain.Unauthenticated("unauthorized", "an access token is required")
+	}
+	res, err := s.store.ReservationByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			return domain.Rating{}, domain.NotFound("reservation_not_found", "that reservation does not exist")
+		}
+		return domain.Rating{}, domain.Internal(err)
+	}
+	draft, err := domain.NewRating(res, domain.NewRatingInput{
+		ReservationID: id,
+		RaterID:       viewer.UserID,
+		Stars:         stars,
+		Comment:       comment,
+	})
+	if err != nil {
+		return domain.Rating{}, err
+	}
+	rating, err := s.store.RecordRating(ctx, draft)
+	if err != nil {
+		if errors.Is(err, domain.ErrDuplicate) {
+			return domain.Rating{}, domain.Conflict("already_rated",
+				"you have already rated this exchange")
+		}
+		return domain.Rating{}, domain.Internal(err)
+	}
+	return rating, nil
+}
+
+// RatingsFor returns can_rate / my / peer for the viewer on a reservation they can see.
+func (s *Service) RatingsFor(ctx context.Context, res domain.Reservation, viewer domain.Claims) (RatingView, error) {
+	var view RatingView
+	if !res.Involves(viewer.UserID) {
+		return view, nil
+	}
+	list, err := s.store.RatingsForReservation(ctx, res.ID)
+	if err != nil {
+		return view, domain.Internal(err)
+	}
+	view.CanRate = res.CanRate(viewer.UserID)
+	for i := range list {
+		r := list[i]
+		switch r.RaterID {
+		case viewer.UserID:
+			cp := r
+			view.MyRating = &cp
+			view.CanRate = false
+		default:
+			cp := r
+			view.PeerRating = &cp
+		}
+	}
+	return view, nil
+}
+
 // PartyVehicles is the owner’s spot car and the driver’s offer car — what each
 // party needs to recognise the other at the handover.
 type PartyVehicles struct {

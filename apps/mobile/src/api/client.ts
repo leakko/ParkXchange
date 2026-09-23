@@ -520,6 +520,60 @@ export async function reservationUnready(id: string): Promise<void> {
   }
 }
 
+export type RatingSummary = {
+  stars: number;
+  comment?: string;
+  rater_name?: string;
+  created_at: string;
+};
+
+export type PublicUserProfile = {
+  id: string;
+  display_name: string;
+  rating: number | null;
+  rating_count: number;
+  reviews: {
+    rater_name: string;
+    stars: number;
+    comment?: string;
+    created_at: string;
+  }[];
+};
+
+export async function rateReservation(
+  id: string,
+  body: { stars: number; comment?: string },
+): Promise<RatingSummary> {
+  const res = await apiFetch(`/v1/reservations/${id}/rating`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as RatingSummary;
+}
+
+export async function getUserProfile(
+  id: string,
+  opts?: { limit?: number; offset?: number },
+): Promise<PublicUserProfile> {
+  const q = new URLSearchParams();
+  if (opts?.limit != null) {
+    q.set("limit", String(opts.limit));
+  }
+  if (opts?.offset != null) {
+    q.set("offset", String(opts.offset));
+  }
+  const qs = q.toString();
+  const res = await apiFetch(`/v1/users/${id}/profile${qs ? `?${qs}` : ""}`);
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as PublicUserProfile;
+}
+
 /** @deprecated Prefer reservationReady — owner “listo en el punto”. */
 export async function ownerReady(id: string): Promise<void> {
   await reservationReady(id);

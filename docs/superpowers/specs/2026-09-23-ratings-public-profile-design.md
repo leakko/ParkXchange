@@ -1,6 +1,6 @@
 # Design: mutual ratings + public offerer profile
 
-Status: **approved** (2026-09-23)  
+Status: **implemented** (2026-09-23) — pending PostGIS migrate + device smoke  
 Approach: **`ratings` table + denormalised `users.rating_sum` / `rating_count`**  
 Related:
 - [2026-09-19-location-privacy-reveal-design.md](./2026-09-19-location-privacy-reveal-design.md) — deferred BlaBlaCar-style rating (this spec)

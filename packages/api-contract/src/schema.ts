@@ -534,6 +534,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/reservations/{id}/rating": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rate the other party after a completed exchange */
+        post: operations["rateReservation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/users/{id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public profile with ratings */
+        get: operations["getUserProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/reservations/{id}/peer-vehicle/photo": {
         parameters: {
             query?: never;
@@ -912,6 +946,37 @@ export interface components {
             created_at: string;
             /** @description Spot meeting point for list/detail UX (navigate + re-announce). Exact coords; both reservation parties already shared this place. */
             spot_summary?: components["schemas"]["ReservationSpotSummary"];
+            /** @description True when the caller may still submit a rating */
+            can_rate?: boolean;
+            my_rating?: components["schemas"]["RatingSummary"];
+            peer_rating?: components["schemas"]["RatingSummary"];
+        };
+        RateReservationRequest: {
+            stars: number;
+            comment?: string;
+        };
+        RatingSummary: {
+            stars: number;
+            comment?: string;
+            rater_name?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        PublicUserProfile: {
+            /** Format: uuid */
+            id: string;
+            display_name: string;
+            /** Format: double */
+            rating?: number | null;
+            rating_count: number;
+            reviews: components["schemas"]["PublicReview"][];
+        };
+        PublicReview: {
+            rater_name: string;
+            stars: number;
+            comment?: string;
+            /** Format: date-time */
+            created_at: string;
         };
         ReservationSpotSummary: {
             /** Format: double */
@@ -2001,6 +2066,62 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    rateReservation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ReservationID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RateReservationRequest"];
+            };
+        };
+        responses: {
+            /** @description Rating created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RatingSummary"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    getUserProfile: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Public profile */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicUserProfile"];
+                };
+            };
             404: components["responses"]["Error"];
         };
     };

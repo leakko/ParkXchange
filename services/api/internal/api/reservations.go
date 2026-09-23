@@ -17,6 +17,13 @@ type reservationSpotSummaryJSON struct {
 	VehicleID   string  `json:"vehicle_id,omitempty"`
 }
 
+type ratingJSON struct {
+	Stars     int       `json:"stars"`
+	Comment   string    `json:"comment,omitempty"`
+	RaterName string    `json:"rater_name,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type reservationResponse struct {
 	ID              string                      `json:"id"`
 	SpotID          string                      `json:"spot_id"`
@@ -36,6 +43,9 @@ type reservationResponse struct {
 	OwnerVehicle    *vehicleSummaryJSON         `json:"owner_vehicle,omitempty"`
 	DriverVehicle   *vehicleSummaryJSON         `json:"driver_vehicle,omitempty"`
 	SpotSummary     *reservationSpotSummaryJSON `json:"spot_summary,omitempty"`
+	CanRate         bool                        `json:"can_rate"`
+	MyRating        *ratingJSON                 `json:"my_rating,omitempty"`
+	PeerRating      *ratingJSON                 `json:"peer_rating,omitempty"`
 }
 
 func toReservationResponse(r domain.Reservation) reservationResponse {
@@ -51,7 +61,7 @@ func toReservationResponse(r domain.Reservation) reservationResponse {
 	}
 }
 
-func (a *API) enrichReservation(ctx context.Context, r domain.Reservation) reservationResponse {
+func (a *API) enrichReservation(ctx context.Context, r domain.Reservation, viewer domain.Claims) reservationResponse {
 	out := toReservationResponse(r)
 	if a.reserves != nil {
 		parties := a.reserves.PartyVehicles(ctx, r)
@@ -62,6 +72,22 @@ func (a *API) enrichReservation(ctx context.Context, r domain.Reservation) reser
 		if parties.Driver.ID != "" {
 			v := toVehicleSummary(parties.Driver)
 			out.DriverVehicle = &v
+		}
+		if ratings, err := a.reserves.RatingsFor(ctx, r, viewer); err == nil {
+			out.CanRate = ratings.CanRate
+			if ratings.MyRating != nil {
+				out.MyRating = &ratingJSON{
+					Stars: ratings.MyRating.Stars, Comment: ratings.MyRating.Comment,
+					CreatedAt: ratings.MyRating.CreatedAt,
+				}
+			}
+			if ratings.PeerRating != nil {
+				out.PeerRating = &ratingJSON{
+					Stars: ratings.PeerRating.Stars, Comment: ratings.PeerRating.Comment,
+					RaterName: ratings.PeerRating.RaterName,
+					CreatedAt: ratings.PeerRating.CreatedAt,
+				}
+			}
 		}
 	}
 	if a.spots != nil && r.SpotID != "" {
@@ -80,11 +106,12 @@ func (a *API) enrichReservation(ctx context.Context, r domain.Reservation) reser
 }
 
 func (a *API) handleGetReservation(w http.ResponseWriter, r *http.Request) error {
-	res, err := a.reserves.Get(r.Context(), r.PathValue("id"), claimsFrom(r.Context()))
+	viewer := claimsFrom(r.Context())
+	res, err := a.reserves.Get(r.Context(), r.PathValue("id"), viewer)
 	if err != nil {
 		return err
 	}
-	return web.JSON(w, http.StatusOK, a.enrichReservation(r.Context(), res))
+	return web.JSON(w, http.StatusOK, a.enrichReservation(r.Context(), res, viewer))
 }
 
 func (a *API) handleReservationPeerVehiclePhoto(w http.ResponseWriter, r *http.Request) error {
@@ -100,25 +127,27 @@ func (a *API) handleReservationPeerVehiclePhoto(w http.ResponseWriter, r *http.R
 }
 
 func (a *API) handleActiveReservations(w http.ResponseWriter, r *http.Request) error {
-	found, err := a.reserves.Active(r.Context(), claimsFrom(r.Context()))
+	viewer := claimsFrom(r.Context())
+	found, err := a.reserves.Active(r.Context(), viewer)
 	if err != nil {
 		return err
 	}
 	out := make([]reservationResponse, 0, len(found))
 	for _, res := range found {
-		out = append(out, a.enrichReservation(r.Context(), res))
+		out = append(out, a.enrichReservation(r.Context(), res, viewer))
 	}
 	return web.JSON(w, http.StatusOK, out)
 }
 
 func (a *API) handleListReservations(w http.ResponseWriter, r *http.Request) error {
-	found, err := a.reserves.List(r.Context(), claimsFrom(r.Context()))
+	viewer := claimsFrom(r.Context())
+	found, err := a.reserves.List(r.Context(), viewer)
 	if err != nil {
 		return err
 	}
 	out := make([]reservationResponse, 0, len(found))
 	for _, res := range found {
-		out = append(out, a.enrichReservation(r.Context(), res))
+		out = append(out, a.enrichReservation(r.Context(), res, viewer))
 	}
 	return web.JSON(w, http.StatusOK, out)
 }
@@ -150,4 +179,24 @@ func (a *API) handleReservationUnready(w http.ResponseWriter, r *http.Request) e
 		return err
 	}
 	return web.NoContent(w)
+}
+
+type rateRequest struct {
+	Stars   int    `json:"stars"`
+	Comment string `json:"comment"`
+}
+
+func (a *API) handleRateReservation(w http.ResponseWriter, r *http.Request) error {
+	var req rateRequest
+	if err := web.DecodeJSON(w, r, &req); err != nil {
+		return err
+	}
+	rating, err := a.reserves.Rate(
+		r.Context(), r.PathValue("id"), claimsFrom(r.Context()), req.Stars, req.Comment)
+	if err != nil {
+		return err
+	}
+	return web.JSON(w, http.StatusCreated, ratingJSON{
+		Stars: rating.Stars, Comment: rating.Comment, CreatedAt: rating.CreatedAt,
+	})
 }

@@ -820,6 +820,70 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
 
+  /v1/reservations/{id}/rating:
+    post:
+      tags: [reservations]
+      operationId: rateReservation
+      summary: Rate the other party after a completed exchange
+      parameters:
+        - $ref: "#/components/parameters/ReservationID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RateReservationRequest"
+      responses:
+        "201":
+          description: Rating created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RatingSummary"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/users/{id}/profile:
+    get:
+      tags: [accounts]
+      operationId: getUserProfile
+      summary: Public profile with ratings
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Public profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicUserProfile"
+        "404":
+          $ref: "#/components/responses/Error"
+
   /v1/reservations/{id}/peer-vehicle/photo:
     get:
       tags: [reservations]
@@ -1587,6 +1651,73 @@ components:
           description: >
             Spot meeting point for list/detail UX (navigate + re-announce).
             Exact coords; both reservation parties already shared this place.
+        can_rate:
+          type: boolean
+          description: True when the caller may still submit a rating
+        my_rating:
+          $ref: "#/components/schemas/RatingSummary"
+        peer_rating:
+          $ref: "#/components/schemas/RatingSummary"
+
+    RateReservationRequest:
+      type: object
+      required: [stars]
+      properties:
+        stars:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          maxLength: 280
+
+    RatingSummary:
+      type: object
+      required: [stars, created_at]
+      properties:
+        stars:
+          type: integer
+        comment:
+          type: string
+        rater_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    PublicUserProfile:
+      type: object
+      required: [id, display_name, rating_count, reviews]
+      properties:
+        id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        rating:
+          type: number
+          format: double
+          nullable: true
+        rating_count:
+          type: integer
+        reviews:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicReview"
+
+    PublicReview:
+      type: object
+      required: [rater_name, stars, created_at]
+      properties:
+        rater_name:
+          type: string
+        stars:
+          type: integer
+        comment:
+          type: string
+        created_at:
+          type: string
+          format: date-time
 
     ReservationSpotSummary:
       type: object
