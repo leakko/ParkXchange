@@ -342,7 +342,7 @@ func TestNewSpotValidation(t *testing.T) {
 		}
 	})
 
-	t.Run("preferred listing defaults to seven days", func(t *testing.T) {
+	t.Run("preferred listing defaults to preferred plus 24h", func(t *testing.T) {
 		t.Parallel()
 
 		pref := now.Add(2 * time.Hour)
@@ -353,8 +353,9 @@ func TestNewSpotValidation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewSpot: %v", err)
 		}
-		if draft.ExpiresIn != domain.ListingDuration {
-			t.Errorf("ExpiresIn = %v, want ListingDuration", draft.ExpiresIn)
+		want := pref.Add(domain.FlexibleListingDuration).Sub(now)
+		if draft.ExpiresIn != want {
+			t.Errorf("ExpiresIn = %v, want preferred+24h (%v)", draft.ExpiresIn, want)
 		}
 		if !draft.AutoCancelNoShow {
 			t.Error("AutoCancelNoShow should default true")
@@ -365,7 +366,7 @@ func TestNewSpotValidation(t *testing.T) {
 		t.Parallel()
 		pref := now.Add(2 * time.Hour)
 		input := valid
-		input.ExpiresAt = now.Add(domain.ListingDuration)
+		input.ExpiresAt = pref.Add(domain.FlexibleListingDuration)
 		input.PreferredDepartureAt = &pref
 		draft, err := domain.NewSpot(input, now)
 		if err != nil {
@@ -399,7 +400,9 @@ func TestNewSpotValidation(t *testing.T) {
 			func(in *domain.NewSpotInput) { in.ExpiresAt = now.Add(30 * time.Second) }, "expires_at",
 		},
 		"window too long": {
-			func(in *domain.NewSpotInput) { in.ExpiresAt = now.Add(8 * 24 * time.Hour) }, "expires_at",
+			func(in *domain.NewSpotInput) {
+				in.ExpiresAt = now.Add(domain.MaxDuration + time.Hour)
+			}, "expires_at",
 		},
 		"expiry in the past": {
 			func(in *domain.NewSpotInput) { in.ExpiresAt = now.Add(-time.Hour) }, "expires_at",

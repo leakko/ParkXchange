@@ -20,26 +20,24 @@ const (
 	MaxPriceCents = 2000
 
 	// MinDuration is the shortest listing still worth publishing. Kept small
-	// so tests and demos can use short windows; production create defaults to
-	// ListingDuration.
+	// so tests and demos can use short windows.
 	MinDuration = 2 * time.Minute
 
-	// ListingDuration is how long a published spot stays on the map unless
-	// withdrawn or accepted. The product anchors exchanges to concrete
-	// dates, not to "minutes remaining", but the listing itself still ends.
-	ListingDuration = 7 * 24 * time.Hour
-
-	// FlexibleListingDuration is how long a listing without a preferred
-	// departure stays visible after publish.
+	// FlexibleListingDuration is unreserved visibility for flexible listings
+	// (publish + 24h) and the grace after preferred_departure_at.
 	FlexibleListingDuration = 24 * time.Hour
 
-	// MaxDuration is the upper bound on listed_until - created_at.
-	MaxDuration = ListingDuration
+	// MaxLeadTime is how far ahead a preferred departure may be set.
+	// Independent of the 24h unreserved visibility clock.
+	MaxLeadTime = 7 * 24 * time.Hour
 
-	// MaxLeadTime is how far ahead a preferred departure may be set. It
-	// matches the listing lifetime: an exchange cannot be preferred after
-	// the listing has ended.
-	MaxLeadTime = ListingDuration
+	// ListingDuration is an alias for MaxLeadTime kept for call sites that
+	// mean "schedule up to a week ahead", not unreserved map lifetime.
+	ListingDuration = MaxLeadTime
+
+	// MaxDuration is the upper bound on expires_at - now when creating or
+	// extending a listing (preferred at MaxLeadTime plus post-preferred grace).
+	MaxDuration = MaxLeadTime + FlexibleListingDuration
 
 	MaxNotesLength       = 280
 	MaxAddressHintLength = 160
@@ -299,7 +297,7 @@ type NewSpotInput struct {
 	AutoCancelNoShow *bool
 
 	// ExpiresAt is optional; zero means now + FlexibleListingDuration when
-	// no preferred departure is set, otherwise now + ListingDuration.
+	// no preferred departure is set, otherwise preferred + FlexibleListingDuration.
 	ExpiresAt time.Time
 }
 
@@ -351,7 +349,7 @@ func NewSpot(in NewSpotInput, now time.Time) (SpotDraft, error) {
 		if preferred == nil {
 			expiresAt = now.Add(FlexibleListingDuration)
 		} else {
-			expiresAt = now.Add(ListingDuration)
+			expiresAt = preferred.Add(FlexibleListingDuration)
 		}
 	}
 
@@ -359,7 +357,7 @@ func NewSpot(in NewSpotInput, now time.Time) (SpotDraft, error) {
 	case expiresAt.Sub(now) < MinDuration:
 		fields["expires_at"] = "must be at least 2 minutes from now"
 	case expiresAt.Sub(now) > MaxDuration:
-		fields["expires_at"] = "must be at most 7 days from now"
+		fields["expires_at"] = "must be at most 8 days from now"
 	case !expiresAt.After(now):
 		fields["expires_at"] = "must be in the future"
 	}
@@ -472,7 +470,7 @@ func ApplySpotUpdate(existing Spot, in UpdateSpotInput, now time.Time) (SpotUpda
 		case expiresAt.Sub(now) < MinDuration:
 			fields["expires_at"] = "must be at least 2 minutes from now"
 		case expiresAt.Sub(now) > MaxDuration:
-			fields["expires_at"] = "must be at most 7 days from now"
+			fields["expires_at"] = "must be at most 8 days from now"
 		case !expiresAt.After(now):
 			fields["expires_at"] = "must be in the future"
 		default:
