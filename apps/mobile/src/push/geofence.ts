@@ -4,6 +4,8 @@ import * as Notifications from "expo-notifications";
 import * as TaskManager from "expo-task-manager";
 import { Platform } from "react-native";
 
+import { en } from "@/i18n/locales/en";
+import { es } from "@/i18n/locales/es";
 import { loadStoredLocale } from "@/i18n/storage";
 import {
   ARRIVAL_RADIUS_M,
@@ -134,15 +136,10 @@ async function enRouteNotificationCopy(): Promise<{
   body: string;
 }> {
   const locale = (await loadStoredLocale()) ?? "es";
-  if (locale === "en") {
-    return {
-      title: "ParkXchange",
-      body: "On the way to the exchange. We'll notify you when you arrive.",
-    };
-  }
+  const catalog = locale === "en" ? en : es;
   return {
-    title: "ParkXchange",
-    body: "En camino al intercambio. Te avisaremos al llegar.",
+    title: catalog["location.enRoute.notificationTitle"],
+    body: catalog["location.enRoute.notificationBody"],
   };
 }
 
