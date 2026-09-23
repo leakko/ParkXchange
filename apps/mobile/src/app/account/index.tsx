@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { deleteAccount, getMe } from "@/api/client";
 import { accountStyles } from "@/account/theme";
@@ -20,6 +21,7 @@ export default function AccountHubScreen() {
   const { t } = useTranslation();
   const { confirm, alert } = useConfirm();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { ready, signedIn, signedOut, signOut } = useSession();
   const [deleting, setDeleting] = useState(false);
@@ -129,7 +131,13 @@ export default function AccountHubScreen() {
   const balance = `${formatPoints(user.balance_cents)} pts`;
 
   return (
-    <ScrollView style={accountStyles.screen} contentContainerStyle={accountStyles.scroll}>
+    <ScrollView
+      style={accountStyles.screen}
+      contentContainerStyle={[
+        accountStyles.scroll,
+        { paddingBottom: 40 + insets.bottom },
+      ]}
+    >
       <Text style={accountStyles.title}>{user.display_name}</Text>
       <Text style={accountStyles.subtitle}>{user.email}</Text>
       {user.phone ? (
