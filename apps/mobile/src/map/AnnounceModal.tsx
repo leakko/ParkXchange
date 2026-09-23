@@ -562,7 +562,7 @@ const styles = StyleSheet.create({
   },
   secondaryBtnText: { color: "#F4F7FA", fontWeight: "600", fontSize: 13 },
   toggleGroup: {
-    gap: 5,
+    gap: 0,
     width: "100%",
     paddingHorizontal: 4,
     marginVertical: 4,
