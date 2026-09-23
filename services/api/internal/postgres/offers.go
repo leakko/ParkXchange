@@ -169,10 +169,13 @@ func (db *DB) OffersForSpot(ctx context.Context, spotID, ownerID string) ([]doma
 	}
 
 	rows, err := db.q().Query(ctx, `
-		SELECT `+offerColumns+`
-		  FROM offers
-		 WHERE spot_id = $1
-		 ORDER BY amount_cents DESC, created_at
+		SELECT o.id, o.spot_id, o.driver_id, o.vehicle_id, o.exchange_at, o.amount_cents,
+		       o.status, o.created_at, o.expires_at,
+		       u.display_name, u.rating_sum, u.rating_count
+		  FROM offers o
+		  JOIN users u ON u.id = o.driver_id
+		 WHERE o.spot_id = $1
+		 ORDER BY o.amount_cents DESC, o.created_at
 	`, spotID)
 	if err != nil {
 		return nil, translate(err, "list spot offers")
@@ -181,9 +184,24 @@ func (db *DB) OffersForSpot(ctx context.Context, spotID, ownerID string) ([]doma
 
 	var found []domain.Offer
 	for rows.Next() {
-		offer, scanErr := scanOffer(rows)
-		if scanErr != nil {
-			return nil, scanErr
+		var (
+			offer                  domain.Offer
+			status                 string
+			ratingSum, ratingCount int
+		)
+		if scanErr := rows.Scan(
+			&offer.ID, &offer.SpotID, &offer.DriverID, &offer.VehicleID,
+			&offer.ExchangeAt, &offer.AmountCents, &status,
+			&offer.CreatedAt, &offer.ExpiresAt,
+			&offer.DriverName, &ratingSum, &ratingCount,
+		); scanErr != nil {
+			return nil, translate(scanErr, "scan offer with driver")
+		}
+		offer.Status = domain.OfferStatus(status)
+		offer.DriverRatingCount = ratingCount
+		if ratingCount > 0 {
+			average := float64(ratingSum) / float64(ratingCount)
+			offer.DriverRating = &average
 		}
 		found = append(found, offer)
 	}

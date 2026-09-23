@@ -218,6 +218,7 @@ export const en: Record<TranslationKey, string> = {
   "account.spots.edit.saveSpot": "Save",
   "account.spots.edit.pendingOffers": "Pending offers",
   "account.spots.edit.offerAtPreferredTime": "at your time",
+  "account.spots.edit.offerDriverFallback": "Driver",
   "account.spots.edit.offerAtOtherTime": "other time",
   "account.spots.edit.acceptOffer": "Accept",
   "account.spots.edit.rejectOffer": "Reject",

@@ -16,15 +16,18 @@ type createOfferRequest struct {
 }
 
 type offerResponse struct {
-	ID          string    `json:"id"`
-	SpotID      string    `json:"spot_id"`
-	DriverID    string    `json:"driver_id"`
-	VehicleID   string    `json:"vehicle_id"`
-	ExchangeAt  time.Time `json:"exchange_at"`
-	AmountCents int       `json:"amount_cents"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
-	ExpiresAt   time.Time `json:"expires_at"`
+	ID                string    `json:"id"`
+	SpotID            string    `json:"spot_id"`
+	DriverID          string    `json:"driver_id"`
+	VehicleID         string    `json:"vehicle_id"`
+	ExchangeAt        time.Time `json:"exchange_at"`
+	AmountCents       int       `json:"amount_cents"`
+	Status            string    `json:"status"`
+	CreatedAt         time.Time `json:"created_at"`
+	ExpiresAt         time.Time `json:"expires_at"`
+	DriverName        string    `json:"driver_name,omitempty"`
+	DriverRating      *float64  `json:"driver_rating,omitempty"`
+	DriverRatingCount int       `json:"driver_rating_count,omitempty"`
 }
 
 func toOfferResponse(offer domain.Offer) offerResponse {
@@ -33,6 +36,8 @@ func toOfferResponse(offer domain.Offer) offerResponse {
 		VehicleID: offer.VehicleID, ExchangeAt: offer.ExchangeAt,
 		AmountCents: offer.AmountCents, Status: string(offer.Status),
 		CreatedAt: offer.CreatedAt, ExpiresAt: offer.ExpiresAt,
+		DriverName: offer.DriverName, DriverRating: offer.DriverRating,
+		DriverRatingCount: offer.DriverRatingCount,
 	}
 }
 

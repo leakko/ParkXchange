@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -324,8 +324,31 @@ export default function EditSpotScreen() {
             );
             return (
               <View key={offer.id} style={accountStyles.row}>
-                <View style={{ flex: 1 }}>
-                  <Text style={accountStyles.rowTitle}>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Pressable
+                    onPress={() =>
+                      router.push(`/user/${offer.driver_id}` as Href)
+                    }
+                    accessibilityRole="link"
+                  >
+                    <Text style={accountStyles.rowTitle}>
+                      {offer.driver_name?.trim()
+                        ? offer.driver_name
+                        : t("account.spots.edit.offerDriverFallback")}
+                    </Text>
+                    <Text style={accountStyles.link}>
+                      {offer.driver_rating != null &&
+                      (offer.driver_rating_count ?? 0) > 0
+                        ? t("account.rating.withScore", {
+                            score: offer.driver_rating.toFixed(1),
+                            count: offer.driver_rating_count ?? 0,
+                          })
+                        : t("profile.public.noRatings")}
+                      {" · "}
+                      {t("profile.public.view")}
+                    </Text>
+                  </Pressable>
+                  <Text style={accountStyles.rowMeta}>
                     {formatPoints(offer.amount_cents)} pts ·{" "}
                     {formatDateTime(offer.exchange_at)}
                   </Text>

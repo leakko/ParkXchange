@@ -685,6 +685,8 @@ instead; the container then became ready in about a second.
   named reviews (no email/phone/vehicles/balance).
 - Mobile: post-complete modal + reservation CTA, peer “View profile”, spot
   sheet offerer name → `/user/[id]`.
+- Owner pending-offer list shows driver name/rating and opens `/user/{driver_id}`
+  before accept (offers list joins users for `driver_name` / `driver_rating*`).
 - **Verified:** mobile typecheck; domain + reservations + accounts + arch unit
   tests; `cmd/api` build. Docker was down — full `task api:test` / migrate
   against PostGIS still pending before deploy.

@@ -910,6 +910,15 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             expires_at: string;
+            /** @description Present when listing offers for the spot owner */
+            driver_name?: string;
+            /**
+             * Format: double
+             * @description Average stars when the driver has ratings; omitted if none
+             */
+            driver_rating?: number | null;
+            /** @description Number of ratings received by the driver */
+            driver_rating_count?: number;
         };
         ReservationResponse: {
             /** Format: uuid */

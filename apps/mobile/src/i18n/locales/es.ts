@@ -219,6 +219,7 @@ export const es = {
   "account.spots.edit.saveSpot": "Guardar",
   "account.spots.edit.pendingOffers": "Ofertas pendientes",
   "account.spots.edit.offerAtPreferredTime": "a tu hora",
+  "account.spots.edit.offerDriverFallback": "Conductor",
   "account.spots.edit.offerAtOtherTime": "otra hora",
   "account.spots.edit.acceptOffer": "Aceptar",
   "account.spots.edit.rejectOffer": "Rechazar",

@@ -1576,6 +1576,17 @@ components:
         expires_at:
           type: string
           format: date-time
+        driver_name:
+          type: string
+          description: Present when listing offers for the spot owner
+        driver_rating:
+          type: number
+          format: double
+          nullable: true
+          description: Average stars when the driver has ratings; omitted if none
+        driver_rating_count:
+          type: integer
+          description: Number of ratings received by the driver
 
     ReservationResponse:
       type: object

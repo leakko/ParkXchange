@@ -367,15 +367,24 @@ type LoginRequest struct {
 
 // OfferResponse defines model for OfferResponse.
 type OfferResponse struct {
-	AmountCents int                 `json:"amount_cents"`
-	CreatedAt   time.Time           `json:"created_at"`
-	DriverId    openapi_types.UUID  `json:"driver_id"`
-	ExchangeAt  time.Time           `json:"exchange_at"`
-	ExpiresAt   time.Time           `json:"expires_at"`
-	Id          openapi_types.UUID  `json:"id"`
-	SpotId      openapi_types.UUID  `json:"spot_id"`
-	Status      OfferResponseStatus `json:"status"`
-	VehicleId   openapi_types.UUID  `json:"vehicle_id"`
+	AmountCents int                `json:"amount_cents"`
+	CreatedAt   time.Time          `json:"created_at"`
+	DriverId    openapi_types.UUID `json:"driver_id"`
+
+	// DriverName Present when listing offers for the spot owner
+	DriverName *string `json:"driver_name,omitempty"`
+
+	// DriverRating Average stars when the driver has ratings; omitted if none
+	DriverRating *float64 `json:"driver_rating,omitempty"`
+
+	// DriverRatingCount Number of ratings received by the driver
+	DriverRatingCount *int                `json:"driver_rating_count,omitempty"`
+	ExchangeAt        time.Time           `json:"exchange_at"`
+	ExpiresAt         time.Time           `json:"expires_at"`
+	Id                openapi_types.UUID  `json:"id"`
+	SpotId            openapi_types.UUID  `json:"spot_id"`
+	Status            OfferResponseStatus `json:"status"`
+	VehicleId         openapi_types.UUID  `json:"vehicle_id"`
 }
 
 // OfferResponseStatus defines model for OfferResponse.Status.

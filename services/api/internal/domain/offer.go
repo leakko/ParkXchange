@@ -39,6 +39,11 @@ type Offer struct {
 	Status      OfferStatus
 	CreatedAt   time.Time
 	ExpiresAt   time.Time
+	// DriverName / DriverRating are denormalised when listing offers for the
+	// owner so they can judge who to accept without a second round trip.
+	DriverName        string
+	DriverRating      *float64
+	DriverRatingCount int
 }
 
 // OfferDraft is a validated offer that has not been persisted yet.
