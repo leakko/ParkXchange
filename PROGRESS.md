@@ -26,6 +26,11 @@ If that test fails, fix the code, not the test.
   mobile smoke). Ops handoff **smoke passed**.
 - **Also open:** payments deferred. Location permission policy — device demo
   pending. Account-delete confirm is now an in-app modal (pushed).
+- **Arrival background location:** **coded**, pending **device smoke** (Android×2 +
+  iOS) per
+  [2026-09-23-arrival-background-location-design.md](docs/superpowers/specs/2026-09-23-arrival-background-location-design.md)
+  acceptance. Requires **rebuild** of preview/dev client after `app.config`
+  `isAndroidForegroundServiceEnabled` change.
 - **Just shipped (pending push):** map departure filtering (default next 2h
   plus flexibles, custom day/hour window, optional flexibles) across REST,
   WebSocket, and mobile; flexible listings expire 24h after publication;
@@ -48,6 +53,8 @@ If that test fails, fix the code, not the test.
    the departure filter + flexible expiry API, then device-smoke the map filter
    and guest login gates. Rebuild the preview APK only when asked.
 3. Device smoke for location policy (foreground vs «Voy de camino»).
+4. Rebuild preview/dev client; device smoke arrival background location
+   (Android×2 + iOS) per arrival-background-location design acceptance.
 
 
 ---

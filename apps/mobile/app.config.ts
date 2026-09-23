@@ -47,6 +47,7 @@ const config: ExpoConfig = {
         locationAlwaysAndWhenInUsePermission:
           "ParkXchange uses your location in the background during an active exchange to remind you when you arrive at the meeting point.",
         isAndroidBackgroundLocationEnabled: true,
+        isAndroidForegroundServiceEnabled: true,
         isIosBackgroundLocationEnabled: true,
       },
     ],

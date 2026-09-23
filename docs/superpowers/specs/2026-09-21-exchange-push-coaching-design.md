@@ -43,7 +43,7 @@ full UI, except when they choose to open the reservation detail.
 | Scheduler split | **Hybrid:** server owns peer signals + time tips (−30 min, +1 min coaching); client owns geofence → **local** notif |
 | Geofence | Assisted only (prompt, never auto-Listo). Radius **~75 m** (GPS-tolerant; still “at the spot”). |
 | Geofence lifetime | **One-shot** on first Yendo → first enter prompt; **no** re-arm inside wait tips. Re-arm if process died while still en-route and not ready. |
-| Geofence transport | OS `startGeofencingAsync` (background) + foreground `watchPositionAsync` fallback |
+| Geofence transport | `Location.startLocationUpdatesAsync` (TaskManager) while en-route; see `2026-09-23-arrival-background-location-design.md`. OS `startGeofencingAsync` removed. |
 | Wait tips windows | **A–D** (ignore matrix window for coaching; simpler; early complete already allowed) |
 | Wait tip audience | **Driver only**, when driver is Listo and owner is not |
 | Wait tip cadence | Not a loop: one delayed tip per **state change**; ignore → no further tips until a new state change |
@@ -107,6 +107,7 @@ Persist enough state to avoid re-firing ignored tips (e.g. `coaching_wait_tip_se
 
 ### Client geofence
 
+- **Transport:** background location updates while en-route (`Location.startLocationUpdatesAsync` + TaskManager); see [2026-09-23-arrival-background-location-design.md](./2026-09-23-arrival-background-location-design.md). OS geofence is not used for delivery.
 - Arm only after **this user’s** first Yendo on a live reservation, if settings toggle on.
 - On enter ~30 m of meeting point: local notification with Listo action; then disarm.
 - Do not arm on peer Yendo; do not re-arm after wait tips.
