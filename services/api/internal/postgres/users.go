@@ -87,6 +87,14 @@ func (db *DB) CreateUser(
 		return domain.User{}, translate(err, "credit signup grant")
 	}
 
+	// Stamp the login-grant clock so registration does not also pay the weekly
+	// login bonus on the immediate issue() that follows CreateUser.
+	if _, err := tx.Exec(ctx, `
+		UPDATE users SET last_login_grant_at = now() WHERE id = $1
+	`, user.ID); err != nil {
+		return domain.User{}, translate(err, "stamp login grant clock")
+	}
+
 	// Re-read so the returned user carries the balance the trigger just wrote.
 	user, err = scanUser(tx.QueryRow(ctx, `SELECT `+userColumns+` FROM users WHERE id = $1`, user.ID))
 	if err != nil {

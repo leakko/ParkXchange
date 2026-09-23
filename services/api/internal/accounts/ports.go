@@ -101,6 +101,11 @@ type Store interface {
 	// UpsertPushToken registers an Expo push token for the user.
 	UpsertPushToken(ctx context.Context, userID, token, platform string) error
 
+	// TryClaimLoginGrant credits LoginGrantCents when last_login_grant_at is
+	// null or older than interval, and stamps last_login_grant_at. Returns
+	// whether a grant was applied.
+	TryClaimLoginGrant(ctx context.Context, userID string, now time.Time, interval time.Duration, amountCents int64) (bool, error)
+
 	// ListRatingsForUser returns newest ratings of rateeID, with rater names.
 	ListRatingsForUser(ctx context.Context, rateeID string, limit, offset int) ([]domain.Rating, error)
 

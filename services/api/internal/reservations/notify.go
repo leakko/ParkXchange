@@ -29,6 +29,7 @@ const (
 	EventPreDeparture          = "reservation.pre_departure"
 	EventDriverWaitTip         = "reservation.driver_wait_tip"
 	EventDriverBackTip         = "reservation.driver_back_tip"
+	EventPointsFiveStar        = "points.five_star_rating"
 )
 
 // Coaching mark keys for MarkCoachingTipSent.

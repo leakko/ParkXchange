@@ -188,6 +188,9 @@ func (f *fakeStore) CloseAccount(_ context.Context, userID string) error {
 func (f *fakeStore) UpsertPushToken(context.Context, string, string, string) error {
 	return nil
 }
+func (f *fakeStore) TryClaimLoginGrant(context.Context, string, time.Time, time.Duration, int64) (bool, error) {
+	return false, nil
+}
 func (f *fakeStore) ListRatingsForUser(context.Context, string, int, int) ([]domain.Rating, error) {
 	return nil, nil
 }

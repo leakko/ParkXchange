@@ -28,6 +28,7 @@ type Service struct {
 
 	google         GoogleVerifier
 	mailer         Mailer
+	notifier       Notifier
 	resetLinkBase  string
 	verifyLinkBase string
 	resetTokenTTL  time.Duration
@@ -79,6 +80,7 @@ func New(
 		refreshTTL:     refreshTTL,
 		google:         google,
 		mailer:         mailer,
+		notifier:       NopNotifier{},
 		resetLinkBase:  strings.TrimRight(resetLinkBase, "?&"),
 		verifyLinkBase: strings.TrimRight(verifyLinkBase, "?&"),
 		resetTokenTTL:  defaultResetTokenTTL,
@@ -86,6 +88,16 @@ func New(
 		resendCooldown: defaultResendCooldown,
 		dummyHash:      dummyHash,
 	}, nil
+}
+
+// WithNotifier attaches best-effort push for account events (login grant…).
+func (s *Service) WithNotifier(n Notifier) *Service {
+	if n == nil {
+		s.notifier = NopNotifier{}
+		return s
+	}
+	s.notifier = n
+	return s
 }
 
 // Session is a freshly minted pair of credentials and the account they belong
@@ -224,6 +236,8 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent string) (
 	if err != nil {
 		return Session{}, domain.Internal(err)
 	}
+
+	s.maybeLoginGrant(ctx, user.ID)
 
 	return Session{
 		AccessToken:  accessToken,
@@ -782,10 +796,26 @@ func (s *Service) issue(ctx context.Context, user domain.User, userAgent string)
 		return Session{}, domain.Internal(err)
 	}
 
+	s.maybeLoginGrant(ctx, user.ID)
+
 	return Session{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresAt:    expiresAt,
 		User:         user,
 	}, nil
+}
+
+// maybeLoginGrant credits LoginGrantCents at most once per LoginGrantInterval.
+func (s *Service) maybeLoginGrant(ctx context.Context, userID string) {
+	granted, err := s.store.TryClaimLoginGrant(
+		ctx, userID, time.Now(), domain.LoginGrantInterval, domain.LoginGrantCents)
+	if err != nil || !granted {
+		return
+	}
+	_ = s.notifier.Notify(ctx, Notification{
+		Type:        EventLoginGrant,
+		RecipientID: userID,
+		Actions:     []string{"open"},
+	})
 }

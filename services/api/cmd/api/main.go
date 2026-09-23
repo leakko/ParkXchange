@@ -103,6 +103,7 @@ func run() error {
 	}
 
 	expo := &push.Expo{Tokens: db, Log: log}
+	accountsService = accountsService.WithNotifier(push.AccountExpo{Expo: expo})
 	reservationsService := reservations.NewWithNotifier(db, expo, log)
 	hub := realtime.NewHub(realtime.DefaultSendBuffer, cfg.LocationFuzzSecret)
 

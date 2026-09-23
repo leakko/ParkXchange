@@ -133,8 +133,8 @@ var rules = map[string]rule{
 	},
 
 	pkgPush: {
-		why: "push is an Expo delivery adapter for reservation and marketplace notifications",
-		packages:   []string{pkgDomain, pkgReservations, pkgOffers, pkgSpots},
+		why: "push is an Expo delivery adapter for reservation, marketplace, and account notifications",
+		packages:   []string{pkgDomain, pkgReservations, pkgOffers, pkgSpots, pkgAccounts},
 		thirdParty: []string{},
 	},
 

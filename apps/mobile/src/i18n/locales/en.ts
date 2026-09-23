@@ -488,6 +488,9 @@ export const en: Record<TranslationKey, string> = {
   "listingConflict.title": "You already have a conflicting listing",
   "listingConflict.message":
     "Withdraw or wait out your current listing before publishing another that overlaps (leaving now, flexible, or preferred within 1 hour).",
+  "insufficientBalance.title": "Not enough points",
+  "insufficientBalance.message":
+    "You don't have enough points for that offer. List your own spot — you earn the exchange points when the handover completes.",
   "announce.location.label": "Location",
   "announce.location.useGps": "My location",
   "announce.location.pickOnMap": "Pick on map",

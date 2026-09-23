@@ -135,6 +135,14 @@ func (s *Service) Rate(ctx context.Context, id string, viewer domain.Claims, sta
 		}
 		return domain.Rating{}, domain.Internal(err)
 	}
+	if rating.Stars == 5 {
+		s.push(ctx, Notification{
+			Type:          EventPointsFiveStar,
+			ReservationID: id,
+			RecipientID:   rating.RateeID,
+			Actions:       []string{"open"},
+		})
+	}
 	return rating, nil
 }
 

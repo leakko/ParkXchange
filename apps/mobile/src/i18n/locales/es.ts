@@ -486,6 +486,9 @@ export const es = {
   "listingConflict.title": "Ya tienes un anuncio que choca",
   "listingConflict.message":
     "Retira o espera a que termine tu anuncio actual antes de publicar otro que se solape (salida ya, flexible, o preferida a menos de 1 hora).",
+  "insufficientBalance.title": "No te llegan los puntos",
+  "insufficientBalance.message":
+    "No tienes puntos suficientes para esa oferta. Publica tu plaza: al completar el traspaso ganas los puntos del intercambio.",
   "announce.location.label": "Ubicación",
   "announce.location.useGps": "Mi ubicación",
   "announce.location.pickOnMap": "Elegir en el mapa",

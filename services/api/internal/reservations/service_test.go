@@ -85,13 +85,34 @@ func TestRateCompletedExchange(t *testing.T) {
 			ID: "r1", OwnerID: "o1", DriverID: "d1", Status: domain.ResCompleted,
 		},
 	}
-	svc := reservations.New(store)
+	n := &recordingNotifier{}
+	svc := reservations.NewWithNotifier(store, n, nil)
 	rating, err := svc.Rate(context.Background(), "r1", domain.Claims{UserID: "d1"}, 5, "great")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rating.RateeID != "o1" || rating.Stars != 5 || rating.Comment != "great" {
 		t.Fatalf("rating = %+v", rating)
+	}
+	if len(n.got) != 1 || n.got[0].Type != reservations.EventPointsFiveStar || n.got[0].RecipientID != "o1" {
+		t.Fatalf("notify = %+v", n.got)
+	}
+}
+
+func TestRateFourStarsDoesNotNotifyPoints(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{
+		res: domain.Reservation{
+			ID: "r1", OwnerID: "o1", DriverID: "d1", Status: domain.ResCompleted,
+		},
+	}
+	n := &recordingNotifier{}
+	svc := reservations.NewWithNotifier(store, n, nil)
+	if _, err := svc.Rate(context.Background(), "r1", domain.Claims{UserID: "d1"}, 4, ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(n.got) != 0 {
+		t.Fatalf("notify = %+v, want none", n.got)
 	}
 }
 

@@ -17,6 +17,7 @@ const codeToKey: Record<string, TranslationKey> = {
   phone_invalid: "announce.error.phoneInvalid",
   email_unverified: "auth.verify.required",
   resend_too_soon: "auth.verify.resendTooSoon",
+  insufficient_balance: "insufficientBalance.message",
   vehicle_in_use: "account.vehicles.deleteFailed.inUse",
   vehicle_has_pending_offer: "account.vehicles.deleteFailed.pendingOffer",
   vehicle_in_live_reservation: "account.vehicles.deleteFailed.liveReservation",
@@ -40,6 +41,9 @@ export function apiErrorTitle(
   }
   if (err instanceof ApiError && err.code === "listing_conflict") {
     return t("listingConflict.title");
+  }
+  if (err instanceof ApiError && err.code === "insufficient_balance") {
+    return t("insufficientBalance.title");
   }
   return t(fallback);
 }

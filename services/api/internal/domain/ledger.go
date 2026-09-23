@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 // LedgerKind is what a single append-only balance movement means.
 type LedgerKind string
 
@@ -20,6 +22,16 @@ const (
 	// withdrawing a spot somebody had already claimed.
 	LedgerDebit LedgerKind = "debit"
 )
+
+// LoginGrantCents is credited at most once per LoginGrantInterval when the
+// user signs in or refreshes a session (app reopen).
+const LoginGrantCents int64 = 1
+
+// LoginGrantInterval is the minimum gap between login grants for one account.
+const LoginGrantInterval = 7 * 24 * time.Hour
+
+// FiveStarRatingGrantCents credits the ratee when they receive a 5★ review.
+const FiveStarRatingGrantCents int64 = 1
 
 // HoldCents is the ledger amount for a deposit against priceCents.
 func HoldCents(priceCents int) int64 {

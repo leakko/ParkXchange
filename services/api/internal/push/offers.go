@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/marco/parkxchange/services/api/internal/accounts"
 	"github.com/marco/parkxchange/services/api/internal/domain"
 	"github.com/marco/parkxchange/services/api/internal/offers"
 	"github.com/marco/parkxchange/services/api/internal/reservations"
@@ -186,5 +187,91 @@ var offerCopyEN = map[string]pushCopy{
 	"_default": {
 		"ParkXchange",
 		"There’s an update on your offer",
+	},
+}
+
+// AccountExpo adapts Expo to accounts.Notifier.
+type AccountExpo struct {
+	*Expo
+}
+
+var _ accounts.Notifier = AccountExpo{}
+
+// Notify implements accounts.Notifier.
+func (a AccountExpo) Notify(ctx context.Context, n accounts.Notification) error {
+	if a.Expo == nil || a.Tokens == nil || n.RecipientID == "" {
+		return nil
+	}
+	tokens, err := a.Tokens.PushTokensByUser(ctx, n.RecipientID)
+	if err != nil {
+		return err
+	}
+	if len(tokens) == 0 {
+		return reservations.ErrPushNotDelivered
+	}
+
+	locale := domain.DefaultLocale
+	if loc, err := a.Tokens.UserLocale(ctx, n.RecipientID); err == nil && loc != "" {
+		locale = loc
+	}
+	title, body := accountCopyFor(n.Type, locale.String())
+
+	msgs := make([]expoMessage, 0, len(tokens))
+	for _, to := range tokens {
+		if !strings.HasPrefix(to, "ExponentPushToken[") && !strings.HasPrefix(to, "ExpoPushToken[") {
+			continue
+		}
+		msgs = append(msgs, expoMessage{
+			To:         to,
+			Title:      title,
+			Body:       body,
+			Sound:      "default",
+			Data:       map[string]string{"type": n.Type},
+			Priority:   "default",
+			ChannelID:  "exchange",
+			CategoryID: categoryFor(n.Actions),
+		})
+	}
+	if len(msgs) == 0 {
+		return reservations.ErrPushNotDelivered
+	}
+	return a.send(ctx, msgs)
+}
+
+func accountCopyFor(eventType, locale string) (title, body string) {
+	lang := strings.ToLower(strings.TrimSpace(locale))
+	if lang != "en" {
+		lang = "es"
+	}
+	table := accountCopyES
+	if lang == "en" {
+		table = accountCopyEN
+	}
+	c, ok := table[eventType]
+	if !ok {
+		c = table["_default"]
+	}
+	return c.title, c.body
+}
+
+var accountCopyES = map[string]pushCopy{
+	accounts.EventLoginGrant: {
+		"+1 punto",
+		"Has ganado 1 punto por volver a ParkXchange. ¡Gracias por usar la app!",
+	},
+	"_default": {
+		"ParkXchange",
+		"Hay una novedad en tu cuenta",
+	},
+}
+
+var accountCopyEN = map[string]pushCopy{
+	accounts.EventLoginGrant: {
+		"+1 point",
+		"You earned 1 point for coming back to ParkXchange. Thanks for using the app!",
+	},
+	"_default": {
+		"ParkXchange",
+		"There's an update on your account",
 	},
 }

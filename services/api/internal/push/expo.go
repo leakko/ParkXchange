@@ -306,6 +306,10 @@ var copyES = map[string]pushCopy{
 		"¿Ya estás en el sitio?",
 		"Cuando vuelvas al punto, pulsa que estás listo",
 	},
+	reservations.EventPointsFiveStar: {
+		"+1 punto",
+		"Alguien te ha valorado con 5 estrellas — has ganado 1 punto",
+	},
 	"_default": {
 		"ParkXchange",
 		"Hay una novedad en tu intercambio",
@@ -396,6 +400,10 @@ var copyEN = map[string]pushCopy{
 	reservations.EventDriverBackTip: {
 		"Back at the spot?",
 		"When you're there again, tap that you're ready",
+	},
+	reservations.EventPointsFiveStar: {
+		"+1 point",
+		"Someone rated your exchange 5 stars — you earned 1 point",
 	},
 	"_default": {
 		"ParkXchange",

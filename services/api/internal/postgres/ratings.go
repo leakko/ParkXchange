@@ -47,6 +47,16 @@ func (db *DB) RecordRating(ctx context.Context, draft domain.RatingDraft) (domai
 		return domain.Rating{}, domain.ErrNoRows
 	}
 
+	if draft.Stars == 5 && domain.FiveStarRatingGrantCents > 0 {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO ledger_entries (user_id, reservation_id, kind, amount_cents, memo)
+			VALUES ($1, $2, $3, $4, $5)
+		`, draft.RateeID, draft.ReservationID, string(domain.LedgerCredit),
+			domain.FiveStarRatingGrantCents, "rating:5star"); err != nil {
+			return domain.Rating{}, translate(err, "credit five-star grant")
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return domain.Rating{}, translate(err, "commit record rating")
 	}
