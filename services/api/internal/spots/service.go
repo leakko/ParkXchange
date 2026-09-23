@@ -322,10 +322,25 @@ func (s *Service) Get(ctx context.Context, spotID string, viewer domain.Claims) 
 		return VisibleSpot{}, domain.Internal(err)
 	}
 
-	// An expired spot is gone as far as anyone but its owner is concerned,
-	// even though the row still says available until the sweeper runs.
-	if spot.Expired(s.now()) && !spot.OwnedBy(viewer.UserID) {
-		return VisibleSpot{}, domain.NotFound("spot_not_found", "that spot does not exist")
+	if spot.OwnedBy(viewer.UserID) {
+		return s.visibleOne(spot, viewer), nil
+	}
+
+	// Terminal or clock-dead listings are gone for strangers. A driver who
+	// held a reservation on the spot may still open it for history.
+	hidden := spot.Status.Terminal() ||
+		(spot.Status == domain.SpotAvailable && spot.Expired(s.now()))
+	if hidden {
+		if !viewer.Authenticated() {
+			return VisibleSpot{}, domain.NotFound("spot_not_found", "that spot does not exist")
+		}
+		party, err := s.store.HasReservationOnSpot(ctx, spotID, viewer.UserID)
+		if err != nil {
+			return VisibleSpot{}, domain.Internal(err)
+		}
+		if !party {
+			return VisibleSpot{}, domain.NotFound("spot_not_found", "that spot does not exist")
+		}
 	}
 
 	return s.visibleOne(spot, viewer), nil

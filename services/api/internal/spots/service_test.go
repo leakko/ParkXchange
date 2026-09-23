@@ -51,6 +51,9 @@ type fakeStore struct {
 	// emailVerified overrides EmailVerified; nil/missing defaults to true.
 	emailVerified map[string]bool
 
+	// reservationDrivers maps spotID → set of driver user IDs with any reservation.
+	reservationDrivers map[string]map[string]bool
+
 	updateCalls int
 	updateErr   error
 
@@ -116,6 +119,17 @@ func (f *fakeStore) SpotByID(_ context.Context, id string) (domain.Spot, error) 
 		return domain.Spot{}, domain.ErrNoRows
 	}
 	return spot, nil
+}
+
+func (f *fakeStore) HasReservationOnSpot(_ context.Context, spotID, userID string) (bool, error) {
+	if f.reservationDrivers == nil {
+		return false, nil
+	}
+	drivers, ok := f.reservationDrivers[spotID]
+	if !ok {
+		return false, nil
+	}
+	return drivers[userID], nil
 }
 
 func (f *fakeStore) SpotsByOwner(_ context.Context, ownerID string, _ int) ([]domain.Spot, error) {
@@ -567,6 +581,53 @@ func TestGetHidesAnExpiredSpotFromStrangers(t *testing.T) {
 		context.Background(), "spot-1", domain.Claims{UserID: "owner-1"},
 	); err != nil {
 		t.Errorf("owner: unexpected error for their own expired spot: %v", err)
+	}
+}
+
+func TestGetHidesTerminalSpotFromStrangers(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	store.spots["spot-1"] = domain.Spot{
+		ID: "spot-1", OwnerID: "owner-1", Status: domain.SpotCancelled,
+		AvailableFrom: time.Now().Add(-time.Hour),
+		ExpiresAt:     time.Now().Add(time.Hour),
+	}
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
+
+	_, err := service.Get(context.Background(), "spot-1", domain.Claims{UserID: "stranger"})
+	if domain.KindOf(err) != domain.KindNotFound {
+		t.Errorf("stranger: kind = %v, want KindNotFound", domain.KindOf(err))
+	}
+	if _, err := service.Get(
+		context.Background(), "spot-1", domain.Claims{UserID: "owner-1"},
+	); err != nil {
+		t.Errorf("owner: unexpected error: %v", err)
+	}
+}
+
+func TestGetAllowsReservationDriverOnTerminalSpot(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	store.spots["spot-1"] = domain.Spot{
+		ID: "spot-1", OwnerID: "owner-1", Status: domain.SpotCompleted,
+		AvailableFrom: time.Now().Add(-2 * time.Hour),
+		ExpiresAt:     time.Now().Add(-time.Hour),
+	}
+	store.reservationDrivers = map[string]map[string]bool{
+		"spot-1": {"driver-1": true},
+	}
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
+
+	if _, err := service.Get(
+		context.Background(), "spot-1", domain.Claims{UserID: "driver-1"},
+	); err != nil {
+		t.Fatalf("driver party: unexpected error: %v", err)
+	}
+	_, err := service.Get(context.Background(), "spot-1", domain.Claims{UserID: "other"})
+	if domain.KindOf(err) != domain.KindNotFound {
+		t.Errorf("other: kind = %v, want KindNotFound", domain.KindOf(err))
 	}
 }
 

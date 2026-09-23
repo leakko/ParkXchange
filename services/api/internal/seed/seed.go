@@ -206,7 +206,19 @@ SELECT o.id,
        CASE
            WHEN gen.status_roll >= 0.85 THEN now() - interval '30 minutes'
            WHEN gen.departure_bucket = 0 THEN now() + interval '24 hours'
-           ELSE now() + interval '7 days'
+           ELSE (
+                CASE
+                    WHEN gen.departure_bucket = 1 THEN
+                         now() + make_interval(mins => 15 + (gen.i % 90))
+                    WHEN gen.departure_bucket = 2 THEN
+                         now() + make_interval(hours => 3 + (gen.i % 8))
+                    ELSE
+                         now() + make_interval(
+                             hours => 12 + (gen.i % 36),
+                             mins => (gen.i * 7) % 60
+                         )
+                END
+           ) + interval '24 hours'
        END,
        CASE WHEN gen.status_roll < 0.85
             THEN now()
@@ -236,8 +248,12 @@ SELECT u.id,
            WHEN 'twoday' THEN now() + interval '30 hours'
            ELSE NULL
        END,
-       CASE WHEN s.bucket = 'flex' THEN now() + interval '24 hours'
-            ELSE now() + interval '7 days'
+       CASE s.bucket
+           WHEN 'flex' THEN now() + interval '24 hours'
+           WHEN 'soon' THEN now() + interval '45 minutes' + interval '24 hours'
+           WHEN 'later' THEN now() + interval '5 hours' + interval '24 hours'
+           WHEN 'twoday' THEN now() + interval '30 hours' + interval '24 hours'
+           ELSE now() + interval '24 hours'
        END
   FROM users u
   JOIN vehicles v ON v.owner_id = u.id

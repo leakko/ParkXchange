@@ -52,6 +52,11 @@ type Store interface {
 	// SpotByID loads one spot, reporting domain.ErrNoRows when there is none.
 	SpotByID(ctx context.Context, id string) (domain.Spot, error)
 
+	// HasReservationOnSpot reports whether userID is the driver on any
+	// reservation for spotID (any status). Used so exchange parties can still
+	// open a terminal listing the public map no longer shows.
+	HasReservationOnSpot(ctx context.Context, spotID, userID string) (bool, error)
+
 	// SpotsByOwner lists a user's own spots, newest first.
 	SpotsByOwner(ctx context.Context, ownerID string, limit int) ([]domain.Spot, error)
 

@@ -264,6 +264,21 @@ func (db *DB) SpotByID(ctx context.Context, id string) (domain.Spot, error) {
 		 WHERE s.id = $1`, id))
 }
 
+// HasReservationOnSpot reports whether userID is the driver on any reservation
+// for the spot (live or terminal).
+func (db *DB) HasReservationOnSpot(ctx context.Context, spotID, userID string) (bool, error) {
+	var exists bool
+	err := db.Pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM reservations
+			 WHERE spot_id = $1 AND driver_id = $2
+		)`, spotID, userID).Scan(&exists)
+	if err != nil {
+		return false, translate(err, "has reservation on spot")
+	}
+	return exists, nil
+}
+
 // SpotsByOwner lists a user's own spots, newest first.
 func (db *DB) SpotsByOwner(ctx context.Context, ownerID string, limit int) ([]domain.Spot, error) {
 	rows, err := db.Pool.Query(ctx, `
