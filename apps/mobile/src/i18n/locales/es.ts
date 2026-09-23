@@ -468,7 +468,7 @@ export const es = {
   "announce.notes.here": "Anunciada desde mi ubicación",
   "announce.guidePrice": "Puntos orientativos",
   "announce.preferredDeparture": "Hora de salida preferida",
-  "announce.autoCancel.label": "Cancelar automáticamente si no aparece",
+  "announce.autoCancel.label": "Auto-cancelar si no aparece",
   "announce.submit": "Publicar",
   "announce.leavingNow": "Me voy ya",
   "announce.vehicle": "Coche que ocupa el sitio",

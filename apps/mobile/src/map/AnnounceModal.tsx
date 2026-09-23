@@ -481,6 +481,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     gap: 10,
+    overflow: "hidden",
   },
   title: { color: "#F4F7FA", fontSize: 19, fontWeight: "700", marginBottom: 4 },
   info: { color: "#9DB4C0", fontSize: 13, lineHeight: 18, marginBottom: 6 },
@@ -561,26 +562,32 @@ const styles = StyleSheet.create({
   },
   secondaryBtnText: { color: "#F4F7FA", fontWeight: "600", fontSize: 13 },
   toggleGroup: {
-    gap: 4,
+    gap: 0,
     width: "100%",
   },
   toggleRow: {
-    minHeight: 36,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
+    gap: 8,
     width: "100%",
+    // Android Switch touch targets are ~48dp; negative margin pulls rows together.
+    paddingVertical: 0,
+    marginVertical: -6,
   },
-  // flexShrink keeps long labels from shoving the Switch past the card edge.
   toggleLabel: {
     color: "#D6E2E9",
     fontSize: 13,
+    lineHeight: 18,
     flex: 1,
     flexShrink: 1,
-    paddingRight: 4,
+    minWidth: 0,
+    paddingRight: 8,
   },
-  toggleControl: { flexShrink: 0 },
+  toggleControl: {
+    flexShrink: 0,
+    transform: [{ scale: 0.9 }],
+  },
   primary: {
     backgroundColor: "#1B9AAA",
     borderRadius: 12,
