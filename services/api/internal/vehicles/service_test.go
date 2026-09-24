@@ -17,10 +17,10 @@ type fakeStore struct {
 	vehicles map[string]domain.Vehicle
 	photos   map[string]photoBlob
 
-	activeSpots       map[string]int
-	pendingOffers     map[string]int
-	liveReservations  map[string]int
-	deleteCalls       int
+	activeSpots      map[string]int
+	pendingOffers    map[string]int
+	liveReservations map[string]int
+	deleteCalls      int
 
 	nextID int
 }
@@ -328,7 +328,7 @@ func TestDeleteRejectsWhenVehicleInLiveReservation(t *testing.T) {
 	}
 }
 
-func TestPutPhotoRejectsAnOversizeImage(t *testing.T) {
+func TestPutPhotoRejectsAnInvalidImage(t *testing.T) {
 	t.Parallel()
 
 	store := newFakeStore()
@@ -339,8 +339,7 @@ func TestPutPhotoRejectsAnOversizeImage(t *testing.T) {
 
 	service := vehicles.NewService(store)
 
-	data := make([]byte, domain.MaxPhotoBytes+1)
-	data[0], data[1], data[2] = 0xFF, 0xD8, 0xFF
+	data := []byte{0x00, 0x01, 0x02}
 
 	err := service.PutPhoto(context.Background(), domain.Claims{UserID: "owner-1"}, "vehicle-1", data)
 	if domain.KindOf(err) != domain.KindInvalid {

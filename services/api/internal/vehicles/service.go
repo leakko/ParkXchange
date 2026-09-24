@@ -160,12 +160,12 @@ func (s *Service) PutPhoto(ctx context.Context, viewer domain.Claims, id string,
 		return err
 	}
 
-	normalized, contentType, err := domain.NormalizePhoto(data)
+	contentType, err := domain.ValidatePhoto(data)
 	if err != nil {
 		return err
 	}
 
-	if err := s.store.SetPhoto(ctx, id, viewer.UserID, normalized, contentType); err != nil {
+	if err := s.store.SetPhoto(ctx, id, viewer.UserID, data, contentType); err != nil {
 		return domain.Internal(err)
 	}
 	return nil

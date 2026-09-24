@@ -1,7 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"errors"
+	"image"
+	"image/jpeg"
+	_ "image/png"
 	"io"
 	"mime"
 	"net/http"
@@ -133,13 +137,75 @@ func (a *API) handlePutVehiclePhoto(w http.ResponseWriter, r *http.Request) erro
 		}
 		return err
 	}
+	normalized, err := normalizeVehiclePhoto(data)
+	if err != nil {
+		return err
+	}
 
 	if err := a.vehicles.PutPhoto(
-		r.Context(), claimsFrom(r.Context()), r.PathValue("id"), data,
+		r.Context(), claimsFrom(r.Context()), r.PathValue("id"), normalized,
 	); err != nil {
 		return err
 	}
 	return web.NoContent(w)
+}
+
+func normalizeVehiclePhoto(data []byte) ([]byte, error) {
+	_, err := domain.ValidatePhoto(data)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) <= domain.MaxPhotoBytes {
+		return append([]byte(nil), data...), nil
+	}
+
+	source, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, domain.Invalid("photo_invalid", "the image could not be decoded")
+	}
+	width, height := source.Bounds().Dx(), source.Bounds().Dy()
+	if width <= 0 || height <= 0 {
+		return nil, domain.Invalid("photo_invalid", "the image has no dimensions")
+	}
+
+	const maxDimension = 1920
+	scale := 1.0
+	if width > maxDimension || height > maxDimension {
+		if width > height {
+			scale = float64(maxDimension) / float64(width)
+		} else {
+			scale = float64(maxDimension) / float64(height)
+		}
+	}
+	for attempt := 0; attempt < 12; attempt++ {
+		targetWidth := max(1, int(float64(width)*scale))
+		targetHeight := max(1, int(float64(height)*scale))
+		destination := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
+		resizeImage(destination, source)
+		for _, quality := range []int{82, 72, 62, 52, 42, 32} {
+			var encoded bytes.Buffer
+			if err := jpeg.Encode(&encoded, destination, &jpeg.Options{Quality: quality}); err != nil {
+				return nil, domain.Invalid("photo_invalid", "the image could not be encoded")
+			}
+			if encoded.Len() <= domain.MaxPhotoBytes {
+				return encoded.Bytes(), nil
+			}
+		}
+		scale *= 0.8
+	}
+	return nil, domain.Invalid("photo_too_large", "the image could not be reduced below 300 KB")
+}
+
+func resizeImage(destination *image.RGBA, source image.Image) {
+	destinationBounds := destination.Bounds()
+	sourceBounds := source.Bounds()
+	for y := destinationBounds.Min.Y; y < destinationBounds.Max.Y; y++ {
+		for x := destinationBounds.Min.X; x < destinationBounds.Max.X; x++ {
+			sourceX := sourceBounds.Min.X + (x-destinationBounds.Min.X)*sourceBounds.Dx()/destinationBounds.Dx()
+			sourceY := sourceBounds.Min.Y + (y-destinationBounds.Min.Y)*sourceBounds.Dy()/destinationBounds.Dy()
+			destination.Set(x, y, source.At(sourceX, sourceY))
+		}
+	}
 }
 
 func (a *API) handleGetVehiclePhoto(w http.ResponseWriter, r *http.Request) error {
