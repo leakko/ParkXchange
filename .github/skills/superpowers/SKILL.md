@@ -1,20 +1,24 @@
 ---
 name: superpowers
-description: Modo de trabajo riguroso para cambios complejos con varias partes, dependencias o riesgos. Usar cuando el usuario pida construir o modificar un sistema amplio, cuando los requisitos esten incompletos o cuando solicite revisar una solucion antes de darla por terminada.
+description: >-
+  Rigorous mode for multi-part or risky changes. Incomplete requirements,
+  broad systems, or "review before we call it done". Orchestrates brainstorming,
+  writing-plans, TDD, critical-preflight, and verification-before-completion.
+  Skip for tiny localized fixes with clear behaviour.
 ---
 
 # Superpowers
 
-Para trabajos complejos, piensa antes de editar y valida antes de cerrar. No conviertas esta skill en burocracia para una tarea pequena y localizada.
+Para trabajos complejos, piensa antes de editar y valida antes de cerrar. No
+conviertas esto en burocracia para un typo o un fix localizado ya claro.
 
-## Flujo
+## Flujo (orquesta otras skills)
 
-1. Entiende el objetivo, alcance, usuarios, restricciones y la informacion que falta.
-2. Formula una hipotesis local sobre el comportamiento y el cambio minimo que puede probarla.
-3. Define un plan breve con dependencias, riesgos y casos limite.
-4. Ejecuta en incrementos pequenos, respetando la arquitectura, convenciones y archivos fuera de alcance.
-5. Tras cada edicion sustantiva ejecuta la validacion mas cercana disponible.
-6. Revisa el resultado contra los requisitos, tests, diagnosticos y posibles regresiones.
+1. Requisitos incompletos → `brainstorming` / `entrevistador-procesos` (sin código).
+2. Diseño OK → `writing-plans` (plan en `docs/superpowers/plans/`).
+3. Cada tarea → `test-driven-development`.
+4. Antes de cerrar → `critical-preflight` luego `verification-before-completion`.
+5. Respeta `AGENTS.md` y capas; diffs mínimos; evidencia real de comandos.
 
 ## Criterios de calidad
 

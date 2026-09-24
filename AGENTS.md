@@ -77,6 +77,8 @@ domain  <-  accounts, spots, reservations (use cases)  <-  postgres, api, realti
 
 ## Conventions
 
+- VS Code + GitHub Copilot: see [docs/copilot-vs-code.md](docs/copilot-vs-code.md)
+  and `.github/copilot-instructions.md` (auto-loaded by Copilot).
 - Go 1.22+ `net/http` with `ServeMux` method patterns. No third-party router,
   no generated server code.
 - Comments explain **why**, not what. Do not add a comment that restates the
