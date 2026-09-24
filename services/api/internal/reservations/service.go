@@ -246,7 +246,15 @@ func (s *Service) Active(ctx context.Context, viewer domain.Claims) ([]domain.Re
 	if err != nil {
 		return nil, domain.Internal(err)
 	}
-	return found, nil
+
+	cutoff := s.now().Add(time.Hour)
+	active := make([]domain.Reservation, 0, len(found))
+	for _, reservation := range found {
+		if reservation.ExchangeAt.Before(cutoff) {
+			active = append(active, reservation)
+		}
+	}
+	return active, nil
 }
 
 // List returns the caller's recent reservations (as driver or owner).

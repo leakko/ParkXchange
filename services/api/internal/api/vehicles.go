@@ -113,21 +113,23 @@ func (a *API) handleDeleteVehicle(w http.ResponseWriter, r *http.Request) error 
 }
 
 func (a *API) handlePutVehiclePhoto(w http.ResponseWriter, r *http.Request) error {
+	const maxPhotoUploadBytes = 25 * 1024 * 1024
+
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || (mediaType != "image/jpeg" && mediaType != "image/png") {
 		return domain.Invalid("unsupported_media_type",
 			"Content-Type must be image/jpeg or image/png")
 	}
 
-	// Cap one byte past the limit so ValidatePhoto still sees oversize bodies
-	// instead of a truncated stream that looks like a valid short image.
-	r.Body = http.MaxBytesReader(w, r.Body, int64(domain.MaxPhotoBytes)+1)
+	// The stored representation is capped after decoding and resizing; this
+	// request cap prevents an unbounded body from reaching the image decoder.
+	r.Body = http.MaxBytesReader(w, r.Body, maxPhotoUploadBytes)
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
 			return domain.Invalid("photo_too_large",
-				"vehicle photos must be at most 300 KiB")
+				"vehicle uploads must be at most 25 MiB")
 		}
 		return err
 	}

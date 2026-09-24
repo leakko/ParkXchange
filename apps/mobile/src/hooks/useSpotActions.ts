@@ -19,6 +19,7 @@ import { distanceMeters } from "@/map/exchange";
 import { detectExchangeNotif } from "@/map/exchangeNotifs";
 import { notifyRatingPrompt } from "@/map/ratingPromptHandoff";
 import { shouldTrackArrival } from "@/push/arrivalAssistLogic";
+import { subscribeActiveReservationRefresh } from "@/push/activeReservationSync";
 import {
   armGeofenceForReservation,
   clearArrivalPromptFired,
@@ -288,6 +289,12 @@ export function useActiveReservation(enabled: boolean) {
   }, [enabled, maybeNotify, publishActive, publishSpot, publishUserId]);
 
   useEffect(() => {
+    return subscribeActiveReservationRefresh(() => {
+      void refresh();
+    });
+  }, [refresh]);
+
+  useEffect(() => {
     if (!enabled) {
       publishActive(null);
       publishSpot(null);
@@ -425,9 +432,7 @@ export function useActiveReservation(enabled: boolean) {
           const iAmOwner = current.owner_id === userId;
           const next = {
             ...current,
-            ...(iAmOwner
-              ? { owner_en_route_at: nowIso }
-              : { driver_en_route_at: nowIso }),
+            ...(iAmOwner ? { owner_en_route_at: nowIso } : { driver_en_route_at: nowIso }),
           };
           sharedPrev = next;
           publishActive(next);
@@ -452,9 +457,7 @@ export function useActiveReservation(enabled: boolean) {
         // under a loading banner / nested inside run().
         const ok = await confirm({
           title: t("exchange.confirm.title"),
-          message: iAmOwner
-            ? t("exchange.confirm.ownerReady")
-            : t("exchange.confirm.driverReady"),
+          message: iAmOwner ? t("exchange.confirm.ownerReady") : t("exchange.confirm.driverReady"),
           cancelLabel: t("common.cancel"),
           confirmLabel: t("common.confirm"),
         });
@@ -476,9 +479,7 @@ export function useActiveReservation(enabled: boolean) {
             const nowIso = new Date().toISOString();
             const next = {
               ...current,
-              ...(iAmOwner
-                ? { owner_ready_at: nowIso }
-                : { driver_ready_at: nowIso }),
+              ...(iAmOwner ? { owner_ready_at: nowIso } : { driver_ready_at: nowIso }),
             };
             sharedPrev = next;
             publishActive(next);

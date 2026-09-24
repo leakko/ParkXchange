@@ -1,9 +1,15 @@
 package domain
 
 import (
+	"bytes"
+	"image"
+	"image/jpeg"
+	_ "image/png"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"golang.org/x/image/draw"
 )
 
 const (
@@ -13,6 +19,7 @@ const (
 	MaxColorLength     = 40
 	MinVehicleYear     = 1980
 	MaxPhotoBytes      = 300 * 1024
+	MaxPhotoDimension  = 1920
 )
 
 var (
@@ -141,10 +148,57 @@ func DetectImageContentType(data []byte) (string, error) {
 
 // ValidatePhoto checks size and recognised image format.
 func ValidatePhoto(data []byte) (contentType string, err error) {
-	if len(data) > MaxPhotoBytes {
-		return "", Invalid("photo_too_large", "the image must be at most 300 KB")
-	}
 	return DetectImageContentType(data)
+}
+
+// NormalizePhoto keeps stored vehicle photos small without rejecting a valid
+// upload merely because the camera produced a large file.
+func NormalizePhoto(data []byte) ([]byte, string, error) {
+	contentType, err := ValidatePhoto(data)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(data) <= MaxPhotoBytes {
+		return append([]byte(nil), data...), contentType, nil
+	}
+
+	source, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, "", Invalid("photo_invalid", "the image could not be decoded")
+	}
+
+	width, height := source.Bounds().Dx(), source.Bounds().Dy()
+	if width <= 0 || height <= 0 {
+		return nil, "", Invalid("photo_invalid", "the image has no dimensions")
+	}
+	scale := 1.0
+	if width > MaxPhotoDimension || height > MaxPhotoDimension {
+		if width > height {
+			scale = float64(MaxPhotoDimension) / float64(width)
+		} else {
+			scale = float64(MaxPhotoDimension) / float64(height)
+		}
+	}
+
+	for attempt := 0; attempt < 12; attempt++ {
+		targetWidth := max(1, int(float64(width)*scale))
+		targetHeight := max(1, int(float64(height)*scale))
+		destination := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
+		draw.CatmullRom.Scale(destination, destination.Bounds(), source, source.Bounds(), draw.Over, nil)
+
+		for _, quality := range []int{82, 72, 62, 52, 42, 32} {
+			var encoded bytes.Buffer
+			if err := jpeg.Encode(&encoded, destination, &jpeg.Options{Quality: quality}); err != nil {
+				return nil, "", Invalid("photo_invalid", "the image could not be encoded")
+			}
+			if encoded.Len() <= MaxPhotoBytes {
+				return encoded.Bytes(), "image/jpeg", nil
+			}
+		}
+		scale *= 0.8
+	}
+
+	return nil, "", Invalid("photo_too_large", "the image could not be reduced below 300 KB")
 }
 
 func hasPrefix(data, prefix []byte) bool {

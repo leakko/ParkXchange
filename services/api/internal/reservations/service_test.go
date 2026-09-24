@@ -12,6 +12,7 @@ import (
 
 type fakeStore struct {
 	res         domain.Reservation
+	active      []domain.Reservation
 	enRoute     int
 	readyCalls  int
 	clearCalls  int
@@ -26,7 +27,7 @@ func (f *fakeStore) ReservationByID(context.Context, string) (domain.Reservation
 	return f.res, nil
 }
 func (f *fakeStore) ActiveByUser(context.Context, string) ([]domain.Reservation, error) {
-	return nil, nil
+	return f.active, nil
 }
 func (f *fakeStore) ListByUser(context.Context, string, int) ([]domain.Reservation, error) {
 	return nil, nil
@@ -76,6 +77,28 @@ func (f *fakeStore) RecordRating(_ context.Context, draft domain.RatingDraft) (d
 }
 func (f *fakeStore) RatingsForReservation(context.Context, string) ([]domain.Rating, error) {
 	return nil, nil
+}
+
+func TestActiveOnlyIncludesReservationsWithinOneHour(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
+	store := &fakeStore{active: []domain.Reservation{
+		{ID: "past", ExchangeAt: now.Add(-time.Minute)},
+		{ID: "soon", ExchangeAt: now.Add(59 * time.Minute)},
+		{ID: "boundary", ExchangeAt: now.Add(time.Hour)},
+		{ID: "later", ExchangeAt: now.Add(3 * time.Hour)},
+	}}
+
+	found, err := reservations.NewWithClock(store, func() time.Time { return now }).Active(
+		context.Background(), domain.Claims{UserID: "user-1"},
+	)
+	if err != nil {
+		t.Fatalf("Active: %v", err)
+	}
+	if len(found) != 2 || found[0].ID != "past" || found[1].ID != "soon" {
+		t.Fatalf("active = %#v, want past and soon", found)
+	}
 }
 
 func TestRateCompletedExchange(t *testing.T) {
@@ -448,4 +471,3 @@ func TestPeerVehiclePhotoMissingBytes(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
-

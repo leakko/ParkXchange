@@ -1,8 +1,5 @@
 import * as ImagePicker from "expo-image-picker";
 
-/** API rejects photos over ~300 KiB. */
-export const MAX_VEHICLE_PHOTO_BYTES = 300 * 1024;
-
 export type PickedVehiclePhoto = {
   bytes: ArrayBuffer;
   contentType: "image/jpeg" | "image/png";
@@ -20,7 +17,7 @@ function contentTypeForUri(uri: string, mime?: string | null): "image/jpeg" | "i
   return null;
 }
 
-/** Opens the library with compression; rejects oversize / non-JPEG/PNG. */
+/** Opens the library with light client compression; the API normalizes size. */
 export async function pickVehiclePhoto(): Promise<PickedVehiclePhoto | null> {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) {
@@ -45,11 +42,6 @@ export async function pickVehiclePhoto(): Promise<PickedVehiclePhoto | null> {
 
   const res = await fetch(asset.uri);
   const bytes = await res.arrayBuffer();
-  if (bytes.byteLength > MAX_VEHICLE_PHOTO_BYTES) {
-    throw new Error(
-      `Photo is too large (${Math.ceil(bytes.byteLength / 1024)} KiB). Max is 300 KiB.`,
-    );
-  }
 
   return { bytes, contentType, uri: asset.uri };
 }

@@ -1,4 +1,4 @@
-import type { TranslationKey } from "@/i18n";
+import type { TranslationKey } from "../i18n/index.ts";
 
 import {
   driverCancelOutcome,
@@ -7,7 +7,7 @@ import {
   peerPhase,
   shouldShowNoShowDeadline,
   type HandshakeFields,
-} from "@/map/exchangeLeave";
+} from "./exchangeLeave.ts";
 
 /** Status line for the actor viewing the exchange. */
 export function exchangeStatusKey(opts: {
@@ -18,9 +18,7 @@ export function exchangeStatusKey(opts: {
   const nowMs = opts.nowMs ?? Date.now();
   const window = exchangeWindow(opts.res, nowMs);
   const peer = peerPhase(opts.res, opts.iAmOwner);
-  const myReady = opts.iAmOwner
-    ? !!opts.res.owner_ready_at
-    : !!opts.res.driver_ready_at;
+  const myReady = opts.iAmOwner ? !!opts.res.owner_ready_at : !!opts.res.driver_ready_at;
 
   if (peer === "ready") {
     if (opts.iAmOwner) {
@@ -44,9 +42,7 @@ export function exchangeStatusKey(opts: {
   }
 
   if (peer === "en_route") {
-    return opts.iAmOwner
-      ? "exchange.status.driverEnRoute"
-      : "exchange.status.ownerEnRoute";
+    return opts.iAmOwner ? "exchange.status.driverEnRoute" : "exchange.status.ownerEnRoute";
   }
 
   if (myReady) {
@@ -108,31 +104,21 @@ export function bannerPeerStatusKey(opts: {
 }): TranslationKey {
   const peer = peerPhase(opts.res, opts.iAmOwner);
   if (peer === "ready") {
-    return opts.iAmOwner
-      ? "map.banner.peer.driverReady"
-      : "map.banner.peer.ownerReady";
+    return opts.iAmOwner ? "map.banner.peer.driverReady" : "map.banner.peer.ownerReady";
   }
   if (peer === "en_route") {
-    return opts.iAmOwner
-      ? "map.banner.peer.driverEnRoute"
-      : "map.banner.peer.ownerEnRoute";
+    return opts.iAmOwner ? "map.banner.peer.driverEnRoute" : "map.banner.peer.ownerEnRoute";
   }
-  return opts.iAmOwner
-    ? "map.banner.peer.driverIdle"
-    : "map.banner.peer.ownerIdle";
+  return opts.iAmOwner ? "map.banner.peer.driverIdle" : "map.banner.peer.ownerIdle";
 }
 
 /** Next handshake step for the map banner CTA (never cancel). */
-export function bannerNextStep(opts: {
-  res: HandshakeFields;
-  iAmOwner: boolean;
-}): { action: "en_route" | "ready" | "unready"; labelKey: TranslationKey } {
-  const myEnRoute = opts.iAmOwner
-    ? opts.res.owner_en_route_at
-    : opts.res.driver_en_route_at;
-  const myReady = opts.iAmOwner
-    ? opts.res.owner_ready_at
-    : opts.res.driver_ready_at;
+export function bannerNextStep(opts: { res: HandshakeFields; iAmOwner: boolean }): {
+  action: "en_route" | "ready" | "unready";
+  labelKey: TranslationKey;
+} {
+  const myEnRoute = opts.iAmOwner ? opts.res.owner_en_route_at : opts.res.driver_en_route_at;
+  const myReady = opts.iAmOwner ? opts.res.owner_ready_at : opts.res.driver_ready_at;
   // Ready wins even if en-route was skipped (parked → announce → listo).
   if (myReady) {
     return { action: "unready", labelKey: "map.banner.unready" };

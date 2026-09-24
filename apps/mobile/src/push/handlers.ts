@@ -2,25 +2,17 @@ import * as Notifications from "expo-notifications";
 import { router, type Href } from "expo-router";
 import { Platform } from "react-native";
 
-import {
-  reservationEnRoute,
-  reservationReady,
-  reservationUnready,
-} from "@/api/client";
+import { reservationEnRoute, reservationReady, reservationUnready } from "@/api/client";
 import {
   armGeofenceForReservation,
   clearArrivalPromptFired,
   disarmArrivalGeofence,
 } from "@/push/geofence";
+import { requestActiveReservationRefresh } from "@/push/activeReservationSync";
 import { routeForPushData, type PushData } from "@/push/routePush";
 
-function dataOf(
-  response: Notifications.NotificationResponse,
-): PushData {
-  const raw = response.notification.request.content.data as Record<
-    string,
-    unknown
-  >;
+function dataOf(response: Notifications.NotificationResponse): PushData {
+  const raw = response.notification.request.content.data as Record<string, unknown>;
   const out: PushData = {};
   if (typeof raw?.type === "string") {
     out.type = raw.type;
@@ -48,9 +40,7 @@ async function openPushRoute(data: PushData): Promise<void> {
   }
 }
 
-async function dismissActed(
-  response: Notifications.NotificationResponse,
-): Promise<void> {
+async function dismissActed(response: Notifications.NotificationResponse): Promise<void> {
   const id = response.notification.request.identifier;
   if (!id) {
     return;
@@ -80,8 +70,7 @@ export async function handleNotificationResponse(
   const reservationId = data.reservation_id;
 
   const action = response.actionIdentifier;
-  const isDefault =
-    action === Notifications.DEFAULT_ACTION_IDENTIFIER || action === "open";
+  const isDefault = action === Notifications.DEFAULT_ACTION_IDENTIFIER || action === "open";
 
   try {
     if (reservationId && action === "en_route") {
@@ -93,6 +82,7 @@ export async function handleNotificationResponse(
     if (reservationId && action === "ready") {
       await reservationReady(reservationId);
       await disarmArrivalGeofence();
+      requestActiveReservationRefresh();
       await openReservation(reservationId);
       return;
     }

@@ -1,6 +1,10 @@
 package domain_test
 
 import (
+	"bytes"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"testing"
 	"time"
 
@@ -242,14 +246,35 @@ func TestDetectImageContentType(t *testing.T) {
 	}
 }
 
-func TestValidatePhotoRejectsOversize(t *testing.T) {
+func TestNormalizePhotoReducesOversizeJPEG(t *testing.T) {
 	t.Parallel()
 
-	data := make([]byte, 300*1024+1)
-	copy(data, []byte{0xFF, 0xD8, 0xFF}) // jpeg magic prefix
-	_, err := domain.ValidatePhoto(data)
-	if !domain.IsInvalid(err) {
-		t.Fatalf("got %v", err)
+	original := image.NewRGBA(image.Rect(0, 0, 1800, 1400))
+	for y := 0; y < 1400; y++ {
+		for x := 0; x < 1800; x++ {
+			original.SetRGBA(x, y, color.RGBA{
+				R: uint8((x * 17) % 255), G: uint8((y * 19) % 255),
+				B: uint8((x * y) % 255), A: 255,
+			})
+		}
+	}
+	var input bytes.Buffer
+	if err := jpeg.Encode(&input, original, &jpeg.Options{Quality: 100}); err != nil {
+		t.Fatalf("encode input: %v", err)
+	}
+	if input.Len() <= domain.MaxPhotoBytes {
+		t.Fatalf("test image is only %d bytes", input.Len())
+	}
+
+	data, contentType, err := domain.NormalizePhoto(input.Bytes())
+	if err != nil {
+		t.Fatalf("NormalizePhoto: %v", err)
+	}
+	if contentType != "image/jpeg" {
+		t.Fatalf("content type = %q", contentType)
+	}
+	if len(data) > domain.MaxPhotoBytes {
+		t.Fatalf("normalized image is %d bytes", len(data))
 	}
 }
 
