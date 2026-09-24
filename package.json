@@ -19,11 +19,14 @@
   "devDependencies": {
     "prettier": "catalog:",
     "turbo": "2.10.12",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "uuid": "^11.0.0"
   },
   "pnpm": {
     "overrides": {
-      "@expo/metro-runtime": "~57.0.16"
+      "@expo/metro-runtime": "~57.0.16",
+      "uuid": "^11.0.0",
+      "xcode>uuid": "^11.0.0"
     }
   }
 }
