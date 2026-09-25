@@ -6,6 +6,18 @@ const locationPermission =
 const photoPermission =
   "ParkXchange uses your photo library so you can attach a picture of your vehicle.";
 
+/**
+ * Path to google-services.json.
+ *
+ * - EAS cloud builds: file env `GOOGLE_SERVICES_JSON` (secret) → absolute path on
+ *   the builder. Do not fall back to `./google-services.json` here: that file is
+ *   gitignored, and pointing at it during `eas build` upload prints a warning
+ *   and still does not pack it from git.
+ * - Local `expo run:android`: `GOOGLE_SERVICES_JSON=./google-services.json`
+ *   in apps/mobile/.env.development (or a gitignored override).
+ */
+const googleServicesFile = process.env.GOOGLE_SERVICES_JSON?.trim() || undefined;
+
 const config: ExpoConfig = {
   name: "ParkXchange",
   slug: "parkxchange",
@@ -24,9 +36,7 @@ const config: ExpoConfig = {
   },
   android: {
     package: "com.parkxchange.mobile",
-    // EAS file env (GOOGLE_SERVICES_JSON) on remote builds; local file for dev.
-    googleServicesFile:
-      process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
+    ...(googleServicesFile ? { googleServicesFile } : {}),
     softwareKeyboardLayoutMode: "resize",
     adaptiveIcon: {
       backgroundColor: "#0B1F33",

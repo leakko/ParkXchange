@@ -47,6 +47,10 @@ If that test fails, fix the code, not the test.
   metres passes against PostGIS. Banner and status panel show distance while the
   peer is `en_route`; `reservation.updated` debounces an active-reservation
   refresh. Still pending two-device smoke (push + live metres).
+- **EAS google-services warn:** `app.config.ts` only sets `googleServicesFile`
+  from env `GOOGLE_SERVICES_JSON` (EAS file secret on cloud; `.env.development`
+  for local `expo run:android`). No hardcoded gitignored path → no upload warn.
+  `.easignore` also excludes `google-services.json`.
   **Last updated:** 2026-09-25
   plus flexibles, custom day/hour window, optional flexibles) across REST,
   WebSocket, and mobile; flexible listings expire 24h after publication;
