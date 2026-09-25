@@ -55,9 +55,11 @@ export function HistoryGhostLayers({ data }: Props) {
           layout={{
             "icon-image": "spot-history-ghost",
             "icon-size": 0.22,
-            "icon-opacity": 0.55,
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
+          }}
+          paint={{
+            "icon-opacity": 0.55,
           }}
         />
       </GeoJSONSource>

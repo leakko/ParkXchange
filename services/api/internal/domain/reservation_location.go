@@ -39,8 +39,8 @@ func LocationFreshness(measuredAt, now time.Time) LocationFreshnessKind {
 }
 
 func validCoordinate(latitude, longitude float64) bool {
-	return math.IsNaN(latitude) == false && math.IsInf(latitude, 0) == false &&
-		math.IsNaN(longitude) == false && math.IsInf(longitude, 0) == false &&
+	return !math.IsNaN(latitude) && !math.IsInf(latitude, 0) &&
+		!math.IsNaN(longitude) && !math.IsInf(longitude, 0) &&
 		latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180
 }
 

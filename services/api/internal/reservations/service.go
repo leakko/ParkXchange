@@ -389,10 +389,13 @@ func (s *Service) enRoute(
 
 func peerDistanceForActor(res domain.Reservation, actorID string) *int {
 	var location *domain.ReservationLocation
-	if actorID == res.OwnerID {
+	switch actorID {
+	case res.OwnerID:
 		location = res.OwnerLocation
-	} else if actorID == res.DriverID {
+	case res.DriverID:
 		location = res.DriverLocation
+	default:
+		return nil
 	}
 	if location == nil {
 		return nil
