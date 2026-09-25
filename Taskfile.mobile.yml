@@ -169,6 +169,45 @@ tasks:
         echo "Log: $LOG"
         echo "Wait ~30s (until boot finishes), then: task mobile:devices"
 
+  google:sha:
+    desc: Print the local Android debug SHA-1 that must be in Firebase for Google Sign-In
+    dir: "{{.APP_DIR}}"
+    cmds:
+      - |
+        set -e
+        KS="android/app/debug.keystore"
+        if [ ! -f "$KS" ]; then
+          echo "Missing $KS — run: task mobile:prebuild"
+          exit 1
+        fi
+        KEYTOOL=""
+        for c in \
+          "/c/Program Files/Android/Android Studio/jbr/bin/keytool.exe" \
+          "/c/Program Files/Java/jdk-21/bin/keytool.exe" \
+          "keytool"
+        do
+          if command -v "$c" >/dev/null 2>&1 || [ -x "$c" ]; then
+            KEYTOOL="$c"
+            break
+          fi
+        done
+        if [ -z "$KEYTOOL" ]; then
+          echo "keytool not found"
+          exit 1
+        fi
+        echo "Package: com.parkxchange.mobile"
+        echo "Keystore: $KS"
+        echo ""
+        echo "Add this SHA-1 in Firebase → Project settings → Android app fingerprints,"
+        echo "then download a fresh google-services.json into apps/mobile/ and rebuild:"
+        echo ""
+        "$KEYTOOL" -list -v -keystore "$KS" -alias androiddebugkey \
+          -storepass android -keypass android 2>/dev/null \
+          | awk '/SHA1:/{print; exit}'
+        echo ""
+        echo "Registered in google-services.json today:"
+        awk -F'"' '/certificate_hash/{print "  "$4}' google-services.json android/app/google-services.json 2>/dev/null | sort -u
+
   typecheck:
     desc: Typecheck the mobile app
     cmds:

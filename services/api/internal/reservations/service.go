@@ -96,7 +96,7 @@ func (s *Service) Get(ctx context.Context, id string, viewer domain.Claims) (dom
 	if !res.Involves(viewer.UserID) {
 		return domain.Reservation{}, domain.NotFound("reservation_not_found", "that reservation does not exist")
 	}
-	return res, nil
+	return s.projectForViewer(res, viewer.UserID), nil
 }
 
 // RatingView is rating state for a reservation party.
@@ -251,7 +251,7 @@ func (s *Service) Active(ctx context.Context, viewer domain.Claims) ([]domain.Re
 	active := make([]domain.Reservation, 0, len(found))
 	for _, reservation := range found {
 		if reservation.ExchangeAt.Before(cutoff) {
-			active = append(active, reservation)
+			active = append(active, s.projectForViewer(reservation, viewer.UserID))
 		}
 	}
 	return active, nil
@@ -266,6 +266,9 @@ func (s *Service) List(ctx context.Context, viewer domain.Claims) ([]domain.Rese
 	found, err := s.store.ListByUser(ctx, viewer.UserID, 50)
 	if err != nil {
 		return nil, domain.Internal(err)
+	}
+	for i := range found {
+		found[i] = s.projectForViewer(found[i], viewer.UserID)
 	}
 	return found, nil
 }
@@ -301,12 +304,37 @@ func (s *Service) Reconfirm(ctx context.Context, id string, viewer domain.Claims
 
 // EnRoute records that the caller is on the way to the exchange.
 func (s *Service) EnRoute(ctx context.Context, id string, viewer domain.Claims) error {
+	return s.enRoute(ctx, id, viewer, nil)
+}
+
+// EnRouteWithLocation records the first fix together with the departure when
+// the client already has a foreground location available.
+func (s *Service) EnRouteWithLocation(
+	ctx context.Context,
+	id string,
+	viewer domain.Claims,
+	location *domain.ReservationLocation,
+) error {
+	return s.enRoute(ctx, id, viewer, location)
+}
+
+func (s *Service) enRoute(
+	ctx context.Context,
+	id string,
+	viewer domain.Claims,
+	initial *domain.ReservationLocation,
+) error {
 	res, err := s.reservationFor(ctx, id, viewer)
 	if err != nil {
 		return err
 	}
 	if !res.Status.Live() {
 		return domain.Conflict("reservation_not_live", "that reservation is already resolved")
+	}
+	if initial != nil {
+		if _, ok := domain.DistanceMeters(initial.Lat, initial.Lon, initial.Lat, initial.Lon); !ok {
+			return domain.Invalid("location_invalid", "latitude and longitude are invalid")
+		}
 	}
 
 	already := false
@@ -319,6 +347,14 @@ func (s *Service) EnRoute(ctx context.Context, id string, viewer domain.Claims) 
 	if err := s.store.MarkEnRoute(ctx, id, viewer.UserID, s.now()); err != nil {
 		return reservationConflict(err, "en_route_not_allowed",
 			"en-route cannot be recorded for that reservation")
+	}
+	if initial != nil {
+		if err := s.store.UpdateLocation(ctx, id, viewer.UserID, initial.Lat, initial.Lon, initial.At); err != nil {
+			return reservationConflict(err, "location_not_allowed", "location cannot be recorded for that reservation")
+		}
+		if updated, updateErr := s.store.ReservationByID(ctx, id); updateErr == nil {
+			res = updated
+		}
 	}
 	if already {
 		return nil
@@ -345,9 +381,67 @@ func (s *Service) EnRoute(ctx context.Context, id string, viewer domain.Claims) 
 	s.push(ctx, Notification{
 		Type: typ, ReservationID: res.ID, RecipientID: peer,
 		ExchangeAt: res.ExchangeAt, Actions: peerActions,
-		Urgent: true,
+		DistanceMeters: peerDistanceForActor(res, viewer.UserID),
+		Urgent:         true,
 	})
 	return nil
+}
+
+func peerDistanceForActor(res domain.Reservation, actorID string) *int {
+	var location *domain.ReservationLocation
+	if actorID == res.OwnerID {
+		location = res.OwnerLocation
+	} else if actorID == res.DriverID {
+		location = res.DriverLocation
+	}
+	if location == nil {
+		return nil
+	}
+	meters, ok := domain.DistanceMeters(res.SpotLat, res.SpotLon, location.Lat, location.Lon)
+	if !ok {
+		return nil
+	}
+	return &meters
+}
+
+// UpdateLocation records the caller's latest en-route fix and returns the
+// caller-specific view with the peer distance, never the peer coordinates.
+func (s *Service) UpdateLocation(
+	ctx context.Context,
+	id string,
+	viewer domain.Claims,
+	lat, lon float64,
+) (domain.Reservation, error) {
+	res, err := s.reservationFor(ctx, id, viewer)
+	if err != nil {
+		return domain.Reservation{}, err
+	}
+	if !res.Status.Live() {
+		return domain.Reservation{}, domain.Conflict("reservation_not_live", "that reservation is already resolved")
+	}
+	if _, ok := domain.DistanceMeters(lat, lon, lat, lon); !ok {
+		return domain.Reservation{}, domain.Invalid("location_invalid", "latitude and longitude are invalid")
+	}
+	if viewer.UserID == res.OwnerID {
+		if res.OwnerEnRouteAt == nil || res.OwnerReadyAt != nil {
+			return domain.Reservation{}, domain.Conflict("reservation_not_en_route", "mark en-route before sending location")
+		}
+	} else if res.DriverEnRouteAt == nil || res.DriverReadyAt != nil {
+		return domain.Reservation{}, domain.Conflict("reservation_not_en_route", "mark en-route before sending location")
+	}
+
+	if err := s.store.UpdateLocation(ctx, id, viewer.UserID, lat, lon, s.now()); err != nil {
+		return domain.Reservation{}, reservationConflict(err, "location_not_allowed",
+			"location cannot be recorded for that reservation")
+	}
+	updated, err := s.store.ReservationByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			return domain.Reservation{}, domain.NotFound("reservation_not_found", "that reservation does not exist")
+		}
+		return domain.Reservation{}, domain.Internal(err)
+	}
+	return s.projectForViewer(updated, viewer.UserID), nil
 }
 
 // Ready marks the caller ready at the point. When both are ready the store
@@ -515,6 +609,37 @@ func (s *Service) reservationFor(
 			domain.NotFound("reservation_not_found", "that reservation does not exist")
 	}
 	return res, nil
+}
+
+func (s *Service) projectForViewer(res domain.Reservation, viewerID string) domain.Reservation {
+	res.PeerDistanceMeters = nil
+	res.PeerLocationMeasuredAt = nil
+	var peer *domain.ReservationLocation
+	peerEnRoute := false
+	peerReady := false
+	switch viewerID {
+	case res.OwnerID:
+		peer = res.DriverLocation
+		peerEnRoute = res.DriverEnRouteAt != nil
+		peerReady = res.DriverReadyAt != nil
+	case res.DriverID:
+		peer = res.OwnerLocation
+		peerEnRoute = res.OwnerEnRouteAt != nil
+		peerReady = res.OwnerReadyAt != nil
+	default:
+		return res
+	}
+	if peer == nil || !peerEnRoute || peerReady {
+		return res
+	}
+	meters, ok := domain.DistanceMeters(res.SpotLat, res.SpotLon, peer.Lat, peer.Lon)
+	if !ok {
+		return res
+	}
+	res.PeerDistanceMeters = &meters
+	measuredAt := peer.At
+	res.PeerLocationMeasuredAt = &measuredAt
+	return res
 }
 
 func reservationConflict(err error, code, message string) error {

@@ -619,6 +619,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/reservations/{id}/location": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the caller's latest en-route location fix */
+        post: operations["updateReservationLocation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/reservations/{id}/ready": {
         parameters: {
             query?: never;
@@ -974,6 +991,13 @@ export interface components {
             owner_en_route_at?: string | null;
             /** Format: date-time */
             driver_en_route_at?: string | null;
+            /** @description Direct distance in metres from the peer's latest fix to the meeting point. */
+            peer_distance_m?: number | null;
+            /**
+             * Format: date-time
+             * @description Timestamp of the peer fix used for peer_distance_m.
+             */
+            peer_location_measured_at?: string | null;
             /** Format: date-time */
             owner_ready_at?: string | null;
             /** Format: date-time */
@@ -988,6 +1012,12 @@ export interface components {
             can_rate?: boolean;
             my_rating?: components["schemas"]["RatingSummary"];
             peer_rating?: components["schemas"]["RatingSummary"];
+        };
+        ReservationLocationRequest: {
+            /** Format: double */
+            latitude: number;
+            /** Format: double */
+            longitude: number;
         };
         RateReservationRequest: {
             stars: number;
@@ -2259,6 +2289,36 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    updateReservationLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ReservationID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReservationLocationRequest"];
+            };
+        };
+        responses: {
+            /** @description Reservation view with the peer distance when available */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservationResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
             409: components["responses"]["Error"];

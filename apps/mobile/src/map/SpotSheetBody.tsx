@@ -20,10 +20,7 @@ import { useTranslation } from "@/i18n";
 import { carSizeLabel, spotStatusLabel } from "@/i18n/catalogLabels";
 import { formatPoints, parsePointsInput } from "@/i18n/formatPoints";
 import { openNavigation } from "@/lib/navigation";
-import {
-  driverCancelMessageKey,
-  ownerCancelMessageKey,
-} from "@/map/exchangeCopy";
+import { driverCancelMessageKey, ownerCancelMessageKey } from "@/map/exchangeCopy";
 import { passAuthGate } from "@/map/authGate";
 import {
   driverNoShowDeadline,
@@ -64,7 +61,6 @@ export type SpotSheetBodyProps = {
   onViewOffers: (spot: SpotFeature) => void;
   onWithdraw: (spot: SpotFeature) => void;
   onReportListing?: (spot: SpotFeature) => void;
-  onManageExchange?: () => void;
   makingOffer: boolean;
   setMakingOffer: (v: boolean) => void;
   onExpandSheet: () => void;
@@ -95,7 +91,6 @@ export function SpotSheetBody({
   onViewOffers,
   onWithdraw,
   onReportListing,
-  onManageExchange,
   makingOffer,
   setMakingOffer,
   onExpandSheet,
@@ -104,37 +99,26 @@ export function SpotSheetBody({
   const { t, formatDateTime } = useTranslation();
   const { confirm, alert } = useConfirm();
   const [vehicleId, setVehicleId] = useState("");
-  const [exchangeAt, setExchangeAt] = useState(
-    () => new Date(Date.now() + 60 * 60 * 1000),
-  );
+  const [exchangeAt, setExchangeAt] = useState(() => new Date(Date.now() + 60 * 60 * 1000));
   const [amount, setAmount] = useState("");
   const [pendingOfferCount, setPendingOfferCount] = useState(0);
 
   const points = spot ? formatPoints(spot.properties.price_cents) : "";
   const coords = spot?.geometry.coordinates;
   const exact = !!spot?.properties.exact_location;
-  const isActiveForSpot =
-    !!active && !!spot && String(active.spot_id) === String(spot.id);
+  const isActiveForSpot = !!active && !!spot && String(active.spot_id) === String(spot.id);
   const vehicle = exact ? spot?.properties.vehicle : undefined;
   const ownerPhone = exact ? spot?.properties.owner_phone : undefined;
   const vehiclePhotoUrl =
-    vehicle?.has_photo && spot?.id
-      ? spotVehiclePhotoUrl(String(spot.id))
-      : null;
+    vehicle?.has_photo && spot?.id ? spotVehiclePhotoUrl(String(spot.id)) : null;
   const showInlineSpotVehicle =
-    !!vehicle &&
-    !!(vehicle.plate || vehicle.make_model) &&
-    !(isActiveForSpot && active);
+    !!vehicle && !!(vehicle.plate || vehicle.make_model) && !(isActiveForSpot && active);
 
   const deadlineLabel =
     isActiveForSpot && active
       ? (() => {
-          const myReady = isOwner
-            ? active.owner_ready_at
-            : active.driver_ready_at;
-          const deadline = isOwner
-            ? driverNoShowDeadline(active)
-            : ownerNoShowDeadline(active);
+          const myReady = isOwner ? active.owner_ready_at : active.driver_ready_at;
+          const deadline = isOwner ? driverNoShowDeadline(active) : ownerNoShowDeadline(active);
           if (!myReady || !deadline || !shouldShowNoShowDeadline(active)) {
             return null;
           }
@@ -145,11 +129,7 @@ export function SpotSheetBody({
       : null;
 
   const myReady =
-    isActiveForSpot && active
-      ? isOwner
-        ? active.owner_ready_at
-        : active.driver_ready_at
-      : null;
+    isActiveForSpot && active ? (isOwner ? active.owner_ready_at : active.driver_ready_at) : null;
   const myEnRoute =
     isActiveForSpot && active
       ? isOwner
@@ -162,9 +142,7 @@ export function SpotSheetBody({
   useEffect(() => {
     setMakingOffer(false);
     setVehicleId(pendingOffer?.vehicle_id ?? "");
-    setAmount(
-      pendingOffer ? formatPoints(pendingOffer.amount_cents) : points,
-    );
+    setAmount(pendingOffer ? formatPoints(pendingOffer.amount_cents) : points);
     const suggested = pendingOffer
       ? new Date(pendingOffer.exchange_at)
       : spot?.properties.leaving_now
@@ -200,10 +178,7 @@ export function SpotSheetBody({
 
   useEffect(() => {
     setVehicleId((current) => {
-      if (
-        pendingOffer?.vehicle_id &&
-        vehicles.some((v) => v.id === pendingOffer.vehicle_id)
-      ) {
+      if (pendingOffer?.vehicle_id && vehicles.some((v) => v.id === pendingOffer.vehicle_id)) {
         return pendingOffer.vehicle_id;
       }
       if (current && vehicles.some((v) => v.id === current)) {
@@ -214,11 +189,7 @@ export function SpotSheetBody({
   }, [vehicles, pendingOffer?.vehicle_id]);
 
   useEffect(() => {
-    if (
-      !spot?.id ||
-      !spot.properties.is_mine ||
-      spot.properties.status !== "available"
-    ) {
+    if (!spot?.id || !spot.properties.is_mine || spot.properties.status !== "available") {
       setPendingOfferCount(0);
       return;
     }
@@ -227,9 +198,7 @@ export function SpotSheetBody({
       try {
         const offers = await listOffers(String(spot.id));
         if (!cancelled) {
-          setPendingOfferCount(
-            offers.filter((o) => o.status === "pending").length,
-          );
+          setPendingOfferCount(offers.filter((o) => o.status === "pending").length);
         }
       } catch {
         if (!cancelled) {
@@ -243,10 +212,7 @@ export function SpotSheetBody({
   }, [spot?.id, spot?.properties.is_mine, spot?.properties.status]);
 
   const requireAuth = async (
-    messageKey:
-      | "auth.required.offer"
-      | "auth.required.addVehicle"
-      | "auth.required.report",
+    messageKey: "auth.required.offer" | "auth.required.addVehicle" | "auth.required.report",
   ): Promise<boolean> =>
     passAuthGate({
       signedIn,
@@ -423,33 +389,19 @@ export function SpotSheetBody({
       {pointsLine}
 
       <View style={styles.actions}>
-        {spot.properties.is_mine &&
-        spot.properties.status === "available" &&
-        !isActiveForSpot ? (
+        {spot.properties.is_mine && spot.properties.status === "available" && !isActiveForSpot ? (
           <>
-            <Pressable
-              style={styles.primary}
-              disabled={busy}
-              onPress={() => onViewOffers(spot)}
-            >
+            <Pressable style={styles.primary} disabled={busy} onPress={() => onViewOffers(spot)}>
               <Text style={styles.primaryText}>
                 {pendingOfferCount > 0
                   ? t("spotSheet.viewOffers", { count: pendingOfferCount })
                   : t("spotSheet.viewOffersEmpty")}
               </Text>
             </Pressable>
-            <Pressable
-              style={styles.secondary}
-              disabled={busy}
-              onPress={() => onEdit(spot)}
-            >
+            <Pressable style={styles.secondary} disabled={busy} onPress={() => onEdit(spot)}>
               <Text style={styles.secondaryText}>{t("spotSheet.edit")}</Text>
             </Pressable>
-            <Pressable
-              style={styles.danger}
-              disabled={busy}
-              onPress={() => onWithdraw(spot)}
-            >
+            <Pressable style={styles.danger} disabled={busy} onPress={() => onWithdraw(spot)}>
               <Text style={styles.dangerText}>{t("spotSheet.withdraw")}</Text>
             </Pressable>
           </>
@@ -461,23 +413,15 @@ export function SpotSheetBody({
         pendingOffer &&
         !makingOffer ? (
           <View style={styles.offerForm}>
-            <Pressable
-              style={styles.primary}
-              disabled={busy}
-              onPress={() => void beginEditOffer()}
-            >
-              <Text style={styles.primaryText}>
-                {t("spotSheet.offer.pending.edit")}
-              </Text>
+            <Pressable style={styles.primary} disabled={busy} onPress={() => void beginEditOffer()}>
+              <Text style={styles.primaryText}>{t("spotSheet.offer.pending.edit")}</Text>
             </Pressable>
             <Pressable
               style={styles.danger}
               disabled={busy}
               onPress={() => void onWithdrawOffer(pendingOffer)}
             >
-              <Text style={styles.dangerText}>
-                {t("spotSheet.offer.pending.withdraw")}
-              </Text>
+              <Text style={styles.dangerText}>{t("spotSheet.offer.pending.withdraw")}</Text>
             </Pressable>
           </View>
         ) : null}
@@ -488,21 +432,12 @@ export function SpotSheetBody({
         (makingOffer || !pendingOffer) ? (
           makingOffer ? (
             <View style={styles.offerForm}>
-              <Text style={styles.formLabel}>
-                {t("spotSheet.offer.yourVehicle")}
-              </Text>
+              <Text style={styles.formLabel}>{t("spotSheet.offer.yourVehicle")}</Text>
               {vehicles.length === 0 ? (
                 <>
-                  <Text style={styles.help}>
-                    {t("spotSheet.offer.needVehicle.message")}
-                  </Text>
-                  <Pressable
-                    style={styles.secondary}
-                    onPress={() => void beginAddVehicle()}
-                  >
-                    <Text style={styles.secondaryText}>
-                      {t("spotSheet.offer.needVehicle.add")}
-                    </Text>
+                  <Text style={styles.help}>{t("spotSheet.offer.needVehicle.message")}</Text>
+                  <Pressable style={styles.secondary} onPress={() => void beginAddVehicle()}>
+                    <Text style={styles.secondaryText}>{t("spotSheet.offer.needVehicle.add")}</Text>
                   </Pressable>
                 </>
               ) : (
@@ -521,9 +456,7 @@ export function SpotSheetBody({
                   </Pressable>
                 ))
               )}
-              <Text style={styles.formLabel}>
-                {t("spotSheet.offer.exchangeDatetime")}
-              </Text>
+              <Text style={styles.formLabel}>{t("spotSheet.offer.exchangeDatetime")}</Text>
               {spot.properties.leaving_now ? (
                 <View style={styles.etaRow}>
                   {([5, 15, 30] as const).map((mins) => (
@@ -531,13 +464,10 @@ export function SpotSheetBody({
                       key={mins}
                       style={[
                         styles.etaChip,
-                        Math.abs(
-                          exchangeAt.getTime() - (Date.now() + mins * 60_000),
-                        ) < 45_000 && styles.etaChipActive,
+                        Math.abs(exchangeAt.getTime() - (Date.now() + mins * 60_000)) < 45_000 &&
+                          styles.etaChipActive,
                       ]}
-                      onPress={() =>
-                        setExchangeAt(new Date(Date.now() + mins * 60_000))
-                      }
+                      onPress={() => setExchangeAt(new Date(Date.now() + mins * 60_000))}
                     >
                       <Text style={styles.etaChipText}>
                         {t("spotSheet.offer.etaMinutes", { minutes: mins })}
@@ -569,19 +499,14 @@ export function SpotSheetBody({
                 />
               )}
               <Pressable
-                style={[
-                  styles.primary,
-                  (busy || !vehicleId) && styles.primaryDisabled,
-                ]}
+                style={[styles.primary, (busy || !vehicleId) && styles.primaryDisabled]}
                 disabled={busy || !vehicleId}
                 onPress={() => void submitOffer()}
               >
                 {busy ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.primaryText}>
-                    {t("spotSheet.offer.submit")}
-                  </Text>
+                  <Text style={styles.primaryText}>{t("spotSheet.offer.submit")}</Text>
                 )}
               </Pressable>
               <Pressable onPress={() => setMakingOffer(false)}>
@@ -589,38 +514,16 @@ export function SpotSheetBody({
               </Pressable>
             </View>
           ) : (
-            <Pressable
-              style={styles.primary}
-              disabled={busy}
-              onPress={() => void beginOffer()}
-            >
-              <Text style={styles.primaryText}>
-                {t("spotSheet.offer.makeOffer")}
-              </Text>
+            <Pressable style={styles.primary} disabled={busy} onPress={() => void beginOffer()}>
+              <Text style={styles.primaryText}>{t("spotSheet.offer.makeOffer")}</Text>
             </Pressable>
           )
         ) : null}
 
         {spot.properties.is_mine &&
-        (spot.properties.status === "reserved" ||
-          spot.properties.status === "handover") &&
+        (spot.properties.status === "reserved" || spot.properties.status === "handover") &&
         !isActiveForSpot ? (
-          <>
-            <Text style={styles.help}>
-              {t("account.spots.reservedNoReservation")}
-            </Text>
-            {onManageExchange ? (
-              <Pressable
-                style={styles.primary}
-                disabled={busy}
-                onPress={onManageExchange}
-              >
-                <Text style={styles.primaryText}>
-                  {t("account.spots.openExchange")}
-                </Text>
-              </Pressable>
-            ) : null}
-          </>
+          <Text style={styles.help}>{t("account.spots.reservedNoReservation")}</Text>
         ) : null}
 
         {isActiveForSpot && active ? (
@@ -631,9 +534,7 @@ export function SpotSheetBody({
                 disabled={busy}
                 onPress={onEnRoute}
               >
-                <Text style={styles.secondaryText}>
-                  {t("exchange.actions.enRoute")}
-                </Text>
+                <Text style={styles.secondaryText}>{t("exchange.actions.enRoute")}</Text>
               </Pressable>
             ) : null}
             {!myReady ? (
@@ -646,9 +547,7 @@ export function SpotSheetBody({
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <Text style={styles.primaryText}>
-                    {isOwner
-                      ? t("exchange.actions.ownerReady")
-                      : t("exchange.actions.driverReady")}
+                    {isOwner ? t("exchange.actions.ownerReady") : t("exchange.actions.driverReady")}
                   </Text>
                 )}
               </Pressable>
@@ -668,31 +567,9 @@ export function SpotSheetBody({
                   })();
                 }}
               >
-                <Text style={styles.secondaryText}>
-                  {t("exchange.actions.unready")}
-                </Text>
+                <Text style={styles.secondaryText}>{t("exchange.actions.unready")}</Text>
               </Pressable>
             )}
-            {exact &&
-            !spot.properties.is_mine &&
-            coords &&
-            coords[0] != null &&
-            coords[1] != null ? (
-              <Pressable
-                style={styles.secondary}
-                onPress={() =>
-                  void openNavigation(
-                    { lon: coords[0]!, lat: coords[1]! },
-                    {
-                      failedTitle: t("navigation.failed.title"),
-                      failedMessage: t("navigation.failed.message"),
-                    },
-                  )
-                }
-              >
-                <Text style={styles.secondaryText}>{t("spotSheet.navigate")}</Text>
-              </Pressable>
-            ) : null}
             <Pressable
               style={styles.danger}
               disabled={busy}
@@ -712,19 +589,12 @@ export function SpotSheetBody({
                 })();
               }}
             >
-              <Text style={styles.dangerText}>
-                {t("spotSheet.exchange.cancel")}
-              </Text>
+              <Text style={styles.dangerText}>{t("spotSheet.exchange.cancel")}</Text>
             </Pressable>
           </>
         ) : null}
 
-        {exact &&
-        !spot.properties.is_mine &&
-        !isActiveForSpot &&
-        coords &&
-        coords[0] != null &&
-        coords[1] != null ? (
+        {coords && coords[0] != null && coords[1] != null ? (
           <Pressable
             style={styles.secondary}
             onPress={() =>
@@ -749,11 +619,7 @@ export function SpotSheetBody({
       {/* Secondary detail — below the peek fold */}
       {isActiveForSpot && active ? (
         <>
-          <ExchangeStatusPanel
-            res={active}
-            iAmOwner={isOwner}
-            deadlineLabel={deadlineLabel}
-          />
+          <ExchangeStatusPanel res={active} iAmOwner={isOwner} deadlineLabel={deadlineLabel} />
           <PeerVehiclePanel
             vehicle={isOwner ? active.driver_vehicle : active.owner_vehicle}
             counterpart
@@ -789,9 +655,7 @@ export function SpotSheetBody({
         </Pressable>
       ) : null}
 
-      {!isActiveForSpot &&
-      !pendingOffer &&
-      spot.properties.status === "available" ? (
+      {!isActiveForSpot && !pendingOffer && spot.properties.status === "available" ? (
         <Text style={styles.listedUntil}>
           {t("spotSheet.listedUntil", {
             datetime: formatDateTime(spot.properties.listed_until),

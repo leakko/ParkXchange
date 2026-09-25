@@ -105,6 +105,17 @@ type Reservation struct {
 	DriverReadyAt   *time.Time
 	DriverVehicleID string
 
+	SpotLon float64
+	SpotLat float64
+
+	OwnerLocation  *ReservationLocation
+	DriverLocation *ReservationLocation
+
+	// PeerDistanceMeters and PeerLocationMeasuredAt are viewer-specific fields
+	// populated by the reservation use case before an adapter serializes them.
+	PeerDistanceMeters     *int
+	PeerLocationMeasuredAt *time.Time
+
 	ReconfirmBy   time.Time
 	ReconfirmedAt *time.Time
 
@@ -113,6 +124,13 @@ type Reservation struct {
 	CompletedAt  *time.Time
 	CancelledAt  *time.Time
 	CancelReason string
+}
+
+// ReservationLocation is the latest location fix for one reservation party.
+type ReservationLocation struct {
+	Lat float64
+	Lon float64
+	At  time.Time
 }
 
 // HeldBy reports whether userID is the driver who claimed this reservation.

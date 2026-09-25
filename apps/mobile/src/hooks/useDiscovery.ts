@@ -4,7 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchSpots, type SpotFeature } from "@/api/client";
 import { applySpotEvent, SpotSocket, type BBox } from "@/api/ws";
 import { featureMatchesViewport } from "@/map/discoveryFilter";
+import { isLiveMapSpotStatus } from "@/map/liveMapSpot";
 import { SpotTombstones } from "@/map/spotTombstones";
+import { requestActiveReservationRefreshDebounced } from "@/push/activeReservationSync";
 import type { components } from "@parkxchange/api-contract";
 
 const EMPTY: SpotFeature[] = [];
@@ -39,6 +41,10 @@ function eventNeedsVehicleRefetch(event: SpotEventMessage, features: SpotFeature
   }
   const feature = features.find((f) => String(f.id) === event.id);
   return vehicleIncomplete(feature);
+}
+
+function filterLiveMapFeatures(features: SpotFeature[]): SpotFeature[] {
+  return features.filter((f) => isLiveMapSpotStatus(f.properties.status));
 }
 
 export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) {
@@ -97,7 +103,9 @@ export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) 
   // (stale in-flight fetch right after accept → spot.removed).
   useEffect(() => {
     if (query.data) {
-      setLiveFeatures(tombstonesRef.current.filter(query.data.features));
+      setLiveFeatures(
+        filterLiveMapFeatures(tombstonesRef.current.filter(query.data.features)),
+      );
     }
   }, [query.data]);
 
@@ -107,15 +115,20 @@ export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) 
     }
     const socket = new SpotSocket({
       onSnapshot: (features) =>
-        setLiveFeatures(tombstonesRef.current.filter(features)),
+        setLiveFeatures(
+          filterLiveMapFeatures(tombstonesRef.current.filter(features)),
+        ),
       onSpotEvent: (event) => {
+        if (event.type === "reservation.updated") {
+          requestActiveReservationRefreshDebounced();
+        }
         tombstonesRef.current.noteEvent(event);
         setLiveFeatures((prev) => {
           const next = applySpotEvent(prev ?? EMPTY, event);
           if (eventNeedsVehicleRefetch(event, next)) {
             scheduleVehicleRefetch();
           }
-          return tombstonesRef.current.filter(next);
+          return filterLiveMapFeatures(tombstonesRef.current.filter(next));
         });
       },
     });
@@ -150,10 +163,11 @@ export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) 
 
   const rawFeatures = liveFeatures ?? query.data?.features ?? EMPTY;
   const features = useMemo(() => {
+    const live = filterLiveMapFeatures(tombstonesRef.current.filter(rawFeatures));
     if (!viewport) {
-      return rawFeatures;
+      return live;
     }
-    return rawFeatures.filter((f) => featureMatchesViewport(f, viewport));
+    return live.filter((f) => featureMatchesViewport(f, viewport));
   }, [rawFeatures, viewport]);
 
   const collection = useMemo(
@@ -166,20 +180,26 @@ export function useDiscovery(viewport: Viewport | null, socketEnabled: boolean) 
     [features],
   );
 
-  const forgetSpot = useCallback((id: string) => {
-    const spotId = String(id);
-    if (!spotId) {
-      return;
-    }
-    tombstonesRef.current.noteEvent({
-      type: "spot.removed",
-      id: spotId,
-      status: "cancelled",
-    } as SpotEventMessage);
-    setLiveFeatures((prev) =>
-      prev == null ? prev : prev.filter((f) => String(f.id) !== spotId),
-    );
-  }, []);
+  const forgetSpot = useCallback(
+    (id: string) => {
+      const spotId = String(id);
+      if (!spotId) {
+        return;
+      }
+      tombstonesRef.current.noteEvent({
+        type: "spot.removed",
+        id: spotId,
+        status: "cancelled",
+      } as SpotEventMessage);
+      setLiveFeatures((prev) => {
+        const base = prev ?? query.data?.features ?? EMPTY;
+        return filterLiveMapFeatures(
+          tombstonesRef.current.filter(base.filter((f) => String(f.id) !== spotId)),
+        );
+      });
+    },
+    [query.data?.features],
+  );
 
   return {
     collection,

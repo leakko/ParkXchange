@@ -38,6 +38,8 @@ type reservationResponse struct {
 	DriverEnRouteAt *time.Time                  `json:"driver_en_route_at,omitempty"`
 	OwnerReadyAt    *time.Time                  `json:"owner_ready_at,omitempty"`
 	DriverReadyAt   *time.Time                  `json:"driver_ready_at,omitempty"`
+	PeerDistanceM   *int                        `json:"peer_distance_m,omitempty"`
+	PeerMeasuredAt  *time.Time                  `json:"peer_location_measured_at,omitempty"`
 	CancelReason    string                      `json:"cancel_reason,omitempty"`
 	CreatedAt       time.Time                   `json:"created_at"`
 	OwnerVehicle    *vehicleSummaryJSON         `json:"owner_vehicle,omitempty"`
@@ -56,6 +58,7 @@ func toReservationResponse(r domain.Reservation) reservationResponse {
 		ExchangeAt:     r.ExchangeAt,
 		OwnerEnRouteAt: r.OwnerEnRouteAt, DriverEnRouteAt: r.DriverEnRouteAt,
 		OwnerReadyAt: r.OwnerReadyAt, DriverReadyAt: r.DriverReadyAt,
+		PeerDistanceM: r.PeerDistanceMeters, PeerMeasuredAt: r.PeerLocationMeasuredAt,
 		CancelReason: r.CancelReason,
 		CreatedAt:    r.CreatedAt,
 	}
@@ -160,10 +163,46 @@ func (a *API) handleCancelReservation(w http.ResponseWriter, r *http.Request) er
 }
 
 func (a *API) handleReservationEnRoute(w http.ResponseWriter, r *http.Request) error {
-	if err := a.reserves.EnRoute(r.Context(), r.PathValue("id"), claimsFrom(r.Context())); err != nil {
+	var location *domain.ReservationLocation
+	if r.ContentLength > 0 {
+		var req reservationLocationRequest
+		if err := web.DecodeJSON(w, r, &req); err != nil {
+			return err
+		}
+		if req.Latitude == nil || req.Longitude == nil {
+			return domain.Invalid("location_required", "latitude and longitude are required")
+		}
+		measuredAt := time.Now().UTC()
+		location = &domain.ReservationLocation{Lat: *req.Latitude, Lon: *req.Longitude, At: measuredAt}
+	}
+	if err := a.reserves.EnRouteWithLocation(
+		r.Context(), r.PathValue("id"), claimsFrom(r.Context()), location,
+	); err != nil {
 		return err
 	}
 	return web.NoContent(w)
+}
+
+type reservationLocationRequest struct {
+	Latitude  *float64 `json:"latitude"`
+	Longitude *float64 `json:"longitude"`
+}
+
+func (a *API) handleReservationLocation(w http.ResponseWriter, r *http.Request) error {
+	var req reservationLocationRequest
+	if err := web.DecodeJSON(w, r, &req); err != nil {
+		return err
+	}
+	if req.Latitude == nil || req.Longitude == nil {
+		return domain.Invalid("location_required", "latitude and longitude are required")
+	}
+	res, err := a.reserves.UpdateLocation(
+		r.Context(), r.PathValue("id"), claimsFrom(r.Context()), *req.Latitude, *req.Longitude,
+	)
+	if err != nil {
+		return err
+	}
+	return web.JSON(w, http.StatusOK, a.enrichReservation(r.Context(), res, claimsFrom(r.Context())))
 }
 
 func (a *API) handleReservationReady(w http.ResponseWriter, r *http.Request) error {

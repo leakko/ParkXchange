@@ -63,7 +63,6 @@ function sameActiveReservation(
     a.driver_vehicle?.has_photo === b.driver_vehicle?.has_photo
   );
 }
-
 function sameSheetSpot(a: SpotFeature | null, b: SpotFeature | null): boolean {
   if (a === b) {
     return true;
@@ -80,7 +79,6 @@ function sameSheetSpot(a: SpotFeature | null, b: SpotFeature | null): boolean {
     a.geometry.coordinates[1] === b.geometry.coordinates[1]
   );
 }
-
 /**
  * Shared across map + spot detail so a freshly mounted screen can paint the
  * active exchange immediately, and optimistic updates from one instance reach
@@ -407,6 +405,7 @@ export function useActiveReservation(enabled: boolean) {
   return {
     active,
     activeSpot: spot,
+    userId,
     isOwner,
     isDriver,
     busy,
@@ -427,7 +426,19 @@ export function useActiveReservation(enabled: boolean) {
           return;
         }
         await run(async () => {
-          await reservationEnRoute(current.id);
+          let firstLocation: { latitude: number; longitude: number } | null = null;
+          try {
+            const here = await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+            });
+            firstLocation = {
+              latitude: here.coords.latitude,
+              longitude: here.coords.longitude,
+            };
+          } catch {
+            // The en-route action remains available without a first fix.
+          }
+          await reservationEnRoute(current.id, firstLocation);
           const nowIso = new Date().toISOString();
           const iAmOwner = current.owner_id === userId;
           const next = {

@@ -949,6 +949,35 @@ paths:
         "409":
           $ref: "#/components/responses/Error"
 
+  /v1/reservations/{id}/location:
+    post:
+      tags: [reservations]
+      operationId: updateReservationLocation
+      summary: Record the caller's latest en-route location fix
+      parameters:
+        - $ref: "#/components/parameters/ReservationID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReservationLocationRequest"
+      responses:
+        "200":
+          description: Reservation view with the peer distance when available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
   /v1/reservations/{id}/ready:
     post:
       tags: [reservations]
@@ -1257,7 +1286,8 @@ components:
 
     UserResponse:
       type: object
-      required: [id, email, display_name, phone, locale, email_verified, rating_count, balance_cents]
+      required:
+        [id, email, display_name, phone, locale, email_verified, rating_count, balance_cents]
       properties:
         id:
           type: string
@@ -1693,6 +1723,15 @@ components:
           type: string
           format: date-time
           nullable: true
+        peer_distance_m:
+          type: integer
+          nullable: true
+          description: Direct distance in metres from the peer's latest fix to the meeting point.
+        peer_location_measured_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp of the peer fix used for peer_distance_m.
         owner_ready_at:
           type: string
           format: date-time
@@ -1723,6 +1762,21 @@ components:
           $ref: "#/components/schemas/RatingSummary"
         peer_rating:
           $ref: "#/components/schemas/RatingSummary"
+
+    ReservationLocationRequest:
+      type: object
+      required: [latitude, longitude]
+      properties:
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
 
     RateReservationRequest:
       type: object

@@ -4,6 +4,7 @@ import * as Notifications from "expo-notifications";
 import * as TaskManager from "expo-task-manager";
 import { Platform } from "react-native";
 
+import { updateReservationLocation } from "@/api/client";
 import { en } from "@/i18n/locales/en";
 import { es } from "@/i18n/locales/es";
 import { loadStoredLocale } from "@/i18n/storage";
@@ -24,6 +25,7 @@ const ARMED_KEY = "parkxchange.arrival.armedRegion";
 const ALWAYS_DENIED_KEY = "parkxchange.arrival.alwaysDenied";
 
 let armed: ArmedRegion | null = null;
+let lastLocationSentAt = 0;
 /** In-process guard — claim synchronously before any await. */
 let promptedReservationId: string | null = null;
 
@@ -209,8 +211,20 @@ TaskManager.defineTask(ARRIVAL_UPDATES_TASK, async ({ data, error }) => {
   };
   const locs = payload.locations ?? [];
   for (const loc of locs) {
+    if (!isAccurateEnoughForArrival(loc.coords.accuracy)) {
+      continue;
+    }
+    const now = Date.now();
+    if (now - lastLocationSentAt >= 10_000) {
+      lastLocationSentAt = now;
+      void updateReservationLocation(region.reservationId, {
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+      }).catch(() => {
+        // Location delivery is best-effort; local arrival detection continues.
+      });
+    }
     if (
-      isAccurateEnoughForArrival(loc.coords.accuracy) &&
       isInsideArrivalRadius(
         loc.coords.longitude,
         loc.coords.latitude,

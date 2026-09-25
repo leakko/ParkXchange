@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
 
 import { useTranslation, type TranslationKey } from "@/i18n";
+import { peerEnRouteDistance } from "@/map/peerDistance";
 import {
   myHandshakePhase,
   peerPhase,
@@ -41,6 +42,7 @@ export function ExchangeStatusPanel({ res, iAmOwner, deadlineLabel }: Props) {
   const { t } = useTranslation();
   const mine = myHandshakePhase(res, iAmOwner);
   const theirs = peerPhase(res, iAmOwner);
+  const distance = peerEnRouteDistance(res, iAmOwner);
   const themLabel = iAmOwner
     ? t("exchange.statusPanel.themDriver")
     : t("exchange.statusPanel.themOwner");
@@ -56,6 +58,16 @@ export function ExchangeStatusPanel({ res, iAmOwner, deadlineLabel }: Props) {
         <Text style={styles.who}>{themLabel}</Text>
         <Text style={styles.phase}>{t(themPhaseKey(iAmOwner, theirs))}</Text>
       </View>
+      {distance ? (
+        <Text style={styles.distance}>
+          {distance.current
+            ? t("exchange.statusPanel.distanceCurrent", { meters: distance.meters })
+            : t("exchange.statusPanel.distanceStale", {
+                meters: distance.meters,
+                minutes: distance.ageMinutes,
+              })}
+        </Text>
+      ) : null}
       {deadlineLabel ? <Text style={styles.deadline}>{deadlineLabel}</Text> : null}
     </View>
   );
@@ -103,5 +115,11 @@ const styles = StyleSheet.create({
     color: "#7A93A0",
     fontSize: 12,
     marginTop: 2,
+  },
+  distance: {
+    color: "#D6E7ED",
+    fontSize: 13,
+    fontWeight: "700",
+    marginLeft: 158,
   },
 });

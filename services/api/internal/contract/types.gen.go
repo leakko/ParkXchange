@@ -457,6 +457,12 @@ type RegisterRequest struct {
 	Phone *string `json:"phone,omitempty"`
 }
 
+// ReservationLocationRequest defines model for ReservationLocationRequest.
+type ReservationLocationRequest struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
 // ReservationResponse defines model for ReservationResponse.
 type ReservationResponse struct {
 	// CanRate True when the caller may still submit a rating
@@ -481,10 +487,16 @@ type ReservationResponse struct {
 	OwnerReadyAt    *time.Time          `json:"owner_ready_at,omitempty"`
 
 	// OwnerVehicle Car occupying the spot (owner) — visible to both parties
-	OwnerVehicle *VehicleSummary    `json:"owner_vehicle,omitempty"`
-	PeerRating   *RatingSummary     `json:"peer_rating,omitempty"`
-	PriceCents   int                `json:"price_cents"`
-	SpotId       openapi_types.UUID `json:"spot_id"`
+	OwnerVehicle *VehicleSummary `json:"owner_vehicle,omitempty"`
+
+	// PeerDistanceM Direct distance in metres from the peer's latest fix to the meeting point.
+	PeerDistanceM *int `json:"peer_distance_m,omitempty"`
+
+	// PeerLocationMeasuredAt Timestamp of the peer fix used for peer_distance_m.
+	PeerLocationMeasuredAt *time.Time         `json:"peer_location_measured_at,omitempty"`
+	PeerRating             *RatingSummary     `json:"peer_rating,omitempty"`
+	PriceCents             int                `json:"price_cents"`
+	SpotId                 openapi_types.UUID `json:"spot_id"`
 
 	// SpotSummary Spot meeting point for list/detail UX (navigate + re-announce). Exact coords; both reservation parties already shared this place.
 	SpotSummary *ReservationSpotSummary `json:"spot_summary,omitempty"`
@@ -841,6 +853,9 @@ type PutPushTokenJSONRequestBody PutPushTokenJSONBody
 
 // CreateReportJSONRequestBody defines body for CreateReport for application/json ContentType.
 type CreateReportJSONRequestBody = CreateReportRequest
+
+// UpdateReservationLocationJSONRequestBody defines body for UpdateReservationLocation for application/json ContentType.
+type UpdateReservationLocationJSONRequestBody = ReservationLocationRequest
 
 // RateReservationJSONRequestBody defines body for RateReservation for application/json ContentType.
 type RateReservationJSONRequestBody = RateReservationRequest

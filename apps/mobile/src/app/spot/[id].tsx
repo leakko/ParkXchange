@@ -1,26 +1,25 @@
 import { Ionicons } from "@expo/vector-icons";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { accountColors } from "@/account/theme";
 import {
+  cancelReservation,
   createOffer,
-  fetchActiveReservations,
+  fetchReservations,
   getSpot,
   listMyOffers,
   listVehicles,
+  reservationEnRoute,
+  reservationReady,
+  reservationUnready,
   withdrawOffer,
   withdrawSpot,
   type OfferResponse,
+  type ReservationResponse,
   type SpotFeature,
   type VehicleResponse,
 } from "@/api/client";
@@ -32,10 +31,8 @@ import { useActiveReservation } from "@/hooks/useSpotActions";
 import { useTranslation } from "@/i18n";
 import { firstGivenName } from "@/i18n/catalogLabels";
 import { SpotSheetBody } from "@/map/SpotSheetBody";
-import {
-  peekOpenSpot,
-  subscribeOpenSpot,
-} from "@/map/spotSheetHandoff";
+import { armGeofenceForReservation, disarmArrivalGeofence } from "@/push/geofence";
+import { peekOpenSpot, subscribeOpenSpot } from "@/map/spotSheetHandoff";
 import {
   consumeResumeOfferAfterVehicle,
   subscribeVehicleCreated,
@@ -64,12 +61,14 @@ export default function SpotDetailScreen() {
   const [loading, setLoading] = useState(() => !spot);
   const [vehicles, setVehicles] = useState<VehicleResponse[]>([]);
   const [pendingOffer, setPendingOffer] = useState<OfferResponse | null>(null);
+  const [fullReservation, setFullReservation] = useState<ReservationResponse | null>(null);
   const [offerBusy, setOfferBusy] = useState(false);
   const [makingOffer, setMakingOffer] = useState(false);
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
 
   const {
     active,
+    userId,
     isOwner,
     isDriver,
     busy: exchangeBusy,
@@ -80,8 +79,25 @@ export default function SpotDetailScreen() {
     refresh: refreshActive,
   } = useActiveReservation(signedIn);
 
-  const activeForSpot =
-    active && spotId && String(active.spot_id) === spotId ? active : null;
+  const activeForSpot = active && spotId && String(active.spot_id) === spotId ? active : null;
+  const reservationForSpot =
+    fullReservation && String(fullReservation.spot_id) === spotId ? fullReservation : null;
+  const exchangeForSpot = activeForSpot ?? reservationForSpot;
+  const sheetIsOwner = !!exchangeForSpot && exchangeForSpot.owner_id === userId;
+  const sheetIsDriver = !!exchangeForSpot && exchangeForSpot.driver_id === userId;
+
+  const refreshFullReservation = useCallback(async () => {
+    if (!signedIn || !spotId) {
+      setFullReservation(null);
+      return;
+    }
+    try {
+      const list = await fetchReservations();
+      setFullReservation(list.find((item) => String(item.spot_id) === spotId) ?? null);
+    } catch {
+      /* keep the current sheet state */
+    }
+  }, [signedIn, spotId]);
 
   const title = useMemo(() => {
     if (!spot) {
@@ -115,6 +131,14 @@ export default function SpotDetailScreen() {
     });
   }, [routeId, router]);
 
+  useEffect(() => {
+    if (spot?.properties.status === "reserved" || spot?.properties.status === "handover") {
+      void refreshFullReservation();
+    } else {
+      setFullReservation(null);
+    }
+  }, [refreshFullReservation, spot?.properties.status]);
+
   const refreshSpot = useCallback(async (id: string) => {
     if (!id) {
       return;
@@ -128,22 +152,23 @@ export default function SpotDetailScreen() {
     }
   }, []);
 
-  const refreshOffers = useCallback(async (id: string) => {
-    if (!signedIn || !id) {
-      setPendingOffer(null);
-      return;
-    }
-    try {
-      const mine = await listMyOffers();
-      setPendingOffer(
-        mine.find(
-          (o) => String(o.spot_id) === id && o.status === "pending",
-        ) ?? null,
-      );
-    } catch {
-      setPendingOffer(null);
-    }
-  }, [signedIn]);
+  const refreshOffers = useCallback(
+    async (id: string) => {
+      if (!signedIn || !id) {
+        setPendingOffer(null);
+        return;
+      }
+      try {
+        const mine = await listMyOffers();
+        setPendingOffer(
+          mine.find((o) => String(o.spot_id) === id && o.status === "pending") ?? null,
+        );
+      } catch {
+        setPendingOffer(null);
+      }
+    },
+    [signedIn],
+  );
 
   const refreshVehicles = useCallback(async () => {
     if (!signedIn) {
@@ -184,9 +209,7 @@ export default function SpotDetailScreen() {
   }, [refreshVehicles]);
 
   const requireSignIn = useCallback(() => {
-    router.replace(
-      `/auth/login?returnTo=${encodeURIComponent(`/spot/${spotId}`)}` as Href,
-    );
+    router.replace(`/auth/login?returnTo=${encodeURIComponent(`/spot/${spotId}`)}` as Href);
   }, [router, spotId]);
 
   const requireEmailVerified = useCallback(async (): Promise<boolean> => {
@@ -286,12 +309,12 @@ export default function SpotDetailScreen() {
         >
           <SpotSheetBody
             spot={spot}
-            active={activeForSpot}
+            active={exchangeForSpot}
             pendingOffer={pendingOffer}
             vehicles={vehicles}
             signedIn={signedIn}
-            isOwner={!!activeForSpot && isOwner}
-            isDriver={!!activeForSpot && isDriver}
+            isOwner={sheetIsOwner || (!!activeForSpot && isOwner)}
+            isDriver={sheetIsDriver || (!!activeForSpot && isDriver)}
             busy={exchangeBusy || offerBusy}
             makingOffer={makingOffer}
             setMakingOffer={setMakingOffer}
@@ -318,11 +341,7 @@ export default function SpotDetailScreen() {
                   message: t("map.alert.offerSent.message"),
                   confirmLabel: t("common.ok"),
                 });
-                await Promise.all([
-                  refreshSpot(spotId),
-                  refreshOffers(spotId),
-                  refreshActive(),
-                ]);
+                await Promise.all([refreshSpot(spotId), refreshOffers(spotId), refreshActive()]);
               } catch (err) {
                 await alert({
                   title: apiErrorTitle(err, t, "map.alert.offerFailed.title"),
@@ -353,12 +372,65 @@ export default function SpotDetailScreen() {
               router.push("/account/vehicles/new?from=offer" as Href);
             }}
             onRequireSignIn={requireSignIn}
-            onEnRoute={() => void markEnRoute()}
-            onReady={() => void markReady()}
-            onUnready={() => void clearReady()}
+            onEnRoute={() => {
+              if (activeForSpot) {
+                void markEnRoute();
+                return;
+              }
+              if (!exchangeForSpot) {
+                return;
+              }
+              void reservationEnRoute(exchangeForSpot.id).then(async () => {
+                const coordinates = spot.geometry.coordinates;
+                await armGeofenceForReservation(exchangeForSpot.id, {
+                  lon: Number(coordinates[0]),
+                  lat: Number(coordinates[1]),
+                });
+                void refreshFullReservation();
+                void refreshSpot(spotId);
+              });
+            }}
+            onReady={() => {
+              if (activeForSpot) {
+                void markReady();
+                return;
+              }
+              if (!exchangeForSpot) {
+                return;
+              }
+              void reservationReady(exchangeForSpot.id).then(() => {
+                void disarmArrivalGeofence();
+                void refreshFullReservation();
+                void refreshSpot(spotId);
+              });
+            }}
+            onUnready={() => {
+              if (activeForSpot) {
+                void clearReady();
+                return;
+              }
+              if (!exchangeForSpot) {
+                return;
+              }
+              void reservationUnready(exchangeForSpot.id).then(() => {
+                void refreshFullReservation();
+                void refreshSpot(spotId);
+              });
+            }}
             onCancel={() => {
-              void cancel().then(() => {
-                void refreshActive();
+              if (activeForSpot) {
+                void cancel().then(() => {
+                  void refreshActive();
+                  void refreshSpot(spotId);
+                });
+                return;
+              }
+              if (!exchangeForSpot) {
+                return;
+              }
+              void cancelReservation(exchangeForSpot.id).then(() => {
+                void disarmArrivalGeofence();
+                void refreshFullReservation();
                 void refreshSpot(spotId);
               });
             }}
@@ -387,31 +459,10 @@ export default function SpotDetailScreen() {
                 } catch (err) {
                   await alert({
                     title: t("map.alert.withdrawFailed.title"),
-                    message:
-                      err instanceof Error ? err.message : t("common.error"),
+                    message: err instanceof Error ? err.message : t("common.error"),
                     confirmLabel: t("common.ok"),
                   });
                 }
-              })();
-            }}
-            onManageExchange={() => {
-              void (async () => {
-                await refreshActive();
-                try {
-                  const list = await fetchActiveReservations();
-                  const match = list.find(
-                    (r) => String(r.spot_id) === spotId,
-                  );
-                  if (match) {
-                    router.push(
-                      `/account/reservations/${match.id}` as Href,
-                    );
-                    return;
-                  }
-                } catch {
-                  /* fall through */
-                }
-                router.push("/account/reservations" as Href);
               })();
             }}
             onReportListing={(s) => {

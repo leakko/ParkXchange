@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { SpotSocket } from "@/api/ws";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
+import { requestActiveReservationRefreshDebounced } from "@/push/activeReservationSync";
 import { useToast } from "@/ui/toast";
 
 /**
@@ -25,6 +26,10 @@ export function useOwnerOfferAlerts() {
         /* personal socket does not subscribe to a viewport */
       },
       onSpotEvent: (event) => {
+        if (event.type === "reservation.updated") {
+          requestActiveReservationRefreshDebounced();
+          return;
+        }
         if (event.type !== "offer.created") {
           return;
         }

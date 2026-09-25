@@ -1,12 +1,7 @@
 import type { components } from "@parkxchange/api-contract";
 
 import { apiUrl } from "@/config";
-import {
-  clearSessionAndNotify,
-  getAccessToken,
-  getRefreshToken,
-  setSession,
-} from "@/api/session";
+import { clearSessionAndNotify, getAccessToken, getRefreshToken, setSession } from "@/api/session";
 
 export type SpotFeatureCollection = components["schemas"]["SpotFeatureCollection"];
 export type SpotFeature = components["schemas"]["SpotFeature"];
@@ -505,8 +500,31 @@ async function postReservationAction(id: string, action: string): Promise<void> 
 
 export const cancelReservation = (id: string) => postReservationAction(id, "cancel");
 
-export async function reservationEnRoute(id: string): Promise<void> {
-  await postReservationAction(id, "en-route");
+export async function reservationEnRoute(
+  id: string,
+  location?: { latitude: number; longitude: number } | null,
+): Promise<void> {
+  const res = await apiFetch(`/v1/reservations/${id}/en-route`, {
+    method: "POST",
+    ...(location ? { body: JSON.stringify(location) } : {}),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+}
+
+export async function updateReservationLocation(
+  id: string,
+  location: { latitude: number; longitude: number },
+): Promise<ReservationResponse> {
+  const res = await apiFetch(`/v1/reservations/${id}/location`, {
+    method: "POST",
+    body: JSON.stringify(location),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as ReservationResponse;
 }
 
 export async function reservationReady(id: string): Promise<{ completed: boolean }> {

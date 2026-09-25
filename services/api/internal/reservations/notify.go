@@ -42,10 +42,11 @@ const (
 
 // Notification is a best-effort push to one user about a reservation.
 type Notification struct {
-	Type          string
-	ReservationID string
-	RecipientID   string
-	ExchangeAt    time.Time
+	Type           string
+	ReservationID  string
+	RecipientID    string
+	ExchangeAt     time.Time
+	DistanceMeters *int
 	// Action hints for the client (Expo category / buttons).
 	Actions []string // "en_route" | "ready" | "unready" | "open"
 	Urgent  bool

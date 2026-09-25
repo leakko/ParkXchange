@@ -15,20 +15,31 @@ const reservationColumns = `
 	r.offer_id, r.status, r.price_cents,
 	r.exchange_at, r.starts_at, r.ends_at,
 	r.owner_en_route_at, r.driver_en_route_at,
+	ST_X(r.owner_location), ST_Y(r.owner_location), r.owner_location_at,
+	ST_X(r.driver_location), ST_Y(r.driver_location), r.driver_location_at,
 	r.owner_ready_at, r.driver_ready_at,
 	r.driver_vehicle_id, r.reconfirm_by, r.reconfirmed_at,
-	r.created_at, r.expires_at, r.completed_at, r.cancelled_at, r.cancel_reason`
+	r.created_at, r.expires_at, r.completed_at, r.cancelled_at, r.cancel_reason,
+	ST_X(s.geom), ST_Y(s.geom)`
 
 func scanReservation(row pgx.Row) (domain.Reservation, error) {
 	var (
-		res             domain.Reservation
-		status          string
-		reconfirmed     *time.Time
-		completed       *time.Time
-		cancelled       *time.Time
-		cancelReason    *string
-		offerID         *string
-		driverVehicleID *string
+		res              domain.Reservation
+		status           string
+		reconfirmed      *time.Time
+		completed        *time.Time
+		cancelled        *time.Time
+		cancelReason     *string
+		offerID          *string
+		driverVehicleID  *string
+		ownerLon         *float64
+		ownerLat         *float64
+		driverLon        *float64
+		driverLat        *float64
+		ownerLocationAt  *time.Time
+		driverLocationAt *time.Time
+		spotLon          *float64
+		spotLat          *float64
 	)
 
 	err := row.Scan(
@@ -36,9 +47,12 @@ func scanReservation(row pgx.Row) (domain.Reservation, error) {
 		&offerID, &status, &res.PriceCents,
 		&res.ExchangeAt, &res.StartsAt, &res.EndsAt,
 		&res.OwnerEnRouteAt, &res.DriverEnRouteAt,
+		&ownerLon, &ownerLat, &ownerLocationAt,
+		&driverLon, &driverLat, &driverLocationAt,
 		&res.OwnerReadyAt, &res.DriverReadyAt,
 		&driverVehicleID, &res.ReconfirmBy, &reconfirmed,
 		&res.CreatedAt, &res.ExpiresAt, &completed, &cancelled, &cancelReason,
+		&spotLon, &spotLat,
 	)
 	if err != nil {
 		return domain.Reservation{}, translate(err, "scan reservation")
@@ -51,7 +65,25 @@ func scanReservation(row pgx.Row) (domain.Reservation, error) {
 	res.CompletedAt = completed
 	res.CancelledAt = cancelled
 	res.CancelReason = optional(cancelReason)
+	res.SpotLon = optionalFloat(spotLon)
+	res.SpotLat = optionalFloat(spotLat)
+	res.OwnerLocation = reservationLocation(ownerLon, ownerLat, ownerLocationAt)
+	res.DriverLocation = reservationLocation(driverLon, driverLat, driverLocationAt)
 	return res, nil
+}
+
+func reservationLocation(lon, lat *float64, at *time.Time) *domain.ReservationLocation {
+	if lon == nil || lat == nil || at == nil {
+		return nil
+	}
+	return &domain.ReservationLocation{Lon: *lon, Lat: *lat, At: *at}
+}
+
+func optionalFloat(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
 
 func loadReservation(ctx context.Context, q pgx.Row) (domain.Reservation, error) {
@@ -331,6 +363,76 @@ func (db *DB) MarkEnRoute(ctx context.Context, id, actorID string, at time.Time)
 	return translate(tx.Commit(ctx), "commit en-route")
 }
 
+// UpdateLocation replaces the caller's latest en-route fix atomically.
+func (db *DB) UpdateLocation(ctx context.Context, id, actorID string, lat, lon float64, at time.Time) error {
+	tx, err := db.begin(ctx)
+	if err != nil {
+		return translate(err, "begin location update")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var (
+		spotID, driverID, ownerID, status string
+		price                             int
+		spotLon, spotLat                  float64
+	)
+	if err := tx.QueryRow(ctx, `
+		SELECT r.spot_id, r.driver_id, s.owner_id, r.status, r.price_cents,
+		       ST_X(s.geom), ST_Y(s.geom)
+		  FROM reservations r
+		  JOIN spots s ON s.id = r.spot_id
+		 WHERE r.id = $1
+		   AND (r.driver_id = $2 OR s.owner_id = $2)
+		 FOR UPDATE OF r
+	`, id, actorID).Scan(
+		&spotID, &driverID, &ownerID, &status, &price, &spotLon, &spotLat,
+	); err != nil {
+		return translate(err, "lock reservation for location update")
+	}
+	if !domain.ReservationStatus(status).Live() {
+		return domain.ErrConflict
+	}
+
+	var updated bool
+	switch actorID {
+	case ownerID:
+		result, updateErr := tx.Exec(ctx, `
+			UPDATE reservations
+			   SET owner_location = ST_SetSRID(ST_MakePoint($2, $3), 4326),
+			       owner_location_at = $4
+			 WHERE id = $1 AND owner_en_route_at IS NOT NULL AND owner_ready_at IS NULL
+		`, id, lon, lat, at)
+		if updateErr != nil {
+			return translate(updateErr, "set owner location")
+		}
+		updated = result.RowsAffected() == 1
+	case driverID:
+		result, updateErr := tx.Exec(ctx, `
+			UPDATE reservations
+			   SET driver_location = ST_SetSRID(ST_MakePoint($2, $3), 4326),
+			       driver_location_at = $4
+			 WHERE id = $1 AND driver_en_route_at IS NOT NULL AND driver_ready_at IS NULL
+		`, id, lon, lat, at)
+		if updateErr != nil {
+			return translate(updateErr, "set driver location")
+		}
+		updated = result.RowsAffected() == 1
+	default:
+		return domain.ErrConflict
+	}
+	if !updated {
+		return domain.ErrConflict
+	}
+
+	if err := notifySpot(ctx, tx, domain.SpotEvent{
+		Type: domain.EventReservationUpdated, SpotID: spotID, OwnerID: ownerID,
+		Lon: spotLon, Lat: spotLat, Status: domain.SpotHandover, PriceCents: price, HolderID: driverID,
+	}); err != nil {
+		return translate(err, "notify location update")
+	}
+	return translate(tx.Commit(ctx), "commit location update")
+}
+
 // MarkReady sets the actor's ready clock; completes when both parties are ready.
 func (db *DB) MarkReady(ctx context.Context, id, actorID string, at time.Time) (bool, error) {
 	tx, err := db.begin(ctx)
@@ -366,7 +468,11 @@ func (db *DB) MarkReady(ctx context.Context, id, actorID string, at time.Time) (
 	case ownerID:
 		if ownerReady == nil {
 			if _, err := tx.Exec(ctx, `
-				UPDATE reservations SET owner_ready_at = $2 WHERE id = $1
+				UPDATE reservations
+				   SET owner_ready_at = $2,
+				       owner_location = NULL,
+				       owner_location_at = NULL
+				 WHERE id = $1
 			`, id, at); err != nil {
 				return false, translate(err, "set owner ready")
 			}
@@ -377,6 +483,8 @@ func (db *DB) MarkReady(ctx context.Context, id, actorID string, at time.Time) (
 			if _, err := tx.Exec(ctx, `
 				UPDATE reservations
 				   SET driver_ready_at = $2,
+				       driver_location = NULL,
+				       driver_location_at = NULL,
 				       coaching_lap_at = NULL,
 				       coaching_back_tip_sent_at = NULL,
 				       coaching_wait_tip_sent_at = NULL

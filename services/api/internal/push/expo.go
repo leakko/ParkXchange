@@ -217,6 +217,13 @@ func copyFor(n reservations.Notification, locale string) (title, body string) {
 			c = urgent
 		}
 	}
+	if n.DistanceMeters != nil && (n.Type == reservations.EventOwnerEnRoute || n.Type == reservations.EventDriverEnRoute) {
+		if lang == "en" {
+			c.body = fmt.Sprintf("%s — %d m from the meeting point", c.body, *n.DistanceMeters)
+		} else {
+			c.body = fmt.Sprintf("%s — a %d m del punto de encuentro", c.body, *n.DistanceMeters)
+		}
+	}
 	return c.title, c.body
 }
 

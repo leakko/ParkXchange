@@ -13,6 +13,8 @@ export type HandshakeFields = {
   owner_ready_at?: string | null;
   driver_en_route_at?: string | null;
   owner_en_route_at?: string | null;
+  peer_distance_m?: number | null;
+  peer_location_measured_at?: string | null;
 };
 
 /** Matrix temporal window (spec 2029-09-20). */
@@ -25,10 +27,7 @@ export type PeerPhase = "idle" | "en_route" | "ready";
  * Classify now into windows A–D.
  * A/B before exchange_at; C courtesy after hour while clocks/safety allow; D late.
  */
-export function exchangeWindow(
-  res: HandshakeFields,
-  nowMs: number = Date.now(),
-): ExchangeWindow {
+export function exchangeWindow(res: HandshakeFields, nowMs: number = Date.now()): ExchangeWindow {
   const exchangeMs = new Date(res.exchange_at).getTime();
   if (nowMs < exchangeMs - DRIVER_FAIR_CANCEL_MS) {
     return "A";
@@ -45,10 +44,7 @@ export function exchangeWindow(
   return "C";
 }
 
-export function peerPhase(
-  res: HandshakeFields,
-  iAmOwner: boolean,
-): PeerPhase {
+export function peerPhase(res: HandshakeFields, iAmOwner: boolean): PeerPhase {
   const ready = iAmOwner ? res.driver_ready_at : res.owner_ready_at;
   const enRoute = iAmOwner ? res.driver_en_route_at : res.owner_en_route_at;
   if (ready) {
@@ -61,10 +57,7 @@ export function peerPhase(
 }
 
 /** Current user's own handshake phase. */
-export function myHandshakePhase(
-  res: HandshakeFields,
-  iAmOwner: boolean,
-): PeerPhase {
+export function myHandshakePhase(res: HandshakeFields, iAmOwner: boolean): PeerPhase {
   const ready = iAmOwner ? res.owner_ready_at : res.driver_ready_at;
   const enRoute = iAmOwner ? res.owner_en_route_at : res.driver_en_route_at;
   if (ready) {
@@ -77,10 +70,7 @@ export function myHandshakePhase(
 }
 
 /** Mirrors domain.OwnerCancelForfeits. */
-export function ownerCancelForfeits(
-  res: HandshakeFields,
-  nowMs: number = Date.now(),
-): boolean {
+export function ownerCancelForfeits(res: HandshakeFields, nowMs: number = Date.now()): boolean {
   if (res.owner_ready_at && res.driver_ready_at) {
     return false;
   }
@@ -110,10 +100,7 @@ export function ownerNoShowDeadline(res: HandshakeFields): Date | null {
     return null;
   }
   return new Date(
-    graceDeadline(
-      new Date(res.driver_ready_at).getTime(),
-      new Date(res.exchange_at).getTime(),
-    ),
+    graceDeadline(new Date(res.driver_ready_at).getTime(), new Date(res.exchange_at).getTime()),
   );
 }
 
@@ -123,17 +110,11 @@ export function driverNoShowDeadline(res: HandshakeFields): Date | null {
     return null;
   }
   return new Date(
-    graceDeadline(
-      new Date(res.owner_ready_at).getTime(),
-      new Date(res.exchange_at).getTime(),
-    ),
+    graceDeadline(new Date(res.owner_ready_at).getTime(), new Date(res.exchange_at).getTime()),
   );
 }
 
-export function ownerNoShowElapsed(
-  res: HandshakeFields,
-  nowMs: number = Date.now(),
-): boolean {
+export function ownerNoShowElapsed(res: HandshakeFields, nowMs: number = Date.now()): boolean {
   const deadline = ownerNoShowDeadline(res);
   if (!deadline || res.owner_ready_at) {
     return false;
@@ -141,10 +122,7 @@ export function ownerNoShowElapsed(
   return nowMs >= deadline.getTime();
 }
 
-export function driverNoShowElapsed(
-  res: HandshakeFields,
-  nowMs: number = Date.now(),
-): boolean {
+export function driverNoShowElapsed(res: HandshakeFields, nowMs: number = Date.now()): boolean {
   const deadline = driverNoShowDeadline(res);
   if (!deadline) {
     return false;

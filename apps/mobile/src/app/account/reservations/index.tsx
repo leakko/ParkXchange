@@ -2,19 +2,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Href, useRouter } from "expo-router";
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  RefreshControl,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, Text, View } from "react-native";
 
 import {
   canReannounceFromReservation,
   reservationAddressLabel,
 } from "@/account/reservationReannounce";
 import { accountStyles } from "@/account/theme";
+import { sortReservationsNewestFirst } from "@/account/listOrdering";
 import {
   createOffer,
   fetchActiveReservations,
@@ -29,10 +24,7 @@ import { AuthScroll } from "@/auth/AuthScroll";
 import { AuthTextInput } from "@/auth/AuthTextInput";
 import { useSession } from "@/hooks/useSession";
 import { useTranslation } from "@/i18n";
-import {
-  offerStatusLabel,
-  reservationStatusLabel,
-} from "@/i18n/catalogLabels";
+import { offerStatusLabel, reservationStatusLabel } from "@/i18n/catalogLabels";
 import { formatPoints, formatSignedPoints, parsePointsInput } from "@/i18n/formatPoints";
 import { reservationPointsDelta } from "@/map/reservationPoints";
 import { useConfirm } from "@/ui/ConfirmModal";
@@ -49,9 +41,7 @@ function mergeReservations(
   for (const r of active ?? []) {
     byId.set(r.id, r);
   }
-  return [...byId.values()].sort((a, b) =>
-    String(b.created_at).localeCompare(String(a.created_at)),
-  );
+  return sortReservationsNewestFirst([...byId.values()]);
 }
 
 export default function MyReservationsScreen() {
@@ -193,9 +183,7 @@ export default function MyReservationsScreen() {
     <AuthScroll
       refreshControl={
         <RefreshControl
-          refreshing={
-            reservations.isFetching || offers.isFetching || active.isFetching
-          }
+          refreshing={reservations.isFetching || offers.isFetching || active.isFetching}
           onRefresh={() => {
             void reservations.refetch();
             void offers.refetch();
@@ -208,10 +196,7 @@ export default function MyReservationsScreen() {
       {rows.map((row) => {
         if (row.kind === "section") {
           return (
-            <Text
-              key={row.id}
-              style={[accountStyles.sectionTitle, { marginTop: 8 }]}
-            >
+            <Text key={row.id} style={[accountStyles.sectionTitle, { marginTop: 8 }]}>
               {row.title}
             </Text>
           );
@@ -229,28 +214,23 @@ export default function MyReservationsScreen() {
           return (
             <View
               key={`o-${offer.id}`}
-              style={[
-                accountStyles.row,
-                { marginBottom: 8, flexDirection: "column", alignItems: "stretch" },
-              ]}
+              style={[accountStyles.rowCard, accountStyles.rowAttention]}
             >
               <Text style={accountStyles.rowTitle}>
                 {t("account.reservations.offerTitle", {
                   points: formatSignedPoints(
-                    offer.status === "pending"
-                      ? -Math.abs(offer.amount_cents)
-                      : 0,
+                    offer.status === "pending" ? -Math.abs(offer.amount_cents) : 0,
                   ),
                   status: offerStatusLabel(t, offer.status),
                 })}
               </Text>
-              <Text style={accountStyles.rowMeta}>
+              <Text style={accountStyles.rowMetaTight}>
                 {t("account.reservations.exchangeAt", {
                   datetime: formatDateTime(offer.exchange_at),
                 })}
               </Text>
               {editing ? (
-                <View style={{ gap: 8, marginTop: 10 }}>
+                <View style={{ gap: 8, marginTop: 6 }}>
                   <Text style={accountStyles.label}>{t("announce.guidePrice")}</Text>
                   <AuthTextInput
                     value={editAmount}
@@ -273,7 +253,7 @@ export default function MyReservationsScreen() {
                   </Pressable>
                 </View>
               ) : (
-                <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+                <View style={accountStyles.rowActions}>
                   <Pressable
                     style={[accountStyles.secondary, { flex: 1 }]}
                     onPress={() => beginEditOffer(offer)}
@@ -300,34 +280,22 @@ export default function MyReservationsScreen() {
         const res = row.item;
         const isOwner = res.owner_id === userId;
         const live =
-          res.status === "pending" ||
-          res.status === "confirmed" ||
-          res.status === "arrived";
+          res.status === "pending" || res.status === "confirmed" || res.status === "arrived";
         const summary = res.spot_summary;
         const canNav =
-          summary != null &&
-          Number.isFinite(summary.lon) &&
-          Number.isFinite(summary.lat);
+          summary != null && Number.isFinite(summary.lon) && Number.isFinite(summary.lat);
         const canReannounce = canReannounceFromReservation({
           ownerId: res.owner_id,
           userId,
           status: res.status,
           spotSummary: summary ?? null,
         });
-        const address = reservationAddressLabel(
-          summary,
-          t("account.reservations.addressUnknown"),
-        );
+        const address = reservationAddressLabel(summary, t("account.reservations.addressUnknown"));
         return (
           <Pressable
             key={`r-${res.id}`}
-            style={[
-              accountStyles.row,
-              { marginBottom: 8, flexDirection: "column", alignItems: "stretch" },
-            ]}
-            onPress={() =>
-              router.push(`/account/reservations/${res.id}` as Href)
-            }
+            style={[accountStyles.rowCard, live ? accountStyles.rowAttention : null]}
+            onPress={() => router.push(`/account/reservations/${res.id}` as Href)}
           >
             <View
               style={{
@@ -339,9 +307,7 @@ export default function MyReservationsScreen() {
               <Text style={[accountStyles.rowTitle, { flex: 1 }]}>
                 {t("account.reservations.rowTitle", {
                   points: formatSignedPoints(
-                    userId
-                      ? reservationPointsDelta(res, userId)
-                      : res.price_cents,
+                    userId ? reservationPointsDelta(res, userId) : res.price_cents,
                   ),
                   status: reservationStatusLabel(t, res.status),
                 })}
@@ -368,6 +334,9 @@ export default function MyReservationsScreen() {
                           focusLat: String(summary!.lat),
                           focusSpot: res.spot_id,
                         });
+                        if (!live) {
+                          q.set("focusHistory", "1");
+                        }
                         router.push(`/?${q.toString()}` as Href);
                       }}
                     >
@@ -377,9 +346,7 @@ export default function MyReservationsScreen() {
                   {canReannounce ? (
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel={t(
-                        "account.reservations.reannounceA11y",
-                      )}
+                      accessibilityLabel={t("account.reservations.reannounceA11y")}
                       hitSlop={8}
                       onPress={(e) => {
                         e.stopPropagation?.();
@@ -403,17 +370,17 @@ export default function MyReservationsScreen() {
                 </View>
               ) : null}
             </View>
-            <Text style={accountStyles.rowMeta}>
+            <Text style={accountStyles.rowMetaTight}>
               {isOwner
                 ? t("account.reservations.role.owner")
                 : t("account.reservations.role.driver")}
               {live ? " · " : ""}
               {live ? t("account.reservations.openMap") : ""}
             </Text>
-            <Text style={accountStyles.rowMeta} numberOfLines={2}>
+            <Text style={accountStyles.rowMetaTight} numberOfLines={2}>
               {address}
             </Text>
-            <Text style={accountStyles.rowMeta}>
+            <Text style={accountStyles.rowMetaTight}>
               {t("account.reservations.exchangeAt", {
                 datetime: formatDateTime(res.exchange_at),
               })}

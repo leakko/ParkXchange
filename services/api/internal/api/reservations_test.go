@@ -25,6 +25,8 @@ type reservationBody struct {
 	DriverReadyAt   *time.Time `json:"driver_ready_at"`
 	OwnerEnRouteAt  *time.Time `json:"owner_en_route_at"`
 	DriverEnRouteAt *time.Time `json:"driver_en_route_at"`
+	PeerDistanceM   *int       `json:"peer_distance_m"`
+	PeerMeasuredAt  *time.Time `json:"peer_location_measured_at"`
 }
 
 type offerBody struct {
@@ -122,6 +124,44 @@ func TestOfferAcceptanceAndHandshakePayOwner(t *testing.T) {
 	}
 	if want := domain.SignupGrantCents + domain.LoginGrantCents + 2; profile.BalanceCents != want {
 		t.Errorf("owner balance = %d, want %d", profile.BalanceCents, want)
+	}
+}
+
+func TestPeerLocationReturnsDistanceAndMeasurementToOtherParty(t *testing.T) {
+	server, db := newServer(t)
+	owner, _, _ := registerUser(t, server)
+	driver, _, _ := registerUser(t, server)
+	spotLocation := uniqueLocation()
+	spot := createSpot(t, server, db, owner, spotLocation, nil)
+	exchangeAt := time.Now().Add(30 * time.Minute).UTC().Truncate(time.Second)
+	offer := createOffer(t, server, db, driver, spot.ID,
+		insertTestVehicle(t, db, driver.User.ID), exchangeAt, 2)
+
+	accepted := authedRequest(t, server, http.MethodPost,
+		"/v1/offers/"+offer.ID+"/accept", owner.AccessToken, nil)
+	reservation := decode[reservationBody](t, accepted)
+
+	enRoute := authedRequest(t, server, http.MethodPost,
+		"/v1/reservations/"+reservation.ID+"/en-route", driver.AccessToken, nil)
+	if enRoute.StatusCode != http.StatusNoContent {
+		t.Fatalf("en-route status = %d (%s)", enRoute.StatusCode, errorCode(t, enRoute))
+	}
+	location := authedRequest(t, server, http.MethodPost,
+		"/v1/reservations/"+reservation.ID+"/location", driver.AccessToken,
+		map[string]float64{"latitude": spotLocation.Lat, "longitude": spotLocation.Lon})
+	if location.StatusCode != http.StatusOK {
+		t.Fatalf("location status = %d (%s)", location.StatusCode, errorCode(t, location))
+	}
+	// Caller view: peer has not sent a fix yet, so distance must stay empty.
+	driverView := decode[reservationBody](t, location)
+	if driverView.PeerDistanceM != nil || driverView.PeerMeasuredAt != nil {
+		t.Fatalf("driver location view = %+v, want no peer distance yet", driverView)
+	}
+
+	ownerView := decode[reservationBody](t, authedRequest(t, server, http.MethodGet,
+		"/v1/reservations/"+reservation.ID, owner.AccessToken, nil))
+	if ownerView.PeerDistanceM == nil || *ownerView.PeerDistanceM != 0 || ownerView.PeerMeasuredAt == nil {
+		t.Fatalf("owner view = %+v, want peer distance 0 m and measurement time", ownerView)
 	}
 }
 

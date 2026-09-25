@@ -76,6 +76,20 @@ export function useGoogleSignIn(opts: {
       if (isErrorWithCode(err) && err.code === statusCodes.SIGN_IN_CANCELLED) {
         return;
       }
+      if (isErrorWithCode(err) && err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        onErrorRef.current(new Error("Google Play Services is missing or outdated"));
+        return;
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      if (/DEVELOPER_ERROR/i.test(message) || /Code: 10/i.test(message)) {
+        onErrorRef.current(
+          new Error(
+            "Google Sign-In DEVELOPER_ERROR: add this build's SHA-1 to Firebase " +
+              "(com.parkxchange.mobile). Run: task mobile:google:sha",
+          ),
+        );
+        return;
+      }
       onErrorRef.current(err);
     }
   }, []);

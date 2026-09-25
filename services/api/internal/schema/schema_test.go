@@ -133,6 +133,61 @@ func TestSpotIsClaimableAfterReservationEnds(t *testing.T) {
 	}
 }
 
+func TestReservationPeerLocationKeepsLatestAndClearsOnTerminalState(t *testing.T) {
+	ctx, tx := testdb.Begin(t)
+	owner := testdb.InsertUser(t, ctx, tx, "location-owner")
+	driver := testdb.InsertUser(t, ctx, tx, "location-driver")
+	spot := testdb.InsertSpot(t, ctx, tx, owner, 2.16, 41.39)
+	reservation := insertReservation(t, ctx, tx, spot, driver, "confirmed")
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE reservations
+		   SET owner_location = ST_SetSRID(ST_MakePoint($2, $3), 4326),
+		       owner_location_at = $4
+		 WHERE id = $1
+	`, reservation, 2.17, 41.40, "2026-09-25T12:00:00Z"); err != nil {
+		t.Fatalf("insert first peer location: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE reservations
+		   SET owner_location = ST_SetSRID(ST_MakePoint($2, $3), 4326),
+		       owner_location_at = $4
+		 WHERE id = $1
+	`, reservation, 2.18, 41.41, "2026-09-25T12:01:00Z"); err != nil {
+		t.Fatalf("replace peer location: %v", err)
+	}
+
+	var lon, lat float64
+	var measuredAt string
+	if err := tx.QueryRow(ctx, `
+		SELECT ST_X(owner_location), ST_Y(owner_location), owner_location_at::text
+		  FROM reservations WHERE id = $1
+	`, reservation).Scan(&lon, &lat, &measuredAt); err != nil {
+		t.Fatalf("read latest peer location: %v", err)
+	}
+	if lon != 2.18 || lat != 41.41 || !strings.Contains(measuredAt, "12:01:00") {
+		t.Fatalf("latest location = (%v,%v) at %q", lon, lat, measuredAt)
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE reservations
+		   SET status = 'cancelled', cancelled_at = now()
+		 WHERE id = $1
+	`, reservation); err != nil {
+		t.Fatalf("cancel reservation: %v", err)
+	}
+	var ownerLocation, locationAt *string
+	if err := tx.QueryRow(ctx, `
+		SELECT owner_location::text, owner_location_at::text
+		  FROM reservations WHERE id = $1
+	`, reservation).Scan(&ownerLocation, &locationAt); err != nil {
+		t.Fatalf("read cleared peer location: %v", err)
+	}
+	if ownerLocation != nil || locationAt != nil {
+		t.Fatalf("terminal reservation retained location: %v at %v", ownerLocation, locationAt)
+	}
+}
+
 // A driver may hold several reservations as long as their windows do not
 // overlap. Tonight at 18:30 and tomorrow at 09:00 are both fine; two claims
 // for the same hour are not.

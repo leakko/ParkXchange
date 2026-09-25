@@ -14,6 +14,7 @@ type fakeStore struct {
 	res         domain.Reservation
 	active      []domain.Reservation
 	enRoute     int
+	locations   int
 	readyCalls  int
 	clearCalls  int
 	completed   bool
@@ -36,6 +37,10 @@ func (f *fakeStore) Reconfirm(context.Context, string, string) error { return ni
 func (f *fakeStore) Complete(context.Context, string, string) error  { return nil }
 func (f *fakeStore) MarkEnRoute(_ context.Context, _, _ string, _ time.Time) error {
 	f.enRoute++
+	return nil
+}
+func (f *fakeStore) UpdateLocation(_ context.Context, _, _ string, _ float64, _ float64, _ time.Time) error {
+	f.locations++
 	return nil
 }
 func (f *fakeStore) MarkReady(_ context.Context, _, _ string, _ time.Time) (bool, error) {
@@ -190,6 +195,57 @@ func TestUnreadyAndEnRoute(t *testing.T) {
 	}
 	if store.enRoute != 1 || store.clearCalls != 1 {
 		t.Fatalf("enRoute=%d clear=%d", store.enRoute, store.clearCalls)
+	}
+}
+
+func TestUpdateLocationRequiresEnRouteAndReturnsPeerDistance(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	peerMeasuredAt := now.Add(-30 * time.Second)
+	store := &fakeStore{res: domain.Reservation{
+		ID: "r1", OwnerID: "o1", DriverID: "d1", Status: domain.ResConfirmed,
+		SpotLat: 41.3851, SpotLon: 2.1734,
+		DriverLocation: &domain.ReservationLocation{
+			Lat: 41.3851, Lon: 2.1735, At: peerMeasuredAt,
+		},
+	}}
+	svc := reservations.NewWithClock(store, func() time.Time { return now })
+	view, err := svc.UpdateLocation(context.Background(), "r1", domain.Claims{UserID: "o1"}, 41.3851, 2.1736)
+	if err == nil {
+		t.Fatal("expected en-route conflict")
+	}
+	var apiErr *domain.Error
+	if !errors.As(err, &apiErr) || apiErr.Code != "reservation_not_en_route" {
+		t.Fatalf("error = %v", err)
+	}
+	if view.PeerDistanceMeters != nil {
+		t.Fatalf("view = %+v, want no view after rejected update", view)
+	}
+}
+
+func TestUpdateLocationReturnsDistanceToEnRoutePeer(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	ownerEnRouteAt := now.Add(-2 * time.Minute)
+	peerMeasuredAt := now.Add(-30 * time.Second)
+	store := &fakeStore{res: domain.Reservation{
+		ID: "r1", OwnerID: "o1", DriverID: "d1", Status: domain.ResConfirmed,
+		OwnerEnRouteAt: &ownerEnRouteAt, DriverEnRouteAt: &ownerEnRouteAt,
+		SpotLat: 41.3851, SpotLon: 2.1734,
+		DriverLocation: &domain.ReservationLocation{
+			Lat: 41.3851, Lon: 2.1735, At: peerMeasuredAt,
+		},
+	}}
+	svc := reservations.NewWithClock(store, func() time.Time { return now })
+	view, err := svc.UpdateLocation(context.Background(), "r1", domain.Claims{UserID: "o1"}, 41.3851, 2.1736)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.PeerDistanceMeters == nil || *view.PeerDistanceMeters != 8 {
+		t.Fatalf("peer distance = %+v, want 8 metres", view.PeerDistanceMeters)
+	}
+	if view.PeerLocationMeasuredAt == nil || !view.PeerLocationMeasuredAt.Equal(peerMeasuredAt) {
+		t.Fatalf("peer measured at = %+v, want %v", view.PeerLocationMeasuredAt, peerMeasuredAt)
 	}
 }
 

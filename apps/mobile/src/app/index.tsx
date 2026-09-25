@@ -59,6 +59,8 @@ function sheetSpotDrifted(current: SpotFeature, next: SpotFeature): boolean {
 }
 import { ExchangeLayers } from "@/map/ExchangeLayers";
 import { AnnounceDraftLayers } from "@/map/AnnounceDraftLayers";
+import { HistoryGhostLayers } from "@/map/HistoryGhostLayers";
+import { HISTORY_GHOST_MS, isLiveMapSpotStatus } from "@/map/liveMapSpot";
 import { MySpotLayers } from "@/map/MySpotLayers";
 import { OfferedSpotLayers } from "@/map/OfferedSpotLayers";
 import { SearchPlaceLayers } from "@/map/SearchPlaceLayers";
@@ -78,6 +80,7 @@ import {
   type ViewBox,
 } from "@/map/geocode";
 import { bannerPeerStatusKey } from "@/map/exchangeCopy";
+import { peerEnRouteDistance } from "@/map/peerDistance";
 import { passAuthGate } from "@/map/authGate";
 import { SpotLayers } from "@/map/SpotLayers";
 import { stageSpotForSheet, beginSpotSheetPresentation } from "@/map/spotSheetHandoff";
@@ -106,6 +109,8 @@ export default function MapScreen() {
     focusLon?: string;
     focusLat?: string;
     focusSpot?: string;
+    /** "1" = historical glance: camera + ghost pin, no live sheet. */
+    focusHistory?: string;
     announceLon?: string;
     announceLat?: string;
     announceLabel?: string;
@@ -169,6 +174,42 @@ export default function MapScreen() {
   const [searchBusy, setSearchBusy] = useState(false);
   const [mapViewbox, setMapViewbox] = useState<ViewBox | null>(null);
   mapViewboxRef.current = mapViewbox;
+  /** Temporary pin when glancing at a historical spot from account. */
+  const [historyGhost, setHistoryGhost] = useState<{
+    lon: number;
+    lat: number;
+  } | null>(null);
+  const historyGhostTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Ignore pan dismiss while the focus easeTo is still settling. */
+  const historyGhostArmedAtRef = useRef(0);
+
+  const clearHistoryGhost = useCallback(() => {
+    if (historyGhostTimerRef.current) {
+      clearTimeout(historyGhostTimerRef.current);
+      historyGhostTimerRef.current = null;
+    }
+    setHistoryGhost(null);
+  }, []);
+
+  const showHistoryGhost = useCallback((lon: number, lat: number) => {
+    if (historyGhostTimerRef.current) {
+      clearTimeout(historyGhostTimerRef.current);
+    }
+    historyGhostArmedAtRef.current = Date.now();
+    setHistoryGhost({ lon, lat });
+    historyGhostTimerRef.current = setTimeout(() => {
+      historyGhostTimerRef.current = null;
+      setHistoryGhost(null);
+    }, HISTORY_GHOST_MS);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (historyGhostTimerRef.current) {
+        clearTimeout(historyGhostTimerRef.current);
+      }
+    };
+  }, []);
 
   const puckReady = locationComponentReady(follow.locationGranted, location.coords);
 
@@ -261,6 +302,7 @@ export default function MapScreen() {
   /** Fly the camera to a spot, then open its sheet. */
   const focusSpotOnMap = useCallback(
     (spot: SpotFeature) => {
+      clearHistoryGhost();
       const lon = Number(spot.geometry.coordinates[0]);
       const lat = Number(spot.geometry.coordinates[1]);
       if (Number.isFinite(lon) && Number.isFinite(lat)) {
@@ -273,7 +315,7 @@ export default function MapScreen() {
       }
       openSpotDetail(spot);
     },
-    [openSpotDetail],
+    [openSpotDetail, clearHistoryGhost],
   );
 
   const { collection, featureById, isLoading, error, refetch, forgetSpot } = useDiscovery(
@@ -357,12 +399,8 @@ export default function MapScreen() {
     }
     try {
       const collection = await fetchMySpots();
-      // Completed / cancelled / expired listings are history — keep them off the map.
       setMySpotFeatures(
-        collection.features.filter((f) => {
-          const status = f.properties.status;
-          return status === "available" || status === "reserved" || status === "handover";
-        }),
+        collection.features.filter((f) => isLiveMapSpotStatus(f.properties.status)),
       );
     } catch {
       setMySpotFeatures([]);
@@ -463,6 +501,9 @@ export default function MapScreen() {
 
     for (const feature of collection.features) {
       const id = String(feature.id ?? "");
+      if (!isLiveMapSpotStatus(feature.properties.status)) {
+        continue;
+      }
       // Active exchange owns this pin via ExchangeLayers (exact coords). Keeping
       // the discovery/offered copy fights the exact pin after accept.
       if (active && String(active.spot_id) === id) {
@@ -491,10 +532,10 @@ export default function MapScreen() {
 
     // Owner listings (including reserved/handover) stay on the map via /spots/mine.
     for (const feature of mySpotFeatures) {
-      const status = feature.properties.status;
-      if (status !== "available" && status !== "reserved" && status !== "handover") {
+      if (!isLiveMapSpotStatus(feature.properties.status)) {
         continue;
       }
+      const status = feature.properties.status;
       const id = String(feature.id ?? "");
       if (active && String(active.spot_id) === id && isDriver && !isOwner) {
         continue;
@@ -567,6 +608,25 @@ export default function MapScreen() {
       ],
     };
   }, [activeSpot, isDriver, isOwner]);
+
+  const historyGhostData = useMemo(() => {
+    if (!historyGhost) {
+      return { type: "FeatureCollection" as const, features: [] };
+    }
+    return {
+      type: "FeatureCollection" as const,
+      features: [
+        {
+          type: "Feature" as const,
+          properties: { id: "history-ghost" },
+          geometry: {
+            type: "Point" as const,
+            coordinates: [historyGhost.lon, historyGhost.lat] as [number, number],
+          },
+        },
+      ],
+    };
+  }, [historyGhost]);
 
   // Owner with an active exchange: ensure their reserved pin is present even if
   // /spots/mine has not refreshed yet.
@@ -690,6 +750,10 @@ export default function MapScreen() {
       if (event.nativeEvent.userInteraction) {
         locateGenRef.current += 1;
         dispatchFollow({ type: "user_gesture" });
+        // easeTo for focus can report userInteraction on some builds — ignore briefly.
+        if (Date.now() - historyGhostArmedAtRef.current > 800) {
+          clearHistoryGhost();
+        }
       }
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
@@ -698,11 +762,12 @@ export default function MapScreen() {
         void publishViewport();
       }, DEBOUNCE_MS);
     },
-    [publishViewport],
+    [publishViewport, clearHistoryGhost],
   );
 
   const onPressFeature = useCallback(
     (id: string) => {
+      clearHistoryGhost();
       void (async () => {
         const fromActive = activeSpot && String(activeSpot.id) === id ? activeSpot : null;
         const fromMine = mySpotsById.get(id);
@@ -716,6 +781,14 @@ export default function MapScreen() {
             return;
           }
         }
+        if (!isLiveMapSpotStatus(spot.properties.status) && !fromActive) {
+          const lon = Number(spot.geometry.coordinates[0]);
+          const lat = Number(spot.geometry.coordinates[1]);
+          if (Number.isFinite(lon) && Number.isFinite(lat)) {
+            showHistoryGhost(lon, lat);
+          }
+          return;
+        }
         openSpotDetail(spot);
         const openExchange =
           !!fromActive ||
@@ -726,7 +799,15 @@ export default function MapScreen() {
         }
       })();
     },
-    [featureById, mySpotsById, activeSpot, refreshActiveReservation, openSpotDetail],
+    [
+      featureById,
+      mySpotsById,
+      activeSpot,
+      refreshActiveReservation,
+      openSpotDetail,
+      clearHistoryGhost,
+      showHistoryGhost,
+    ],
   );
 
   const clearSearchHits = useCallback(() => {
@@ -781,6 +862,7 @@ export default function MapScreen() {
 
   const onPressMap = useCallback(
     (event: NativeSyntheticEvent<PressEvent>) => {
+      clearHistoryGhost();
       if (announcePickMode) {
         const [lon, lat] = event.nativeEvent.lngLat;
         clearSearchHits();
@@ -797,7 +879,7 @@ export default function MapScreen() {
       }
       setSelected(null);
     },
-    [announcePickMode, clearSearchHits, t],
+    [announcePickMode, clearSearchHits, clearHistoryGhost, t],
   );
 
   const onPressSearchHit = useCallback(
@@ -983,13 +1065,16 @@ export default function MapScreen() {
     });
   }, []);
 
-  // Deep-link from "show my spot on map" in account → fly camera + open sheet.
+  // Deep-link from "show my spot on map" in account → fly camera; live opens
+  // sheet, history shows a temporary ghost pin.
   useEffect(() => {
     const lon = Number.parseFloat(String(focusParams.focusLon ?? ""));
     const lat = Number.parseFloat(String(focusParams.focusLat ?? ""));
     if (!mapReady || !Number.isFinite(lon) || !Number.isFinite(lat)) {
       return;
     }
+    const wantHistory =
+      focusParams.focusHistory === "1" || focusParams.focusHistory === "true";
     dispatchFollow({ type: "claim_camera" });
     cameraRef.current?.easeTo({
       center: [lon, lat],
@@ -997,31 +1082,46 @@ export default function MapScreen() {
       duration: 500,
     });
     const spotId = focusParams.focusSpot ? String(focusParams.focusSpot) : null;
-    if (spotId) {
+    if (wantHistory) {
+      setSelected(null);
+      showHistoryGhost(lon, lat);
+    } else if (spotId) {
       void (async () => {
         try {
           const spot = await getSpot(spotId);
+          if (!isLiveMapSpotStatus(spot.properties.status)) {
+            setSelected(null);
+            showHistoryGhost(lon, lat);
+            return;
+          }
+          clearHistoryGhost();
           setSelected(spot);
           setMineArmed(true);
           setSpotsArmed(true);
           openSpotDetail(spot);
         } catch {
-          /* camera move is enough */
+          showHistoryGhost(lon, lat);
         }
       })();
+    } else {
+      showHistoryGhost(lon, lat);
     }
     router.setParams({
       focusLon: undefined,
       focusLat: undefined,
       focusSpot: undefined,
+      focusHistory: undefined,
     });
   }, [
     mapReady,
     focusParams.focusLon,
     focusParams.focusLat,
     focusParams.focusSpot,
+    focusParams.focusHistory,
     openSpotDetail,
     router,
+    showHistoryGhost,
+    clearHistoryGhost,
   ]);
 
   const afterAnnounce = useCallback(
@@ -1271,6 +1371,9 @@ export default function MapScreen() {
           {exchangeData.features.length > 0 ? (
             <ExchangeLayers data={exchangeData} role="driver" onPressFeature={onPressFeature} />
           ) : null}
+          {historyGhostData.features.length > 0 ? (
+            <HistoryGhostLayers data={historyGhostData} />
+          ) : null}
           {selected &&
           !selected.properties.exact_location &&
           selected.geometry.coordinates[0] != null &&
@@ -1447,6 +1550,22 @@ export default function MapScreen() {
                 }),
               )}
             </Text>
+            {(() => {
+              const distance = peerEnRouteDistance(active, isOwner);
+              if (!distance) {
+                return null;
+              }
+              return (
+                <Text style={styles.bannerPeerDistance}>
+                  {distance.current
+                    ? t("exchange.statusPanel.distanceCurrent", { meters: distance.meters })
+                    : t("exchange.statusPanel.distanceStale", {
+                        meters: distance.meters,
+                        minutes: distance.ageMinutes,
+                      })}
+                </Text>
+              );
+            })()}
           </View>
           {(() => {
             const myEnRoute = isOwner
@@ -1472,20 +1591,21 @@ export default function MapScreen() {
             }
             return (
               <View style={styles.activeBannerActions}>
-                <Pressable
-                  style={[
-                    styles.bannerBtn,
-                    styles.bannerBtnSecondary,
-                    busy && styles.bannerBtnDisabled,
-                    myEnRoute ? styles.bannerBtnDone : null,
-                  ]}
-                  disabled={busy}
-                  onPress={() => void markEnRoute()}
-                >
-                  <Text style={styles.bannerBtnText}>
-                    {t("map.banner.enRoute")}
-                  </Text>
-                </Pressable>
+                {!myEnRoute ? (
+                  <Pressable
+                    style={[
+                      styles.bannerBtn,
+                      styles.bannerBtnSecondary,
+                      busy && styles.bannerBtnDisabled,
+                    ]}
+                    disabled={busy}
+                    onPress={() => void markEnRoute()}
+                  >
+                    <Text style={styles.bannerBtnText}>
+                      {t("map.banner.enRoute")}
+                    </Text>
+                  </Pressable>
+                ) : null}
                 <Pressable
                   style={[styles.bannerBtn, busy && styles.bannerBtnDisabled]}
                   disabled={busy}
@@ -1835,9 +1955,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,232,214,0.55)",
     backgroundColor: "rgba(255,255,255,0.08)",
   },
-  bannerBtnDone: {
-    opacity: 0.72,
-  },
   bannerBtnDisabled: { opacity: 0.5 },
   bannerBtnText: {
     color: "#FFFFFF",
@@ -1845,6 +1962,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   bannerPeer: { color: "#FFE8D6", fontSize: 12, lineHeight: 16 },
+  bannerPeerDistance: { color: "#FFE8D6", fontSize: 12, lineHeight: 16, fontWeight: "700" },
   pickBanner: {
     flexDirection: "row",
     alignItems: "center",

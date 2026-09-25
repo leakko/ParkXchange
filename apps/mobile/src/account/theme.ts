@@ -74,6 +74,22 @@ export const accountStyles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
   },
+  /** List cards in Mis plazas / Mis reservas — denser than generic rows. */
+  rowCard: {
+    backgroundColor: accountColors.card,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 2,
+    marginBottom: 8,
+  },
+  /** Open / in-progress items that still need attention (not history). */
+  rowAttention: {
+    borderWidth: 1.5,
+    borderColor: accountColors.text,
+  },
   rowTitle: {
     color: accountColors.text,
     fontSize: 16,
@@ -83,6 +99,17 @@ export const accountStyles = StyleSheet.create({
     color: accountColors.muted,
     fontSize: 13,
     marginTop: 2,
+  },
+  rowMetaTight: {
+    color: accountColors.muted,
+    fontSize: 13,
+    marginTop: 0,
+  },
+  rowActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 6,
   },
   primary: {
     backgroundColor: accountColors.accent,

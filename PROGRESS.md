@@ -39,20 +39,23 @@ If that test fails, fix the code, not the test.
   Review via TablePlus. Pending migrate when Docker/PostGIS is up.
 - **Listing expiry / public Get filter:** **on main**, pending PostGIS smoke when
   Docker is up.
-- **Arrival background location:** **on main**, pending **device smoke** (Android×2 +
   iOS) per
   [2026-09-23-arrival-background-location-design.md](docs/superpowers/specs/2026-09-23-arrival-background-location-design.md)
   acceptance. Requires **rebuild** of preview/dev client after `app.config`
   `isAndroidForegroundServiceEnabled` change.
-- **Just shipped (pending push):** map departure filtering (default next 2h
+- **Peer distance to exchange:** API + mobile wired; integration test for peer
+  metres passes against PostGIS. Banner and status panel show distance while the
+  peer is `en_route`; `reservation.updated` debounces an active-reservation
+  refresh. Still pending two-device smoke (push + live metres).
+  **Last updated:** 2026-09-25
   plus flexibles, custom day/hour window, optional flexibles) across REST,
   WebSocket, and mobile; flexible listings expire 24h after publication;
   offer, add-vehicle, and announce actions now show a login gate to guests.
 - **Last updated:** 2026-09-23
 - **Phases complete:** 12 of 12 (MVP) + handshake + push coaching + cancel-actor fix
-  + map search pins / push / GPS (prior); geocode LocationIQ wired in mobile;
-  ops handoff (Dozzle, loopback DB, `ops-queries.sql`, README) deployed and
-  verified on the VPS.
+  - map search pins / push / GPS (prior); geocode LocationIQ wired in mobile;
+    ops handoff (Dozzle, loopback DB, `ops-queries.sql`, README) deployed and
+    verified on the VPS.
 - **Blockers:** First closed-track Play review (hours–days) after AAB upload;
   Google Sign-In needs Play App Signing SHA-1. Public/open testing later.
 
@@ -65,13 +68,12 @@ If that test fails, fix the code, not the test.
    link.
 2. Start PostGIS and run the pending full API suite/seed verification; deploy
    the departure filter + flexible expiry + listing Get-filter + ratings API
-   + reports + «Me voy ya» (`00019`), then device-smoke the map filter, guest
-   login gates, rating/profile, reports, and leaving-now flows.
-   Rebuild the preview APK only when asked.
+   - reports + «Me voy ya» (`00019`), then device-smoke the map filter, guest
+     login gates, rating/profile, reports, and leaving-now flows.
+     Rebuild the preview APK only when asked.
 3. Device smoke for location policy (foreground vs «Voy de camino»).
 4. Rebuild preview/dev client; device smoke arrival background location
    (Android×2 + iOS) per arrival-background-location design acceptance.
-
 
 ---
 
@@ -351,7 +353,7 @@ does not relitigate it.
    major-version subdirectory, so the pre-18 `/var/lib/postgresql/data` mount
    point makes the entrypoint refuse to start (blocker B4).
 9. **The spatial index is partial: `USING GIST (geom) WHERE status =
-   'available'`.** Practically every map query asks only for available spots, so
+'available'`.** Practically every map query asks only for available spots, so
    a partial index stays a fraction of the table's size and the planner reaches
    the rows without rechecking status. `expires_at > now()` cannot join the
    predicate because `now()` is not immutable, so it stays a filter applied to
@@ -368,7 +370,7 @@ does not relitigate it.
     Every row touched by one request should carry one timestamp. The
     consequence, which caught a test out: a row inserted and updated inside a
     single transaction legitimately keeps the same `updated_at`, so the test
-    asserts the trigger *replaced a forged value* rather than that time moved.
+    asserts the trigger _replaced a forged value_ rather than that time moved.
 13. **argon2id hashing landed in Phase 2 rather than Phase 4.** The seeder needs
     real password hashes for the demo accounts, and a fake hash would be a
     placeholder to rip out later. Phase 4 now builds JWTs on top of an already
@@ -493,10 +495,10 @@ does not relitigate it.
     fuzzing existed to remove, and the function was not idempotent. Both are
     now covered by tests.
 38. **Index usage is asserted in `internal/postgres`, not through the API.** An
-    API-level `EXPLAIN` test asserted the planner *chose* the GiST index, which
+    API-level `EXPLAIN` test asserted the planner _chose_ the GiST index, which
     it legitimately declines to do on a table of five rows. The replacement
     seeds a large table, sets `enable_seqscan = off` and asserts the predicate
-    *can* use the index. The distinction matters: the query being
+    _can_ use the index. The distinction matters: the query being
     index-compatible is the property worth protecting; the planner's cost
     decision on tiny data is not.
 
@@ -778,7 +780,7 @@ space.
 **Gotchas worth remembering:**
 
 - `now()` is transaction-scoped in PostgreSQL, so `updated_at` does not advance
-  within a single transaction. Assert that the trigger *replaced* a forged value
+  within a single transaction. Assert that the trigger _replaced_ a forged value
   rather than that the timestamp moved forward.
 - A statement that fails on purpose aborts the surrounding transaction. Tests
   that expect a constraint violation must run each attempt inside its own
@@ -841,9 +843,9 @@ space.
 - Absolute timestamps computed in Go and written to PostgreSQL are a clock skew
   bug waiting to happen. Send offsets and let the database anchor them with
   `now() + make_interval(...)`.
-- Asserting that the query planner *chose* an index is a flaky test. On small
+- Asserting that the query planner _chose_ an index is a flaky test. On small
   tables a sequential scan is genuinely cheaper. Assert that the predicate
-  *can* use the index: seed enough rows, `SET LOCAL enable_seqscan = off`, then
+  _can_ use the index: seed enough rows, `SET LOCAL enable_seqscan = off`, then
   `EXPLAIN`.
 - A bash heredoc feeding a Python script is unreliable in this environment; it
   silently swallowed the closing delimiter and the following command. Write the
@@ -1004,4 +1006,3 @@ so `replace ../../libs/go/geo` resolves. `libs/go/geo` has no `go.sum`; do not
 - Mobile account hub: danger «Borrar cuenta» + confirm Alert; clears session.
 - Privacy/terms ES/EN: in-app delete is the erasure path; MVP points forfeited.
 - Spec/plan under `docs/superpowers/`; `task api:test` green after migrate.
-

@@ -17,6 +17,7 @@ type Store interface {
 	Complete(ctx context.Context, id, actorID string) error
 
 	MarkEnRoute(ctx context.Context, id, actorID string, at time.Time) error
+	UpdateLocation(ctx context.Context, id, actorID string, lat, lon float64, at time.Time) error
 	// MarkReady sets the actor's ready clock. completed is true when both
 	// parties are ready and the reservation was settled in the same write.
 	MarkReady(ctx context.Context, id, actorID string, at time.Time) (completed bool, err error)
