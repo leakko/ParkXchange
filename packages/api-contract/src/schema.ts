@@ -380,6 +380,25 @@ export interface paths {
         patch: operations["updateSpot"];
         trace?: never;
     };
+    "/v1/spots/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["SpotID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish an unpublished parked-car reminder (owner only) */
+        post: operations["publishSpot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/spots/{id}/vehicle/photo": {
         parameters: {
             query?: never;
@@ -874,6 +893,26 @@ export interface components {
              * @default false
              */
             leaving_now: boolean;
+            /**
+             * @description Parked-car reminder; not shown on the public map until published
+             * @default false
+             */
+            unpublished?: boolean;
+        };
+        /** @description Convert an unpublished parked reminder into a public listing. */
+        PublishSpotRequest: {
+            size_class?: string;
+            price_cents: number;
+            address_hint?: string;
+            notes?: string;
+            /** Format: uuid */
+            vehicle_id: string;
+            /** Format: date-time */
+            preferred_departure_at?: string | null;
+            /** @default true */
+            auto_cancel_no_show?: boolean;
+            /** @default false */
+            leaving_now?: boolean;
         };
         /**
          * @description Partial edit of an available listing. Location, listing lifetime, and
@@ -1926,6 +1965,35 @@ export interface operations {
             404: components["responses"]["Error"];
             409: components["responses"]["Error"];
             422: components["responses"]["Error"];
+        };
+    };
+    publishSpot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["SpotID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishSpotRequest"];
+            };
+        };
+        responses: {
+            /** @description Published offer as a GeoJSON feature */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpotFeature"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
         };
     };
     getSpotVehiclePhoto: {

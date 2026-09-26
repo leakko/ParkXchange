@@ -51,18 +51,23 @@ const (
 
 	MaxNotesLength       = 280
 	MaxAddressHintLength = 160
+
+	// NearPeerMetres is how close the traveling party must be to the meeting
+	// point before the other party gets a one-shot “peer near” push.
+	NearPeerMetres = 200
 )
 
 // SpotStatus is where a spot sits in its lifecycle.
 type SpotStatus string
 
 const (
-	SpotAvailable SpotStatus = "available"
-	SpotReserved  SpotStatus = "reserved"
-	SpotHandover  SpotStatus = "handover"
-	SpotCompleted SpotStatus = "completed"
-	SpotCancelled SpotStatus = "cancelled"
-	SpotExpired   SpotStatus = "expired"
+	SpotUnpublished SpotStatus = "unpublished"
+	SpotAvailable   SpotStatus = "available"
+	SpotReserved    SpotStatus = "reserved"
+	SpotHandover    SpotStatus = "handover"
+	SpotCompleted   SpotStatus = "completed"
+	SpotCancelled   SpotStatus = "cancelled"
+	SpotExpired     SpotStatus = "expired"
 )
 
 // spotTransitions is the state machine, written out rather than implied by
@@ -74,6 +79,9 @@ const (
 // actually holds under concurrency, where a check in Go has already gone stale
 // by the time the write lands.
 var spotTransitions = map[SpotStatus][]SpotStatus{
+	// Parked reminder: owner-only, not on the public map until published.
+	SpotUnpublished: {SpotAvailable, SpotCancelled, SpotExpired},
+
 	SpotAvailable: {SpotReserved, SpotCancelled, SpotExpired},
 	SpotReserved:  {SpotHandover, SpotAvailable, SpotCancelled, SpotExpired},
 	SpotHandover:  {SpotCompleted, SpotCancelled},
@@ -284,6 +292,7 @@ type SpotDraft struct {
 	PreferredDepartureAt *time.Time
 	AutoCancelNoShow     bool
 	LeavingNow           bool
+	Unpublished          bool
 
 	// AvailableIn is always zero for new listings (immediate). Kept so the
 	// postgres insert can still stamp available_from = now() until dropped.
@@ -312,6 +321,9 @@ type NewSpotInput struct {
 
 	// LeavingNow is the «Me voy ya» create path.
 	LeavingNow bool
+
+	// Unpublished marks a parked-car reminder (not on the public map).
+	Unpublished bool
 
 	// ExpiresAt is optional; zero means now + FlexibleListingDuration when
 	// no preferred departure is set, otherwise preferred + FlexibleListingDuration.
@@ -362,13 +374,25 @@ func NewSpot(in NewSpotInput, now time.Time) (SpotDraft, error) {
 		preferred = &p
 	}
 
+	if in.Unpublished && in.LeavingNow {
+		fields["unpublished"] = "cannot combine with leaving_now"
+		fields["leaving_now"] = "cannot combine with unpublished"
+	}
+	if in.Unpublished && preferred != nil {
+		fields["preferred_departure_at"] = "cannot be set on an unpublished spot"
+	}
+
 	if in.LeavingNow && preferred != nil {
 		fields["preferred_departure_at"] = "cannot be set with leaving_now"
 		fields["leaving_now"] = "cannot combine with preferred_departure_at"
 	}
 
 	expiresAt := in.ExpiresAt
-	if in.LeavingNow {
+	if in.Unpublished {
+		expiresAt = now.Add(FlexibleListingDuration)
+		preferred = nil
+		in.LeavingNow = false
+	} else if in.LeavingNow {
 		expiresAt = now.Add(LeavingNowDuration)
 		preferred = nil
 	} else if expiresAt.IsZero() {
@@ -418,6 +442,13 @@ func NewSpot(in NewSpotInput, now time.Time) (SpotDraft, error) {
 		return SpotDraft{}, InvalidFields(fields)
 	}
 
+	price := in.PriceCents
+	if in.Unpublished {
+		price = 0
+		notes = ""
+		autoCancel = true
+	}
+
 	return SpotDraft{
 		OwnerID:              in.OwnerID,
 		VehicleID:            vehicleID,
@@ -425,11 +456,12 @@ func NewSpot(in NewSpotInput, now time.Time) (SpotDraft, error) {
 		Lat:                  in.Lat,
 		AddressHint:          addressHint,
 		Size:                 size,
-		PriceCents:           in.PriceCents,
+		PriceCents:           price,
 		Notes:                notes,
 		PreferredDepartureAt: preferred,
 		AutoCancelNoShow:     autoCancel,
-		LeavingNow:           in.LeavingNow,
+		LeavingNow:           in.LeavingNow && !in.Unpublished,
+		Unpublished:          in.Unpublished,
 		AvailableIn:          0,
 		ExpiresIn:            expiresAt.Sub(now),
 	}, nil

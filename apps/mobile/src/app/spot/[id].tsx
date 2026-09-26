@@ -13,6 +13,7 @@ import {
   getSpot,
   listMyOffers,
   listVehicles,
+  publishSpot,
   reservationEnRoute,
   reservationReady,
   reservationUnready,
@@ -24,6 +25,8 @@ import {
   type VehicleResponse,
 } from "@/api/client";
 import { apiErrorMessage, apiErrorTitle } from "@/api/errors";
+import { AnnounceModal, type AnnounceValues } from "@/map/AnnounceModal";
+import { currentLatLon } from "@/push/locationSeed";
 import { notifySpotWithdrawn } from "@/map/spotWithdrawHandoff";
 import { ensureEmailVerified } from "@/auth/requireEmailVerified";
 import { useSession } from "@/hooks/useSession";
@@ -65,6 +68,9 @@ export default function SpotDetailScreen() {
   const [offerBusy, setOfferBusy] = useState(false);
   const [makingOffer, setMakingOffer] = useState(false);
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [publishBusy, setPublishBusy] = useState(false);
+  const [publishVehicles, setPublishVehicles] = useState<VehicleResponse[]>([]);
 
   const {
     active,
@@ -380,7 +386,12 @@ export default function SpotDetailScreen() {
               if (!exchangeForSpot) {
                 return;
               }
-              void reservationEnRoute(exchangeForSpot.id).then(async () => {
+              void (async () => {
+                const here = await currentLatLon();
+                await reservationEnRoute(
+                  exchangeForSpot.id,
+                  here ? { latitude: here.latitude, longitude: here.longitude } : null,
+                );
                 const coordinates = spot.geometry.coordinates;
                 await armGeofenceForReservation(exchangeForSpot.id, {
                   lon: Number(coordinates[0]),
@@ -388,7 +399,7 @@ export default function SpotDetailScreen() {
                 });
                 void refreshFullReservation();
                 void refreshSpot(spotId);
-              });
+              })();
             }}
             onReady={() => {
               if (activeForSpot) {
@@ -465,12 +476,84 @@ export default function SpotDetailScreen() {
                 }
               })();
             }}
+            onPublish={(s) => {
+              void (async () => {
+                try {
+                  const list = await listVehicles();
+                  setPublishVehicles(list);
+                  setPublishOpen(true);
+                } catch (err) {
+                  await alert({
+                    title: apiErrorTitle(err, t, "map.alert.announceFailed.title"),
+                    message: apiErrorMessage(err, t),
+                    confirmLabel: t("common.ok"),
+                  });
+                }
+              })();
+            }}
             onReportListing={(s) => {
               setReportTarget({ kind: "spot", spotId: String(s.id) });
             }}
           />
         </ScrollView>
       )}
+
+      <AnnounceModal
+        visible={publishOpen}
+        busy={publishBusy}
+        vehicles={publishVehicles}
+        initialCoordinates={
+          spot
+            ? [
+                Number(spot.geometry.coordinates[0]),
+                Number(spot.geometry.coordinates[1]),
+              ]
+            : null
+        }
+        initialAddressLabel={spot?.properties.address_hint ?? null}
+        initialGuidePriceCents={spot?.properties.price_cents ?? null}
+        initialVehicleId={spot?.properties.vehicle?.id ?? null}
+        keepForm={false}
+        onCancel={() => setPublishOpen(false)}
+        onPickOnMap={() => {
+          // Location is fixed on the parked reminder; stay on the form.
+        }}
+        onSubmit={async (values: AnnounceValues) => {
+          if (!spot) {
+            return;
+          }
+          setPublishBusy(true);
+          try {
+            const updated = await publishSpot(String(spot.id), {
+              vehicle_id: values.vehicleId,
+              price_cents: values.guidePriceCents,
+              preferred_departure_at: values.leavingNow
+                ? null
+                : values.preferredDepartureAt,
+              auto_cancel_no_show: values.autoCancelNoShow,
+              leaving_now: values.leavingNow,
+              ...(values.addressHint?.trim()
+                ? { address_hint: values.addressHint.trim() }
+                : {}),
+            });
+            setSpot(updated);
+            setPublishOpen(false);
+            await alert({
+              title: t("map.alert.announced.title"),
+              message: t("map.alert.announced.message"),
+              confirmLabel: t("common.ok"),
+            });
+          } catch (err) {
+            await alert({
+              title: apiErrorTitle(err, t, "map.alert.announceFailed.title"),
+              message: apiErrorMessage(err, t),
+              confirmLabel: t("common.ok"),
+            });
+          } finally {
+            setPublishBusy(false);
+          }
+        }}
+      />
 
       <ReportModal
         target={reportTarget}

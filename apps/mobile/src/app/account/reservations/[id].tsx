@@ -98,7 +98,12 @@ export default function ReservationDetailScreen() {
       }
       switch (kind) {
         case "en-route": {
-          await reservationEnRoute(id);
+          const { currentLatLon } = await import("@/push/locationSeed");
+          const here = await currentLatLon();
+          await reservationEnRoute(
+            id,
+            here ? { latitude: here.latitude, longitude: here.longitude } : null,
+          );
           await armGeofenceForReservation(id);
           return { completed: false };
         }

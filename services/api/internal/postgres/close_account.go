@@ -54,7 +54,7 @@ func (db *DB) CloseAccount(ctx context.Context, userID string) error {
 		spotRows, err := tx.Query(ctx, `
 			SELECT id FROM spots
 			 WHERE owner_id = $1
-			   AND status IN ('available', 'reserved', 'handover')
+			   AND status IN ('unpublished', 'available', 'reserved', 'handover')
 		`, userID)
 		if err != nil {
 			return translate(err, "list spots for close")

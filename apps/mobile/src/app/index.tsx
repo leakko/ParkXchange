@@ -36,8 +36,11 @@ import {
 import { useDiscovery, type Viewport } from "@/hooks/useDiscovery";
 import { useSession } from "@/hooks/useSession";
 import { useMapLocation } from "@/hooks/useMapLocation";
-import { announceAt, useActiveReservation } from "@/hooks/useSpotActions";
+import { announceAt, parkCarAt, useActiveReservation } from "@/hooks/useSpotActions";
+import { useEnRouteLocationReporter } from "@/hooks/useEnRouteLocationReporter";
 import { useTranslation } from "@/i18n";
+import { ParkCarModal, type ParkCarValues } from "@/map/ParkCarModal";
+import { AnnounceModal, type AnnounceValues } from "@/map/AnnounceModal";
 import { useConfirm } from "@/ui/ConfirmModal";
 import {
   followReducer,
@@ -66,7 +69,6 @@ import { OfferedSpotLayers } from "@/map/OfferedSpotLayers";
 import { SearchPlaceLayers } from "@/map/SearchPlaceLayers";
 import { UncertaintyCircle } from "@/map/UncertaintyCircle";
 import { partitionMapSpots } from "@/map/partitionMapSpots";
-import { AnnounceModal, type AnnounceValues } from "@/map/AnnounceModal";
 import {
   autocompletePlaces,
   boundsForHits,
@@ -166,6 +168,12 @@ export default function MapScreen() {
   const [announcePickMode, setAnnouncePickMode] = useState(false);
   /** Keep form fields when returning from map pick / search. */
   const [announceKeepForm, setAnnounceKeepForm] = useState(false);
+  const [parking, setParking] = useState(false);
+  const [parkOpen, setParkOpen] = useState(false);
+  const [parkVehicles, setParkVehicles] = useState<VehicleResponse[]>([]);
+  const [parkCoords, setParkCoords] = useState<[number, number] | null>(null);
+  const [parkLabel, setParkLabel] = useState<string | null>(null);
+  const [parkPickMode, setParkPickMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchHits, setSearchHits] = useState<AddressSuggestion[]>([]);
   const [suggestHits, setSuggestHits] = useState<AddressSuggestion[]>([]);
@@ -334,6 +342,15 @@ export default function MapScreen() {
     refresh: refreshActiveReservation,
   } = useActiveReservation(signedIn);
 
+  const iAmEnRoute =
+    !!active &&
+    ((isOwner && !!active.owner_en_route_at && !active.owner_ready_at) ||
+      (isDriver && !!active.driver_en_route_at && !active.driver_ready_at));
+  useEnRouteLocationReporter({
+    reservationId: active?.id ?? null,
+    enabled: iAmEnRoute,
+  });
+
   const leavingNowSpot = useMemo(() => {
     if (active || !signedIn) {
       return null;
@@ -492,6 +509,7 @@ export default function MapScreen() {
           status: string;
           is_mine: boolean;
           has_my_offer: boolean;
+          has_agreement: boolean;
           exact_location: boolean;
           leaving_now: boolean;
         };
@@ -517,6 +535,9 @@ export default function MapScreen() {
           status: feature.properties.status,
           is_mine: Boolean(feature.properties.is_mine),
           has_my_offer: pendingOfferBySpotId.has(id),
+          has_agreement: Boolean(
+            active && String(active.spot_id) === id && (isOwner || isDriver),
+          ),
           exact_location: Boolean(feature.properties.exact_location),
           leaving_now: Boolean(feature.properties.leaving_now),
         },
@@ -548,6 +569,9 @@ export default function MapScreen() {
           status,
           is_mine: true,
           has_my_offer: false,
+          has_agreement: Boolean(
+            active && String(active.spot_id) === id && (isOwner || isDriver),
+          ),
           exact_location: Boolean(feature.properties.exact_location),
           leaving_now: Boolean(feature.properties.leaving_now),
         },
@@ -863,23 +887,29 @@ export default function MapScreen() {
   const onPressMap = useCallback(
     (event: NativeSyntheticEvent<PressEvent>) => {
       clearHistoryGhost();
-      if (announcePickMode) {
+      if (announcePickMode || parkPickMode) {
         const [lon, lat] = event.nativeEvent.lngLat;
         clearSearchHits();
+        const label = t("announce.location.coords", {
+          lat: lat.toFixed(5),
+          lon: lon.toFixed(5),
+        });
+        if (parkPickMode) {
+          setParkCoords([lon, lat]);
+          setParkLabel(label);
+          setParkPickMode(false);
+          setParkOpen(true);
+          return;
+        }
         setAnnounceCoords([lon, lat]);
-        setAnnounceLabel(
-          t("announce.location.coords", {
-            lat: lat.toFixed(5),
-            lon: lon.toFixed(5),
-          }),
-        );
+        setAnnounceLabel(label);
         setAnnouncePickMode(false);
         setAnnounceOpen(true);
         return;
       }
       setSelected(null);
     },
-    [announcePickMode, clearSearchHits, clearHistoryGhost, t],
+    [announcePickMode, parkPickMode, clearSearchHits, clearHistoryGhost, t],
   );
 
   const onPressSearchHit = useCallback(
@@ -1211,6 +1241,68 @@ export default function MapScreen() {
     [alert, confirm, requireEmailVerified, requireSignIn, router, signedIn, t],
   );
 
+  const openParkCar = useCallback(
+    async (coords: [number, number] | null, label: string | null) => {
+      const hasSession = signedIn && !!(await getAccessToken());
+      const allowed = await passAuthGate({
+        signedIn: hasSession,
+        confirmSignIn: () =>
+          confirm({
+            title: t("auth.required.title"),
+            message: t("auth.required.announce"),
+            cancelLabel: t("common.cancel"),
+            confirmLabel: t("auth.required.signIn"),
+          }),
+        onRequireSignIn: () => requireSignIn("/"),
+      });
+      if (!allowed) {
+        return;
+      }
+      if (!(await requireEmailVerified())) {
+        return;
+      }
+      setParking(true);
+      try {
+        const list = await listVehicles();
+        if (list.length === 0) {
+          const add = await confirm({
+            title: t("announce.needVehicle.title"),
+            message: t("announce.needVehicle.message"),
+            cancelLabel: t("common.cancel"),
+            confirmLabel: t("announce.needVehicle.add"),
+          });
+          if (add) {
+            router.push("/account/vehicles/new?from=announce" as Href);
+          }
+          return;
+        }
+        let nextCoords = coords;
+        let nextLabel = label;
+        if (!nextCoords) {
+          const { currentLatLon } = await import("@/push/locationSeed");
+          const here = await currentLatLon();
+          if (here) {
+            nextCoords = [here.longitude, here.latitude];
+          }
+        }
+        setParkVehicles(list);
+        setParkCoords(nextCoords);
+        setParkLabel(nextLabel);
+        setParkPickMode(false);
+        setParkOpen(true);
+      } catch (err) {
+        await alert({
+          title: t("map.alert.parkFailed.title"),
+          message: apiErrorMessage(err, t),
+          confirmLabel: t("common.ok"),
+        });
+      } finally {
+        setParking(false);
+      }
+    },
+    [alert, confirm, requireEmailVerified, requireSignIn, router, signedIn, t],
+  );
+
   // After “add car” from the announce soft-gate, reopen the form with the new list.
   useEffect(() => {
     return subscribeVehicleCreated((kind) => {
@@ -1300,16 +1392,16 @@ export default function MapScreen() {
       const [lon, lat] = event.nativeEvent.lngLat;
       void (async () => {
         const ok = await confirm({
-          title: t("map.alert.announceHere.title"),
-          message: t("map.alert.announceHere.message", {
+          title: t("map.alert.parkHere.title"),
+          message: t("map.alert.parkHere.message", {
             lat: lat.toFixed(5),
             lon: lon.toFixed(5),
           }),
           cancelLabel: t("common.cancel"),
-          confirmLabel: t("map.alert.announceHere.confirm"),
+          confirmLabel: t("map.alert.parkHere.confirm"),
         });
         if (ok) {
-          await openAnnounce(
+          await openParkCar(
             [lon, lat],
             t("announce.location.coords", {
               lat: lat.toFixed(5),
@@ -1319,8 +1411,37 @@ export default function MapScreen() {
         }
       })();
     },
-    [confirm, openAnnounce, t],
+    [confirm, openParkCar, t],
   );
+
+  const centerOnMySpot = useCallback(() => {
+    const features = spotData.mine.features;
+    if (features.length === 0) {
+      return;
+    }
+    const unpublished = features.find((f) => f.properties.status === "unpublished");
+    const pick =
+      unpublished ??
+      [...features].sort((a, b) => {
+        // Prefer leaving_now, then earliest preferred if present on selected live spots.
+        const aLeave = a.properties.leaving_now ? 0 : 1;
+        const bLeave = b.properties.leaving_now ? 0 : 1;
+        if (aLeave !== bLeave) {
+          return aLeave - bLeave;
+        }
+        return 0;
+      })[0];
+    if (!pick) {
+      return;
+    }
+    const [lon, lat] = pick.geometry.coordinates;
+    dispatchFollow({ type: "claim_camera" });
+    cameraRef.current?.easeTo({
+      center: [lon, lat],
+      zoom: FOCUS_SPOT_ZOOM,
+      duration: 500,
+    });
+  }, [spotData.mine.features]);
 
   return (
     <View style={styles.fill}>
@@ -1358,6 +1479,9 @@ export default function MapScreen() {
           ) : null}
           {(announceOpen || announcePickMode) && announceCoords ? (
             <AnnounceDraftLayers coords={announceCoords} />
+          ) : null}
+          {(parkOpen || parkPickMode) && parkCoords ? (
+            <AnnounceDraftLayers coords={parkCoords} />
           ) : null}
           {spotsArmed ? (
             <SpotLayers data={spotData.others} onPressFeature={onPressFeature} />
@@ -1505,7 +1629,7 @@ export default function MapScreen() {
             </ScrollView>
           ) : null}
         </View>
-        {announcePickMode ? (
+        {announcePickMode || parkPickMode ? (
           <View style={styles.pickBanner}>
             <Text style={styles.pickBannerText}>
               {searchHits.length > 0 ? t("map.search.pickHint") : t("announce.location.pickHint")}
@@ -1515,6 +1639,11 @@ export default function MapScreen() {
               accessibilityRole="button"
               accessibilityLabel={t("announce.location.backToForm")}
               onPress={() => {
+                if (parkPickMode) {
+                  setParkPickMode(false);
+                  setParkOpen(true);
+                  return;
+                }
                 setAnnouncePickMode(false);
                 setAnnounceOpen(true);
               }}
@@ -1696,7 +1825,7 @@ export default function MapScreen() {
       ) : null}
 
       <Pressable
-        style={[styles.filterFab, { bottom: 228 + insets.bottom }]}
+        style={[styles.filterFab, { bottom: 276 + insets.bottom }]}
         onPress={() => {
           stageMapFilter(mapFilter);
           router.push("/filter" as Href);
@@ -1710,7 +1839,7 @@ export default function MapScreen() {
       </Pressable>
 
       <Pressable
-        style={[styles.accountFab, { bottom: 164 + insets.bottom }]}
+        style={[styles.accountFab, { bottom: 212 + insets.bottom }]}
         onPress={() => {
           if (!signedIn) {
             requireSignIn("/account");
@@ -1727,7 +1856,7 @@ export default function MapScreen() {
       <Pressable
         style={[
           styles.locateFab,
-          { bottom: 100 + insets.bottom },
+          { bottom: 148 + insets.bottom },
           !follow.locationGranted ? styles.fabDisabled : null,
         ]}
         disabled={!follow.locationGranted}
@@ -1738,19 +1867,81 @@ export default function MapScreen() {
         <Ionicons name="locate" size={24} color="#fff" />
       </Pressable>
 
+      {spotData.mine.features.length > 0 ? (
+        <Pressable
+          style={[styles.locateFab, styles.centerSpotFab, { bottom: 100 + insets.bottom }]}
+          onPress={centerOnMySpot}
+          accessibilityRole="button"
+          accessibilityLabel={t("map.fab.centerOnSpot")}
+        >
+          <Text style={styles.centerSpotP}>P</Text>
+          <View style={styles.centerSpotLocate}>
+            <Ionicons name="locate" size={12} color="#fff" />
+          </View>
+        </Pressable>
+      ) : null}
+
       <Pressable
         style={[styles.fab, { bottom: 36 + insets.bottom }]}
-        disabled={announcing || !ready}
+        disabled={parking || !ready}
         onPress={() => {
-          void openAnnounce(null, null);
+          void openParkCar(null, null);
         }}
       >
-        {announcing ? (
+        {parking ? (
           <ActivityIndicator color="#fff" />
         ) : (
           <Text style={styles.fabText}>{t("map.fab.announce")}</Text>
         )}
       </Pressable>
+
+      <ParkCarModal
+        visible={parkOpen}
+        busy={parking}
+        vehicles={parkVehicles}
+        initialCoordinates={parkCoords}
+        initialAddressLabel={parkLabel}
+        onCancel={() => {
+          setParkOpen(false);
+          setParkPickMode(false);
+        }}
+        onPickOnMap={() => {
+          setParkOpen(false);
+          setParkPickMode(true);
+          dispatchFollow({ type: "claim_camera" });
+        }}
+        onAddVehicle={() => {
+          setParkOpen(false);
+          router.push("/account/vehicles/new?from=announce" as Href);
+        }}
+        onSubmit={async (values: ParkCarValues) => {
+          setParking(true);
+          try {
+            const spot = await parkCarAt(values.lon, values.lat, {
+              vehicleId: values.vehicleId,
+              addressHint: values.addressHint,
+            });
+            setParkOpen(false);
+            setSpotsArmed(true);
+            setMineArmed(true);
+            openSpotDetail(spot);
+            await Promise.all([refetch(), refreshMySpotsOverlay()]);
+            await alert({
+              title: t("map.alert.parked.title"),
+              message: t("map.alert.parked.message"),
+              confirmLabel: t("common.ok"),
+            });
+          } catch (err) {
+            await alert({
+              title: t("map.alert.parkFailed.title"),
+              message: apiErrorMessage(err, t),
+              confirmLabel: t("common.ok"),
+            });
+          } finally {
+            setParking(false);
+          }
+        }}
+      />
 
       <AnnounceModal
         visible={announceOpen}
@@ -2033,6 +2224,25 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   fabDisabled: { opacity: 0.45 },
+  centerSpotFab: {
+    backgroundColor: "#1A73E8",
+  },
+  centerSpotP: {
+    color: "#fff",
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  centerSpotLocate: {
+    position: "absolute",
+    right: 4,
+    bottom: 4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#0B1F33",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   fab: {
     position: "absolute",
     right: 20,

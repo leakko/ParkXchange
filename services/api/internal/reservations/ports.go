@@ -18,6 +18,9 @@ type Store interface {
 
 	MarkEnRoute(ctx context.Context, id, actorID string, at time.Time) error
 	UpdateLocation(ctx context.Context, id, actorID string, lat, lon float64, at time.Time) error
+	// ClaimPeerNear marks the one-shot near push as sent. claimed is true only
+	// on the first successful claim.
+	ClaimPeerNear(ctx context.Context, id string, at time.Time) (claimed bool, err error)
 	// MarkReady sets the actor's ready clock. completed is true when both
 	// parties are ready and the reservation was settled in the same write.
 	MarkReady(ctx context.Context, id, actorID string, at time.Time) (completed bool, err error)

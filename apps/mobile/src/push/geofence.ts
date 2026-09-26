@@ -159,16 +159,12 @@ export async function fireArrivalPrompt(reservationId: string): Promise<void> {
     await persistFiredIds(ids);
   }
 
-  await stopLocationUpdates();
-  if (armed?.reservationId === reservationId) {
-    armed = null;
-  }
-  await persistArmed(null);
-  await AsyncStorage.removeItem(ALWAYS_DENIED_KEY);
-
   if (alreadyPersisted) {
     return;
   }
+
+  // Keep background location posts running so peer distance stays live until
+  // ready / cancel / end (disarmArrivalGeofence). Only suppress repeat prompts.
 
   const text = await arrivalCopy();
   await Notifications.scheduleNotificationAsync({
@@ -196,10 +192,7 @@ TaskManager.defineTask(ARRIVAL_UPDATES_TASK, async ({ data, error }) => {
   if (!region) {
     return;
   }
-  if (await hasArrivalPromptFired(region.reservationId)) {
-    await disarmArrivalGeofence();
-    return;
-  }
+  const alreadyFired = await hasArrivalPromptFired(region.reservationId);
   const payload = data as {
     locations?: {
       coords: {
@@ -225,6 +218,7 @@ TaskManager.defineTask(ARRIVAL_UPDATES_TASK, async ({ data, error }) => {
       });
     }
     if (
+      !alreadyFired &&
       isInsideArrivalRadius(
         loc.coords.longitude,
         loc.coords.latitude,

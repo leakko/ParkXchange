@@ -8,25 +8,24 @@ import type { FeatureCollection } from "geojson";
 type Props = {
   data: FeatureCollection;
   onPressFeature: (id: string) => void;
-  /** Owner keeps the teal “mine” look; driver gets a distinct exchange pin. */
+  /** Owner keeps the person look; driver gets the parking P. */
   role: "owner" | "driver";
 };
 
 /**
- * Exact exchange pin for the caller's active reservation.
- * Only parties receive these coordinates (via getSpot / active reservation).
+ * Exact exchange pin for the caller's active reservation, with handshake badge.
  */
 export function ExchangeLayers({ data, onPressFeature, role }: Props) {
-  const color = role === "owner" ? "#1B9AAA" : "#E76F51";
   const sourceId = `spots-exchange-${role}`;
-  const iconId = role === "owner" ? "spot-mine-car" : "spot-exchange-person";
+  const iconId = role === "owner" ? "spot-exchange-person" : "spot-exchange-p";
 
   return (
     <>
       <Images
         images={{
-          "spot-mine-car": require("../../assets/images/spot-mine-car.png"),
           "spot-exchange-person": require("../../assets/images/spot-mine-person.png"),
+          "spot-exchange-p": require("../../assets/images/spot-parking-p.png"),
+          "spot-handshake-badge": require("../../assets/images/spot-handshake-badge.png"),
         }}
       />
       <GeoJSONSource
@@ -49,33 +48,34 @@ export function ExchangeLayers({ data, onPressFeature, role }: Props) {
           id={`${sourceId}-halo`}
           type="circle"
           source={sourceId}
-          layerIndex={role === "owner" ? 910 : 913}
+          layerIndex={role === "owner" ? 912 : 916}
           paint={{
-            "circle-color": color,
+            "circle-color": role === "owner" ? "#1B9AAA" : "#1A73E8",
             "circle-radius": 18,
             "circle-opacity": 0.28,
-          }}
-        />
-        <Layer
-          id={`${sourceId}-points`}
-          type="circle"
-          source={sourceId}
-          layerIndex={role === "owner" ? 911 : 914}
-          paint={{
-            "circle-color": color,
-            "circle-radius": 12,
-            "circle-stroke-width": 2.5,
-            "circle-stroke-color": "#ffffff",
           }}
         />
         <Layer
           id={`${sourceId}-icon`}
           type="symbol"
           source={sourceId}
-          layerIndex={role === "owner" ? 912 : 915}
+          layerIndex={role === "owner" ? 913 : 917}
           layout={{
             "icon-image": iconId,
+            "icon-size": 0.42,
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
+          }}
+        />
+        <Layer
+          id={`${sourceId}-handshake`}
+          type="symbol"
+          source={sourceId}
+          layerIndex={role === "owner" ? 914 : 918}
+          layout={{
+            "icon-image": "spot-handshake-badge",
             "icon-size": 0.35,
+            "icon-offset": [14, 14],
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
           }}

@@ -11,14 +11,15 @@ import (
 )
 
 type fakeStore struct {
-	res         domain.Reservation
-	active      []domain.Reservation
-	enRoute     int
-	locations   int
-	readyCalls  int
-	clearCalls  int
-	completed   bool
-	cancelCalls int
+	res             domain.Reservation
+	active          []domain.Reservation
+	enRoute         int
+	locations       int
+	readyCalls      int
+	clearCalls      int
+	completed       bool
+	cancelCalls     int
+	peerNearClaimed bool
 }
 
 func (f *fakeStore) Claim(context.Context, string, string) (domain.Reservation, error) {
@@ -42,6 +43,14 @@ func (f *fakeStore) MarkEnRoute(_ context.Context, _, _ string, _ time.Time) err
 func (f *fakeStore) UpdateLocation(_ context.Context, _, _ string, _ float64, _ float64, _ time.Time) error {
 	f.locations++
 	return nil
+}
+
+func (f *fakeStore) ClaimPeerNear(_ context.Context, _ string, _ time.Time) (bool, error) {
+	if f.peerNearClaimed {
+		return false, nil
+	}
+	f.peerNearClaimed = true
+	return true, nil
 }
 func (f *fakeStore) MarkReady(_ context.Context, _, _ string, _ time.Time) (bool, error) {
 	f.readyCalls++

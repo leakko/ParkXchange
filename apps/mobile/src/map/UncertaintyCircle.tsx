@@ -5,6 +5,8 @@ import { useMemo } from "react";
 const RADIUS_METRES = 30;
 const STEPS = 48;
 const METRES_PER_DEGREE_LAT = 111_320;
+/** Classic parking-sign blue. */
+const PARKING_BLUE = "#1A73E8";
 
 type Props = {
   lon: number;
@@ -43,8 +45,8 @@ export function UncertaintyCircle({ lon, lat }: Props) {
         source="spot-uncertainty"
         layerIndex={890}
         paint={{
-          "fill-color": "#FF006E",
-          "fill-opacity": 0.18,
+          "fill-color": PARKING_BLUE,
+          "fill-opacity": 0.22,
         }}
       />
       <Layer
@@ -53,9 +55,9 @@ export function UncertaintyCircle({ lon, lat }: Props) {
         source="spot-uncertainty"
         layerIndex={891}
         paint={{
-          "line-color": "#FF006E",
+          "line-color": PARKING_BLUE,
           "line-width": 1.5,
-          "line-opacity": 0.55,
+          "line-opacity": 0.6,
         }}
       />
     </GeoJSONSource>

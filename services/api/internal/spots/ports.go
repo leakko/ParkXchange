@@ -55,6 +55,10 @@ type Store interface {
 	// domain.SpotDraft for why that distinction is load-bearing.
 	CreateSpot(ctx context.Context, draft domain.SpotDraft) (domain.Spot, error)
 
+	// PublishSpot turns an unpublished parked reminder into an available listing.
+	// ErrConflict when the spot is not unpublished or not owned by ownerID.
+	PublishSpot(ctx context.Context, spotID, ownerID string, draft domain.SpotDraft) (domain.Spot, error)
+
 	// SpotByID loads one spot, reporting domain.ErrNoRows when there is none.
 	SpotByID(ctx context.Context, id string) (domain.Spot, error)
 
@@ -92,6 +96,9 @@ type Store interface {
 	// exchange_at falls within domain.ActiveSpotHorizon of now. excludeSpotID
 	// skips that spot (accept path for the spot being reserved).
 	HasBlockingSpotActivity(ctx context.Context, userID, excludeSpotID string, now time.Time) (bool, error)
+
+	// VehicleSummaryByID loads a vehicle the caller already owns for size_class etc.
+	VehicleSummaryByID(ctx context.Context, id string) (domain.VehicleSummary, error)
 
 	// SpotVehiclePhoto returns the image bytes for the vehicle linked to the
 	// spot, or ErrNoRows when the spot is missing or the vehicle has no photo.

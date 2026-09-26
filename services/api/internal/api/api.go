@@ -138,6 +138,7 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("GET /v1/spots/{id}", a.optionalAuth(a.handleGetSpot))
 
 	mux.Handle("POST /v1/spots", a.requireAuth(a.handleCreateSpot))
+	mux.Handle("POST /v1/spots/{id}/publish", a.requireAuth(a.handlePublishSpot))
 	mux.Handle("PATCH /v1/spots/{id}", a.requireAuth(a.handleUpdateSpot))
 	mux.Handle("DELETE /v1/spots/{id}", a.requireAuth(a.handleDeleteSpot))
 	mux.Handle("GET /v1/spots/mine", a.requireAuth(a.handleMySpots))

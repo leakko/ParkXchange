@@ -355,6 +355,7 @@ func (s *Service) enRoute(
 		if updated, updateErr := s.store.ReservationByID(ctx, id); updateErr == nil {
 			res = updated
 		}
+		s.maybeNotifyPeerNear(ctx, res, viewer.UserID, initial.Lat, initial.Lon)
 	}
 	if already {
 		return nil
@@ -444,7 +445,37 @@ func (s *Service) UpdateLocation(
 		}
 		return domain.Reservation{}, domain.Internal(err)
 	}
+	s.maybeNotifyPeerNear(ctx, updated, viewer.UserID, lat, lon)
 	return s.projectForViewer(updated, viewer.UserID), nil
+}
+
+func (s *Service) maybeNotifyPeerNear(
+	ctx context.Context,
+	res domain.Reservation,
+	actorID string,
+	lat, lon float64,
+) {
+	meters, ok := domain.DistanceMeters(res.SpotLat, res.SpotLon, lat, lon)
+	if !ok || meters > domain.NearPeerMetres {
+		return
+	}
+	claimed, err := s.store.ClaimPeerNear(ctx, res.ID, s.now())
+	if err != nil || !claimed {
+		return
+	}
+	peerID := res.DriverID
+	if actorID == res.DriverID {
+		peerID = res.OwnerID
+	}
+	s.push(ctx, Notification{
+		Type:          EventPeerNear,
+		ReservationID: res.ID,
+		RecipientID:   peerID,
+		ExchangeAt:    res.ExchangeAt,
+		DistanceMeters: &meters,
+		Actions:       []string{"open"},
+		Urgent:        true,
+	})
 }
 
 // Ready marks the caller ready at the point. When both are ready the store

@@ -96,24 +96,67 @@ func (f *fakeStore) CreateSpot(_ context.Context, draft domain.SpotDraft) (domai
 	// does, so the fake does it too.
 	now := time.Now()
 
+	status := domain.SpotAvailable
+	if draft.Unpublished {
+		status = domain.SpotUnpublished
+	}
+
 	spot := domain.Spot{
-		ID:            "created-1",
-		OwnerID:       draft.OwnerID,
-		VehicleID:     draft.VehicleID,
-		Lon:           draft.Lon,
-		Lat:           draft.Lat,
-		AddressHint:   draft.AddressHint,
-		Size:          draft.Size,
-		Status:        domain.SpotAvailable,
-		PriceCents:    draft.PriceCents,
-		Notes:         draft.Notes,
-		AvailableFrom: now.Add(draft.AvailableIn),
-		ExpiresAt:     now.Add(draft.ExpiresIn),
-		CreatedAt:     now,
+		ID:                   "created-1",
+		OwnerID:              draft.OwnerID,
+		VehicleID:            draft.VehicleID,
+		Lon:                  draft.Lon,
+		Lat:                  draft.Lat,
+		AddressHint:          draft.AddressHint,
+		Size:                 draft.Size,
+		Status:               status,
+		PriceCents:           draft.PriceCents,
+		Notes:                draft.Notes,
+		PreferredDepartureAt: draft.PreferredDepartureAt,
+		AutoCancelNoShow:     draft.AutoCancelNoShow,
+		LeavingNow:           draft.LeavingNow,
+		AvailableFrom:        now.Add(draft.AvailableIn),
+		ExpiresAt:            now.Add(draft.ExpiresIn),
+		CreatedAt:            now,
 	}
 
 	f.spots[spot.ID] = spot
 	return spot, nil
+}
+
+func (f *fakeStore) PublishSpot(_ context.Context, spotID, ownerID string, draft domain.SpotDraft) (domain.Spot, error) {
+	spot, found := f.spots[spotID]
+	if !found || spot.OwnerID != ownerID {
+		return domain.Spot{}, domain.ErrNoRows
+	}
+	if spot.Status != domain.SpotUnpublished {
+		return domain.Spot{}, domain.ErrConflict
+	}
+	now := time.Now()
+	spot.Status = domain.SpotAvailable
+	spot.PriceCents = draft.PriceCents
+	spot.Notes = draft.Notes
+	spot.PreferredDepartureAt = draft.PreferredDepartureAt
+	spot.AutoCancelNoShow = draft.AutoCancelNoShow
+	spot.LeavingNow = draft.LeavingNow
+	spot.VehicleID = draft.VehicleID
+	spot.Size = draft.Size
+	spot.AddressHint = draft.AddressHint
+	spot.ExpiresAt = now.Add(draft.ExpiresIn)
+	f.spots[spotID] = spot
+	return spot, nil
+}
+
+func (f *fakeStore) VehicleSummaryByID(_ context.Context, id string) (domain.VehicleSummary, error) {
+	for _, vehicles := range f.ownedVehicles {
+		if vehicles[id] {
+			return domain.VehicleSummary{
+				ID: id, Plate: "X", MakeModel: "Y", Color: "Z",
+				Year: 2020, Size: domain.SizeMedium,
+			}, nil
+		}
+	}
+	return domain.VehicleSummary{}, domain.ErrNoRows
 }
 
 func (f *fakeStore) SpotByID(_ context.Context, id string) (domain.Spot, error) {
@@ -155,7 +198,7 @@ func (f *fakeStore) CancelSpot(_ context.Context, spotID, ownerID string) ([]str
 	if !found || spot.OwnerID != ownerID {
 		return nil, domain.ErrConflict
 	}
-	if spot.Status != domain.SpotAvailable && spot.Status != domain.SpotReserved {
+	if spot.Status != domain.SpotAvailable && spot.Status != domain.SpotReserved && spot.Status != domain.SpotUnpublished {
 		return nil, domain.ErrConflict
 	}
 

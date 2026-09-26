@@ -317,6 +317,10 @@ var copyES = map[string]pushCopy{
 		"+1 punto",
 		"Alguien te ha valorado con 5 estrellas, ¡has recibido 1 punto de premio!",
 	},
+	reservations.EventPeerNear: {
+		"ParkXchange",
+		"La otra persona está a menos de 200 m del punto de encuentro",
+	},
 	"_default": {
 		"ParkXchange",
 		"Hay una novedad en tu intercambio",
@@ -411,6 +415,10 @@ var copyEN = map[string]pushCopy{
 	reservations.EventPointsFiveStar: {
 		"+1 point",
 		"Someone rated your exchange 5 stars — you got 1 bonus point!",
+	},
+	reservations.EventPeerNear: {
+		"ParkXchange",
+		"The other person is within 200 m of the meeting point",
 	},
 	"_default": {
 		"ParkXchange",

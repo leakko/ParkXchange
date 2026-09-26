@@ -25,6 +25,11 @@ If that test fails, fix the code, not the test.
   Data safety done. Rating modal closes after submit. Production AAB building on
   EAS (`502eb2cc`, `main` @ `cd7f893`). Next: upload AAB → closed track → Play
   App Signing SHA-1 → Google Sign-In → tester list + opt-in link.
+- **Unpublished / map icons / live distance (2026-09-26):** **coded** — see
+  [spec](docs/superpowers/specs/2026-09-26-unpublished-map-icons-peer-distance-design.md).
+  Migration `00023` (`unpublished` status + `peer_near_notified_at`); FAB
+  «+ Mi coche»; P/person/handshake markers; foreground location reporter;
+  near push at 200 m. Pending migrate + API deploy + two-device smoke.
 - **Also open:** payments deferred. Location permission policy — device demo
   pending. Account-delete confirm is now an in-app modal (pushed).
 - **Ratings + public profile:** **on main**. Owner pending offers show
@@ -72,8 +77,9 @@ If that test fails, fix the code, not the test.
    link.
 2. Start PostGIS and run the pending full API suite/seed verification; deploy
    the departure filter + flexible expiry + listing Get-filter + ratings API
-   - reports + «Me voy ya» (`00019`), then device-smoke the map filter, guest
-     login gates, rating/profile, reports, and leaving-now flows.
+   - reports + «Me voy ya» (`00019`) + unpublished/peer-near (`00023`), then
+     device-smoke the map filter, guest login gates, rating/profile, reports,
+     leaving-now, «+ Mi coche», map P icons, and live peer distance / 200 m push.
      Rebuild the preview APK only when asked.
 3. Device smoke for location policy (foreground vs «Voy de camino»).
 4. Rebuild preview/dev client; device smoke arrival background location

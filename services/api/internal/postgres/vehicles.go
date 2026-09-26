@@ -238,7 +238,7 @@ func (db *DB) ActiveSpotCount(ctx context.Context, vehicleID string) (int, error
 		SELECT COUNT(*)
 		  FROM spots
 		 WHERE vehicle_id = $1
-		   AND status IN ('available', 'reserved', 'handover')`, vehicleID).Scan(&n)
+		   AND status IN ('unpublished', 'available', 'reserved', 'handover')`, vehicleID).Scan(&n)
 	if err != nil {
 		return 0, translate(err, "count active spots for vehicle")
 	}

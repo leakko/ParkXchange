@@ -3,6 +3,7 @@ import { router, type Href } from "expo-router";
 import { Platform } from "react-native";
 
 import { reservationEnRoute, reservationReady, reservationUnready } from "@/api/client";
+import { currentLatLon } from "@/push/locationSeed";
 import {
   armGeofenceForReservation,
   clearArrivalPromptFired,
@@ -74,7 +75,11 @@ export async function handleNotificationResponse(
 
   try {
     if (reservationId && action === "en_route") {
-      await reservationEnRoute(reservationId);
+      const here = await currentLatLon();
+      await reservationEnRoute(
+        reservationId,
+        here ? { latitude: here.latitude, longitude: here.longitude } : null,
+      );
       await armGeofenceForReservation(reservationId);
       await openReservation(reservationId);
       return;

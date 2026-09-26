@@ -23,17 +23,23 @@ const regularMineFilter: FilterSpecification = [
   true,
 ];
 
+const agreedFilter: FilterSpecification = [
+  "==",
+  ["to-boolean", ["get", "has_agreement"]],
+  true,
+];
+
 /**
- * Unclustered markers for the signed-in user's own spots (car icon). Kept on a
- * separate source so they are never absorbed into the orange cluster bubbles.
- * «Me voy ya» keeps the same pin, only the circle colour changes to orange.
+ * Own listings: person icon (orange tint via leaving-now circle underlay).
+ * Handshake badge when the viewer has an active agreement on the spot.
  */
 export function MySpotLayers({ data, onPressFeature }: Props) {
   return (
     <>
       <Images
         images={{
-          "spot-mine-car": require("../../assets/images/spot-mine-car.png"),
+          "spot-mine-person": require("../../assets/images/spot-mine-person.png"),
+          "spot-handshake-badge": require("../../assets/images/spot-handshake-badge.png"),
         }}
       />
       <GeoJSONSource
@@ -53,29 +59,27 @@ export function MySpotLayers({ data, onPressFeature }: Props) {
         }}
       >
         <Layer
-          id="spots-mine-points"
+          id="spots-mine-underlay"
           type="circle"
           source="spots-mine"
           filter={regularMineFilter}
           layerIndex={908}
           paint={{
             "circle-color": "#1B9AAA",
-            "circle-radius": 11,
-            "circle-stroke-width": 2,
-            "circle-stroke-color": "#ffffff",
+            "circle-radius": 14,
+            "circle-opacity": 0.35,
           }}
         />
         <Layer
-          id="spots-mine-leaving-now-points"
+          id="spots-mine-leaving-underlay"
           type="circle"
           source="spots-mine"
           filter={leavingNowFilter}
           layerIndex={909}
           paint={{
             "circle-color": "#E85D04",
-            "circle-radius": 11,
-            "circle-stroke-width": 2,
-            "circle-stroke-color": "#ffffff",
+            "circle-radius": 14,
+            "circle-opacity": 0.4,
           }}
         />
         <Layer
@@ -84,8 +88,22 @@ export function MySpotLayers({ data, onPressFeature }: Props) {
           source="spots-mine"
           layerIndex={910}
           layout={{
-            "icon-image": "spot-mine-car",
+            "icon-image": "spot-mine-person",
+            "icon-size": 0.4,
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
+          }}
+        />
+        <Layer
+          id="spots-mine-handshake"
+          type="symbol"
+          source="spots-mine"
+          filter={agreedFilter}
+          layerIndex={911}
+          layout={{
+            "icon-image": "spot-handshake-badge",
             "icon-size": 0.35,
+            "icon-offset": [14, 14],
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
           }}

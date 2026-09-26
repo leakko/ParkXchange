@@ -155,6 +155,9 @@ func (s *Service) InViewport(ctx context.Context, q ViewportQuery) ([]VisibleSpo
 
 // Offer publishes a new spot.
 func (s *Service) Offer(ctx context.Context, in domain.NewSpotInput) (domain.Spot, error) {
+	if in.Unpublished {
+		return s.ParkCar(ctx, in)
+	}
 	draft, err := domain.NewSpot(in, s.now())
 	if err != nil {
 		return domain.Spot{}, err
@@ -206,6 +209,142 @@ func (s *Service) Offer(ctx context.Context, in domain.NewSpotInput) (domain.Spo
 		return domain.Spot{}, domain.Internal(err)
 	}
 	return created, nil
+}
+
+// ParkCar stores an owner-only parked-car reminder (unpublished).
+func (s *Service) ParkCar(ctx context.Context, in domain.NewSpotInput) (domain.Spot, error) {
+	in.Unpublished = true
+	in.LeavingNow = false
+	in.PreferredDepartureAt = nil
+	in.PriceCents = 0
+
+	if strings.TrimSpace(in.Size) == "" {
+		summary, err := s.store.VehicleSummaryByID(ctx, strings.TrimSpace(in.VehicleID))
+		if err != nil {
+			if errors.Is(err, domain.ErrNoRows) {
+				return domain.Spot{}, domain.NotFound("vehicle_not_found", "that vehicle does not exist")
+			}
+			return domain.Spot{}, domain.Internal(err)
+		}
+		in.Size = string(summary.Size)
+	}
+
+	draft, err := domain.NewSpot(in, s.now())
+	if err != nil {
+		return domain.Spot{}, err
+	}
+
+	verified, err := s.store.EmailVerified(ctx, draft.OwnerID)
+	if err != nil {
+		return domain.Spot{}, domain.Internal(err)
+	}
+	if !verified {
+		return domain.Spot{}, domain.Forbidden("email_unverified",
+			"confirm your email before saving a parked car")
+	}
+
+	owned, err := s.store.VehicleOwnedBy(ctx, draft.VehicleID, draft.OwnerID)
+	if err != nil {
+		return domain.Spot{}, domain.Internal(err)
+	}
+	if !owned {
+		return domain.Spot{}, domain.NotFound("vehicle_not_found", "that vehicle does not exist")
+	}
+
+	created, err := s.store.CreateSpot(ctx, draft)
+	if err != nil {
+		if errors.Is(err, domain.ErrDuplicate) {
+			return domain.Spot{}, domain.Conflict("unpublished_exists",
+				"you already have a parked car saved — withdraw it first")
+		}
+		return domain.Spot{}, domain.Internal(err)
+	}
+	return created, nil
+}
+
+// Publish turns an unpublished parked reminder into a public listing.
+func (s *Service) Publish(ctx context.Context, spotID string, viewer domain.Claims, in domain.NewSpotInput) (domain.Spot, error) {
+	if !viewer.Authenticated() {
+		return domain.Spot{}, domain.Unauthenticated("unauthorized", "an access token is required")
+	}
+
+	spot, err := s.store.SpotByID(ctx, spotID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoRows) {
+			return domain.Spot{}, domain.NotFound("spot_not_found", "that spot does not exist")
+		}
+		return domain.Spot{}, domain.Internal(err)
+	}
+	if !spot.OwnedBy(viewer.UserID) {
+		return domain.Spot{}, domain.NotFound("spot_not_found", "that spot does not exist")
+	}
+	if spot.Status != domain.SpotUnpublished {
+		return domain.Spot{}, domain.Conflict("spot_not_unpublished",
+			"that spot is not waiting to be published")
+	}
+
+	in.OwnerID = viewer.UserID
+	in.Unpublished = false
+	in.Lon, in.Lat = spot.Lon, spot.Lat
+	if strings.TrimSpace(in.VehicleID) == "" {
+		in.VehicleID = spot.VehicleID
+	}
+	if strings.TrimSpace(in.AddressHint) == "" {
+		in.AddressHint = spot.AddressHint
+	}
+	if strings.TrimSpace(in.Size) == "" {
+		in.Size = string(spot.Size)
+	}
+
+	draft, err := domain.NewSpot(in, s.now())
+	if err != nil {
+		return domain.Spot{}, err
+	}
+
+	owned, err := s.store.VehicleOwnedBy(ctx, draft.VehicleID, viewer.UserID)
+	if err != nil {
+		return domain.Spot{}, domain.Internal(err)
+	}
+	if !owned {
+		return domain.Spot{}, domain.NotFound("vehicle_not_found", "that vehicle does not exist")
+	}
+
+	mine, err := s.store.SpotsByOwner(ctx, viewer.UserID, 50)
+	if err != nil {
+		return domain.Spot{}, domain.Internal(err)
+	}
+	if domain.ListingConflicts(mine, domain.ProposedListingFromDraft(draft), s.now()) {
+		return domain.Spot{}, domain.Conflict("listing_conflict",
+			"you already have a listing that conflicts with that departure")
+	}
+
+	if draft.LeavingNow {
+		blocked, err := s.store.HasBlockingSpotActivity(ctx, viewer.UserID, spotID, s.now())
+		if err != nil {
+			return domain.Spot{}, domain.Internal(err)
+		}
+		if blocked {
+			return domain.Spot{}, domain.Conflict("active_spot_limit",
+				"you already have a leaving-now listing or an accepted exchange within 2 hours")
+		}
+	}
+
+	published, err := s.store.PublishSpot(ctx, spotID, viewer.UserID, draft)
+	if err != nil {
+		if errors.Is(err, domain.ErrConflict) {
+			return domain.Spot{}, domain.Conflict("spot_not_unpublished",
+				"that spot is not waiting to be published")
+		}
+		if errors.Is(err, domain.ErrDuplicate) {
+			return domain.Spot{}, domain.Conflict("active_spot_limit",
+				"you already have a leaving-now listing or an accepted exchange within 2 hours")
+		}
+		if errors.Is(err, domain.ErrNoRows) {
+			return domain.Spot{}, domain.NotFound("spot_not_found", "that spot does not exist")
+		}
+		return domain.Spot{}, domain.Internal(err)
+	}
+	return published, nil
 }
 
 // Update edits an available offer the caller owns.
@@ -357,6 +496,11 @@ func (s *Service) Get(ctx context.Context, spotID string, viewer domain.Claims) 
 		return s.visibleOne(spot, viewer), nil
 	}
 
+	// Unpublished remembrances are owner-only.
+	if spot.Status == domain.SpotUnpublished {
+		return VisibleSpot{}, domain.NotFound("spot_not_found", "that spot does not exist")
+	}
+
 	// Terminal or clock-dead listings are gone for strangers. A driver who
 	// held a reservation on the spot may still open it for history.
 	hidden := spot.Status.Terminal() ||
@@ -417,7 +561,9 @@ func (s *Service) Withdraw(ctx context.Context, spotID string, viewer domain.Cla
 		return domain.NotFound("spot_not_found", "that spot does not exist")
 	}
 
-	if spot.Status != domain.SpotAvailable && spot.Status != domain.SpotReserved {
+	if spot.Status != domain.SpotAvailable &&
+		spot.Status != domain.SpotReserved &&
+		spot.Status != domain.SpotUnpublished {
 		return domain.Conflict("spot_not_available",
 			"that spot can no longer be withdrawn")
 	}

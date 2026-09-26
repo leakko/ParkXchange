@@ -574,3 +574,22 @@ export async function announceAt(
     ...(opts.addressHint?.trim() ? { address_hint: opts.addressHint.trim() } : {}),
   });
 }
+
+/** Save an unpublished parked-car reminder (not on the public map). */
+export async function parkCarAt(
+  lon: number,
+  lat: number,
+  opts: { vehicleId: string; addressHint?: string | null },
+): Promise<SpotFeature> {
+  return createSpot({
+    lon,
+    lat,
+    size_class: "medium",
+    price_cents: 0,
+    vehicle_id: opts.vehicleId,
+    auto_cancel_no_show: true,
+    leaving_now: false,
+    unpublished: true,
+    ...(opts.addressHint?.trim() ? { address_hint: opts.addressHint.trim() } : {}),
+  });
+}

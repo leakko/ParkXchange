@@ -231,6 +231,11 @@ func (db *DB) CreateSpot(ctx context.Context, draft domain.SpotDraft) (domain.Sp
 
 	var id string
 
+	status := string(domain.SpotAvailable)
+	if draft.Unpublished {
+		status = string(domain.SpotUnpublished)
+	}
+
 	// ST_MakePoint takes longitude first. Getting this backwards is the
 	// classic PostGIS bug: it silently stores a point in the wrong hemisphere
 	// rather than failing, and only the CHECK on latitude range catches the
@@ -242,14 +247,14 @@ func (db *DB) CreateSpot(ctx context.Context, draft domain.SpotDraft) (domain.Sp
 			leaving_now, expires_at
 		)
 		VALUES (
-			$1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326), $5, $6, 'available',
-			$7, $8, $9, $10,
-			$11, now() + make_interval(secs => $12)
+			$1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326), $5, $6, $7,
+			$8, $9, $10, $11,
+			$12, now() + make_interval(secs => $13)
 		)
 		RETURNING id
 	`,
 		draft.OwnerID, draft.VehicleID, draft.Lon, draft.Lat, nullable(draft.AddressHint),
-		string(draft.Size), draft.PriceCents, nullable(draft.Notes),
+		string(draft.Size), status, draft.PriceCents, nullable(draft.Notes),
 		draft.PreferredDepartureAt, draft.AutoCancelNoShow, draft.LeavingNow,
 		draft.ExpiresIn.Seconds(),
 	).Scan(&id)
@@ -257,17 +262,20 @@ func (db *DB) CreateSpot(ctx context.Context, draft domain.SpotDraft) (domain.Sp
 		return domain.Spot{}, translate(err, "insert spot")
 	}
 
-	if err := notifySpot(ctx, tx, domain.SpotEvent{
-		Type:       domain.EventSpotAdded,
-		SpotID:     id,
-		OwnerID:    draft.OwnerID,
-		Lon:        draft.Lon,
-		Lat:        draft.Lat,
-		Status:     domain.SpotAvailable,
-		PriceCents: draft.PriceCents,
-		LeavingNow: draft.LeavingNow,
-	}); err != nil {
-		return domain.Spot{}, translate(err, "notify spot added")
+	// Unpublished remembrances stay off the public map — no viewport broadcast.
+	if !draft.Unpublished {
+		if err := notifySpot(ctx, tx, domain.SpotEvent{
+			Type:       domain.EventSpotAdded,
+			SpotID:     id,
+			OwnerID:    draft.OwnerID,
+			Lon:        draft.Lon,
+			Lat:        draft.Lat,
+			Status:     domain.SpotAvailable,
+			PriceCents: draft.PriceCents,
+			LeavingNow: draft.LeavingNow,
+		}); err != nil {
+			return domain.Spot{}, translate(err, "notify spot added")
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -278,6 +286,61 @@ func (db *DB) CreateSpot(ctx context.Context, draft domain.SpotDraft) (domain.Sp
 	// spot is shaped identically to a listed one. Building it by hand here
 	// would be a second definition of "a spot" that drifts.
 	return db.SpotByID(ctx, id)
+}
+
+// PublishSpot turns an unpublished parked reminder into an available listing.
+func (db *DB) PublishSpot(ctx context.Context, spotID, ownerID string, draft domain.SpotDraft) (domain.Spot, error) {
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return domain.Spot{}, translate(err, "begin publish spot")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE spots SET
+			vehicle_id = $3,
+			geom = ST_SetSRID(ST_MakePoint($4, $5), 4326),
+			address_hint = $6,
+			size_class = $7,
+			status = 'available',
+			price_cents = $8,
+			notes = $9,
+			preferred_departure_at = $10,
+			auto_cancel_no_show = $11,
+			leaving_now = $12,
+			expires_at = now() + make_interval(secs => $13),
+			updated_at = now()
+		 WHERE id = $1 AND owner_id = $2 AND status = 'unpublished'
+	`,
+		spotID, ownerID, draft.VehicleID, draft.Lon, draft.Lat,
+		nullable(draft.AddressHint), string(draft.Size), draft.PriceCents,
+		nullable(draft.Notes), draft.PreferredDepartureAt, draft.AutoCancelNoShow,
+		draft.LeavingNow, draft.ExpiresIn.Seconds(),
+	)
+	if err != nil {
+		return domain.Spot{}, translate(err, "publish spot")
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.Spot{}, domain.ErrConflict
+	}
+
+	if err := notifySpot(ctx, tx, domain.SpotEvent{
+		Type:       domain.EventSpotAdded,
+		SpotID:     spotID,
+		OwnerID:    ownerID,
+		Lon:        draft.Lon,
+		Lat:        draft.Lat,
+		Status:     domain.SpotAvailable,
+		PriceCents: draft.PriceCents,
+		LeavingNow: draft.LeavingNow,
+	}); err != nil {
+		return domain.Spot{}, translate(err, "notify spot published")
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Spot{}, translate(err, "commit publish spot")
+	}
+	return db.SpotByID(ctx, spotID)
 }
 
 // SpotByID loads one spot regardless of its status.
@@ -567,7 +630,9 @@ func (db *DB) CancelSpot(ctx context.Context, spotID, ownerID string) ([]string,
 		return nil, translate(err, "lock spot for withdraw")
 	}
 
-	if status != string(domain.SpotAvailable) && status != string(domain.SpotReserved) {
+	if status != string(domain.SpotAvailable) &&
+		status != string(domain.SpotReserved) &&
+		status != string(domain.SpotUnpublished) {
 		return nil, domain.ErrConflict
 	}
 

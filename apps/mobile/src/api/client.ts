@@ -258,6 +258,22 @@ export async function createSpot(body: CreateSpotRequest): Promise<SpotFeature> 
   return (await res.json()) as SpotFeature;
 }
 
+export type PublishSpotRequest = components["schemas"]["PublishSpotRequest"];
+
+export async function publishSpot(
+  id: string,
+  body: PublishSpotRequest,
+): Promise<SpotFeature> {
+  const res = await apiFetch(`/v1/spots/${id}/publish`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  return (await res.json()) as SpotFeature;
+}
+
 export async function getSpot(id: string): Promise<SpotFeature> {
   const res = await apiFetch(`/v1/spots/${id}`);
   if (!res.ok) {

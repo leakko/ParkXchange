@@ -5,6 +5,7 @@ type TFn = (key: TranslationKey) => string;
 const SIZE_CLASSES = new Set(["small", "medium", "large"]);
 
 const SPOT_STATUSES = new Set([
+  "unpublished",
   "available",
   "reserved",
   "handover",

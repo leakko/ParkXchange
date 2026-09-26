@@ -232,6 +232,7 @@ type createSpotRequest struct {
 	PreferredDepartureAt *time.Time `json:"preferred_departure_at"`
 	AutoCancelNoShow     *bool      `json:"auto_cancel_no_show"`
 	LeavingNow           bool       `json:"leaving_now"`
+	Unpublished          bool       `json:"unpublished"`
 
 	// DurationMinutes is how long the offer stands after it becomes
 	// available, rather than an absolute expiry.
@@ -291,6 +292,7 @@ func (a *API) handleCreateSpot(w http.ResponseWriter, r *http.Request) error {
 		PreferredDepartureAt: req.PreferredDepartureAt,
 		AutoCancelNoShow:     req.AutoCancelNoShow,
 		LeavingNow:           req.LeavingNow,
+		Unpublished:          req.Unpublished,
 		ExpiresAt:            expiresAt,
 	})
 	if err != nil {
@@ -300,6 +302,42 @@ func (a *API) handleCreateSpot(w http.ResponseWriter, r *http.Request) error {
 	// The owner sees their own spot, so the coordinates come back exact.
 	visible := spots.VisibleSpot{Spot: spot, Lon: spot.Lon, Lat: spot.Lat, Exact: true}
 	return web.JSON(w, http.StatusCreated, toFeature(visible, claims))
+}
+
+func (a *API) handlePublishSpot(w http.ResponseWriter, r *http.Request) error {
+	var req createSpotRequest
+	if err := web.DecodeJSON(w, r, &req); err != nil {
+		return err
+	}
+
+	claims := claimsFrom(r.Context())
+	var expiresAt time.Time
+	if req.DurationMinutes != nil {
+		availableIn := 0
+		if req.AvailableInMinutes != nil {
+			availableIn = *req.AvailableInMinutes
+		}
+		expiresAt = time.Now().Add(
+			time.Duration(availableIn+*req.DurationMinutes) * time.Minute)
+	}
+
+	spot, err := a.spots.Publish(r.Context(), r.PathValue("id"), claims, domain.NewSpotInput{
+		VehicleID:            req.VehicleID,
+		AddressHint:          req.AddressHint,
+		Size:                 req.Size,
+		PriceCents:           req.PriceCents,
+		Notes:                req.Notes,
+		PreferredDepartureAt: req.PreferredDepartureAt,
+		AutoCancelNoShow:     req.AutoCancelNoShow,
+		LeavingNow:           req.LeavingNow,
+		ExpiresAt:            expiresAt,
+	})
+	if err != nil {
+		return err
+	}
+
+	visible := spots.VisibleSpot{Spot: spot, Lon: spot.Lon, Lat: spot.Lat, Exact: true}
+	return web.JSON(w, http.StatusOK, toFeature(visible, claims))
 }
 
 type updateSpotRequest struct {

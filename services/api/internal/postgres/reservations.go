@@ -433,6 +433,19 @@ func (db *DB) UpdateLocation(ctx context.Context, id, actorID string, lat, lon f
 	return translate(tx.Commit(ctx), "commit location update")
 }
 
+// ClaimPeerNear records the one-shot near push. claimed is true only once.
+func (db *DB) ClaimPeerNear(ctx context.Context, id string, at time.Time) (bool, error) {
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE reservations
+		   SET peer_near_notified_at = $2
+		 WHERE id = $1 AND peer_near_notified_at IS NULL
+	`, id, at)
+	if err != nil {
+		return false, translate(err, "claim peer near")
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
 // MarkReady sets the actor's ready clock; completes when both parties are ready.
 func (db *DB) MarkReady(ctx context.Context, id, actorID string, at time.Time) (bool, error) {
 	tx, err := db.begin(ctx)
@@ -817,7 +830,7 @@ func (db *DB) Sweep(ctx context.Context, now time.Time) (reservations.SweepResul
 	expiredRows, err := tx.Query(ctx, `
 		UPDATE spots
 		   SET status = 'expired'
-		 WHERE status = 'available'
+		 WHERE status IN ('available', 'unpublished')
 		   AND (
 		     expires_at <= now()
 		     OR (

@@ -23,6 +23,10 @@ func TestSpotStatusTransitions(t *testing.T) {
 		to   domain.SpotStatus
 		want bool
 	}{
+		{domain.SpotUnpublished, domain.SpotAvailable, true},
+		{domain.SpotUnpublished, domain.SpotCancelled, true},
+		{domain.SpotUnpublished, domain.SpotExpired, true},
+		{domain.SpotUnpublished, domain.SpotReserved, false},
 		{domain.SpotAvailable, domain.SpotReserved, true},
 		{domain.SpotAvailable, domain.SpotCancelled, true},
 		{domain.SpotAvailable, domain.SpotExpired, true},
@@ -65,7 +69,7 @@ func TestTerminalStatuses(t *testing.T) {
 	}
 
 	for _, status := range []domain.SpotStatus{
-		domain.SpotAvailable, domain.SpotReserved, domain.SpotHandover,
+		domain.SpotUnpublished, domain.SpotAvailable, domain.SpotReserved, domain.SpotHandover,
 	} {
 		if status.Terminal() {
 			t.Errorf("%s should not be terminal", status)

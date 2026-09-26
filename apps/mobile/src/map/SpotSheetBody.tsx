@@ -60,6 +60,8 @@ export type SpotSheetBodyProps = {
   onEdit: (spot: SpotFeature) => void;
   onViewOffers: (spot: SpotFeature) => void;
   onWithdraw: (spot: SpotFeature) => void;
+  /** Convert unpublished parked reminder into a public listing. */
+  onPublish?: (spot: SpotFeature) => void;
   onReportListing?: (spot: SpotFeature) => void;
   makingOffer: boolean;
   setMakingOffer: (v: boolean) => void;
@@ -90,6 +92,7 @@ export function SpotSheetBody({
   onEdit,
   onViewOffers,
   onWithdraw,
+  onPublish,
   onReportListing,
   makingOffer,
   setMakingOffer,
@@ -389,6 +392,26 @@ export function SpotSheetBody({
       {pointsLine}
 
       <View style={styles.actions}>
+        {spot.properties.is_mine &&
+        spot.properties.status === "unpublished" &&
+        !isActiveForSpot ? (
+          <>
+            <View style={styles.publishPromo}>
+              <Text style={styles.publishPromoText}>{t("spotSheet.unpublished.promo")}</Text>
+            </View>
+            <Pressable
+              style={styles.primary}
+              disabled={busy}
+              onPress={() => onPublish?.(spot)}
+            >
+              <Text style={styles.primaryText}>{t("spotSheet.unpublished.publish")}</Text>
+            </Pressable>
+            <Pressable style={styles.danger} disabled={busy} onPress={() => onWithdraw(spot)}>
+              <Text style={styles.dangerText}>{t("spotSheet.withdraw")}</Text>
+            </Pressable>
+          </>
+        ) : null}
+
         {spot.properties.is_mine && spot.properties.status === "available" && !isActiveForSpot ? (
           <>
             <Pressable style={styles.primary} disabled={busy} onPress={() => onViewOffers(spot)}>
@@ -668,6 +691,14 @@ export function SpotSheetBody({
 
 const styles = StyleSheet.create({
   mineBadge: { color: "#1B9AAA", fontSize: 13, fontWeight: "600" },
+  publishPromo: {
+    backgroundColor: "#1A73E822",
+    borderColor: "#1A73E8",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+  },
+  publishPromoText: { color: "#1A3A5C", fontSize: 14, lineHeight: 20, fontWeight: "600" },
   meta: { color: "#9DB4C0", fontSize: 14, fontWeight: "400" },
   pointsHero: {
     color: "#F4F7FA",
