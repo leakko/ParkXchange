@@ -5,7 +5,9 @@ import {
   DRIVER_FAIR_CANCEL_MS,
   driverCancelOutcome,
   driverCancelReleasesDeposit,
+  EXCHANGE_COACHING_MS,
   exchangeWindow,
+  isExchangeCoachingActive,
   NO_SHOW_GRACE_MS,
   OWNER_SAFETY_NET_MS,
   ownerCancelForfeits,
@@ -17,6 +19,18 @@ import {
 describe("exchangeLeave", () => {
   const exchange = "2026-09-20T18:00:00.000Z";
   const exchangeMs = Date.parse(exchange);
+
+  it("starts map coaching inside the last hour before exchange_at", () => {
+    assert.equal(
+      isExchangeCoachingActive(exchange, exchangeMs - EXCHANGE_COACHING_MS - 1),
+      false,
+    );
+    assert.equal(
+      isExchangeCoachingActive(exchange, exchangeMs - EXCHANGE_COACHING_MS + 1),
+      true,
+    );
+    assert.equal(isExchangeCoachingActive(exchange, exchangeMs + 60_000), true);
+  });
 
   it("anchors owner-no-show at exchange when driver ready early", () => {
     const ready = "2026-09-20T17:50:00.000Z";

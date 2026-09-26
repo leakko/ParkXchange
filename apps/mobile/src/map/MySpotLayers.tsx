@@ -13,6 +13,8 @@ import { nearestSpotIdAtTouch } from "@/map/nearestSpotAtTouch";
 type Props = {
   data: FeatureCollection;
   onPressFeature: (id: string) => void;
+  /** Pulse on agreed spots only in the last hour before exchange_at. */
+  pulse?: boolean;
 };
 
 const leavingNowFilter: FilterSpecification = [
@@ -39,10 +41,13 @@ function hasAgreedFeature(data: FeatureCollection): boolean {
 
 /**
  * Own listings: solid teal/orange disc + person icon (fully opaque).
- * Pulsing ring when the viewer has an active agreement on the spot.
+ * Pulsing ring only for near-term coaching on an agreed spot.
  */
-export function MySpotLayers({ data, onPressFeature }: Props) {
-  const pulseEnabled = useMemo(() => hasAgreedFeature(data), [data]);
+export function MySpotLayers({ data, onPressFeature, pulse = false }: Props) {
+  const pulseEnabled = useMemo(
+    () => pulse && hasAgreedFeature(data),
+    [pulse, data],
+  );
 
   return (
     <>

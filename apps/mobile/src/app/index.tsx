@@ -82,6 +82,7 @@ import {
   type ViewBox,
 } from "@/map/geocode";
 import { bannerPeerStatusKey } from "@/map/exchangeCopy";
+import { isExchangeCoachingActive } from "@/map/exchangeLeave";
 import { peerEnRouteDistance } from "@/map/peerDistance";
 import { passAuthGate } from "@/map/authGate";
 import { SpotLayers } from "@/map/SpotLayers";
@@ -353,8 +354,13 @@ export default function MapScreen() {
     enabled: iAmEnRoute,
   });
 
+  // Pin always; banner + pulse only inside the last hour before exchange_at.
+  const exchangeCoaching = !!active && isExchangeCoachingActive(active.exchange_at);
+
   const leavingNowSpot = useMemo(() => {
-    if (active || !signedIn) {
+    // Near-term coaching owns the banner slot; far-future reservations must
+    // not hide an unrelated «Me voy ya» listing.
+    if (exchangeCoaching || !signedIn) {
       return null;
     }
     return (
@@ -365,7 +371,7 @@ export default function MapScreen() {
           f.properties.status === "available",
       ) ?? null
     );
-  }, [active, signedIn, collection.features]);
+  }, [exchangeCoaching, signedIn, collection.features]);
 
   const [leavingNowOfferCount, setLeavingNowOfferCount] = useState(0);
   useEffect(() => {
@@ -1275,18 +1281,13 @@ export default function MapScreen() {
       }
       setParking(true);
       try {
+        // Prefer the map's live fix — do not await getCurrentPosition here.
+        // A fresh GPS read often takes several seconds on the second open.
+        const mapCoords = location.coords;
+        let nextCoords = coords ?? mapCoords;
+        let fromCurrent = !coords && nextCoords != null;
         const list = await listVehicles();
         if (list.length === 0) {
-          let nextCoords = coords;
-          let fromCurrent = false;
-          if (!nextCoords) {
-            const { currentLatLon } = await import("@/push/locationSeed");
-            const here = await currentLatLon();
-            if (here) {
-              nextCoords = [here.longitude, here.latitude];
-              fromCurrent = true;
-            }
-          }
           setParkCoords(nextCoords);
           setParkLabel(label);
           setParkFromCurrentLocation(fromCurrent);
@@ -1301,20 +1302,9 @@ export default function MapScreen() {
           }
           return;
         }
-        let nextCoords = coords;
-        let nextLabel = label;
-        let fromCurrent = false;
-        if (!nextCoords) {
-          const { currentLatLon } = await import("@/push/locationSeed");
-          const here = await currentLatLon();
-          if (here) {
-            nextCoords = [here.longitude, here.latitude];
-            fromCurrent = true;
-          }
-        }
         setParkVehicles(list);
         setParkCoords(nextCoords);
-        setParkLabel(nextLabel);
+        setParkLabel(label);
         setParkFromCurrentLocation(fromCurrent);
         setParkPickMode(false);
         setParkOpen(true);
@@ -1328,7 +1318,16 @@ export default function MapScreen() {
         setParking(false);
       }
     },
-    [alert, confirm, requireEmailVerified, requireSignIn, router, signedIn, t],
+    [
+      alert,
+      confirm,
+      location.coords,
+      requireEmailVerified,
+      requireSignIn,
+      router,
+      signedIn,
+      t,
+    ],
   );
 
   // After “add car” from the announce soft-gate, reopen the form with the new list.
@@ -1565,10 +1564,19 @@ export default function MapScreen() {
             <OfferedSpotLayers data={spotData.offered} onPressFeature={onPressFeature} />
           ) : null}
           {mineArmed ? (
-            <MySpotLayers data={ownerExchangeMine} onPressFeature={onPressFeature} />
+            <MySpotLayers
+              data={ownerExchangeMine}
+              pulse={exchangeCoaching && isOwner}
+              onPressFeature={onPressFeature}
+            />
           ) : null}
           {exchangeData.features.length > 0 ? (
-            <ExchangeLayers data={exchangeData} role="driver" onPressFeature={onPressFeature} />
+            <ExchangeLayers
+              data={exchangeData}
+              role="driver"
+              pulse={exchangeCoaching}
+              onPressFeature={onPressFeature}
+            />
           ) : null}
           {historyGhostData.features.length > 0 ? (
             <HistoryGhostLayers data={historyGhostData} />
@@ -1734,7 +1742,7 @@ export default function MapScreen() {
         ) : null}
       </View>
 
-      {active ? (
+      {exchangeCoaching && active ? (
         <Pressable
           style={[styles.banner, styles.activeBanner, { top: insets.top + 118 }]}
           onPress={() => {

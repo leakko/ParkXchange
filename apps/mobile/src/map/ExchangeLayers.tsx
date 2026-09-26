@@ -12,13 +12,15 @@ type Props = {
   onPressFeature: (id: string) => void;
   /** Owner keeps the person look; driver gets the parking P. */
   role: "owner" | "driver";
+  /** Pulse only in the last hour before exchange_at. */
+  pulse?: boolean;
 };
 
 /**
  * Exact exchange pin for the caller's active reservation.
- * Pulsing ring marks the meeting point without a second badge icon.
+ * The pin is always shown; the pulse is near-term coaching only.
  */
-export function ExchangeLayers({ data, onPressFeature, role }: Props) {
+export function ExchangeLayers({ data, onPressFeature, role, pulse = false }: Props) {
   const sourceId = `spots-exchange-${role}`;
   const iconId = role === "owner" ? "spot-exchange-person" : "spot-exchange-p";
   const accent = role === "owner" ? "#1B9AAA" : "#1A73E8";
@@ -51,7 +53,7 @@ export function ExchangeLayers({ data, onPressFeature, role }: Props) {
           id={`${sourceId}-pulse`}
           sourceId={sourceId}
           color={accent}
-          enabled={data.features.length > 0}
+          enabled={pulse && data.features.length > 0}
         />
         <Layer
           id={`${sourceId}-halo`}

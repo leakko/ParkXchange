@@ -93,7 +93,7 @@ func (f *fakeStore) RatingsForReservation(context.Context, string) ([]domain.Rat
 	return nil, nil
 }
 
-func TestActiveOnlyIncludesReservationsWithinOneHour(t *testing.T) {
+func TestActiveReturnsAllLiveReservations(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
@@ -110,8 +110,14 @@ func TestActiveOnlyIncludesReservationsWithinOneHour(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Active: %v", err)
 	}
-	if len(found) != 2 || found[0].ID != "past" || found[1].ID != "soon" {
-		t.Fatalf("active = %#v, want past and soon", found)
+	if len(found) != 4 {
+		t.Fatalf("active = %#v, want all four live rows", found)
+	}
+	want := []string{"past", "soon", "boundary", "later"}
+	for i, id := range want {
+		if found[i].ID != id {
+			t.Fatalf("active[%d] = %s, want %s", i, found[i].ID, id)
+		}
 	}
 }
 

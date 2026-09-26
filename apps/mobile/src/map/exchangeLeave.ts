@@ -7,6 +7,12 @@ export const DRIVER_FAIR_CANCEL_MS = 30 * 60 * 1000;
 /** Matches domain.OwnerSafetyNet (60 minutes). */
 export const OWNER_SAFETY_NET_MS = 60 * 60 * 1000;
 
+/**
+ * Map coaching (exchange banner + pulse ring) starts this far before exchange_at.
+ * The reserved pin itself stays visible for both parties at any horizon.
+ */
+export const EXCHANGE_COACHING_MS = 60 * 60 * 1000;
+
 export type HandshakeFields = {
   exchange_at: string;
   driver_ready_at?: string | null;
@@ -16,6 +22,18 @@ export type HandshakeFields = {
   peer_distance_m?: number | null;
   peer_location_measured_at?: string | null;
 };
+
+/** True when the map should show the near-term exchange banner / pulse. */
+export function isExchangeCoachingActive(
+  exchangeAt: string,
+  nowMs: number = Date.now(),
+): boolean {
+  const exchangeMs = Date.parse(exchangeAt);
+  if (!Number.isFinite(exchangeMs)) {
+    return false;
+  }
+  return exchangeMs < nowMs + EXCHANGE_COACHING_MS;
+}
 
 /** Matrix temporal window (spec 2029-09-20). */
 export type ExchangeWindow = "A" | "B" | "C" | "D";

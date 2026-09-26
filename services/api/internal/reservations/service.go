@@ -237,6 +237,8 @@ func (s *Service) peerVehicleID(ctx context.Context, res domain.Reservation, vie
 }
 
 // Active lists the caller's live reservations (as driver or owner).
+// Includes every live exchange so the driver map pin / locate FAB appear
+// immediately after accept, not only inside the last hour before exchange_at.
 func (s *Service) Active(ctx context.Context, viewer domain.Claims) ([]domain.Reservation, error) {
 	if !viewer.Authenticated() {
 		return nil, domain.Unauthenticated("unauthorized", "an access token is required")
@@ -246,15 +248,10 @@ func (s *Service) Active(ctx context.Context, viewer domain.Claims) ([]domain.Re
 	if err != nil {
 		return nil, domain.Internal(err)
 	}
-
-	cutoff := s.now().Add(time.Hour)
-	active := make([]domain.Reservation, 0, len(found))
-	for _, reservation := range found {
-		if reservation.ExchangeAt.Before(cutoff) {
-			active = append(active, s.projectForViewer(reservation, viewer.UserID))
-		}
+	for i := range found {
+		found[i] = s.projectForViewer(found[i], viewer.UserID)
 	}
-	return active, nil
+	return found, nil
 }
 
 // List returns the caller's recent reservations (as driver or owner).
