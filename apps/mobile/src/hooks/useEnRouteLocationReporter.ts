@@ -2,6 +2,7 @@ import * as Location from "expo-location";
 import { useEffect, useRef } from "react";
 
 import { updateReservationLocation } from "@/api/client";
+import { requestActiveReservationRefreshDebounced } from "@/push/activeReservationSync";
 
 const THROTTLE_MS = 10_000;
 
@@ -37,9 +38,14 @@ export function useEnRouteLocationReporter({ reservationId, enabled }: Opts): vo
         return;
       }
       lastSentAt.current = now;
-      void updateReservationLocation(id, { latitude: lat, longitude: lon }).catch(() => {
-        // Best-effort; banner refreshes on next successful post / poll.
-      });
+      void updateReservationLocation(id, { latitude: lat, longitude: lon })
+        .then(() => {
+          // Peer distance lives on Active; nudge the poll so the banner moves.
+          requestActiveReservationRefreshDebounced(200);
+        })
+        .catch(() => {
+          // Best-effort; next watch tick / poll may succeed.
+        });
     };
 
     void (async () => {

@@ -55,6 +55,8 @@ function sameActiveReservation(
     a.driver_en_route_at === b.driver_en_route_at &&
     a.owner_ready_at === b.owner_ready_at &&
     a.driver_ready_at === b.driver_ready_at &&
+    a.peer_distance_m === b.peer_distance_m &&
+    a.peer_location_measured_at === b.peer_location_measured_at &&
     a.owner_vehicle?.plate === b.owner_vehicle?.plate &&
     a.owner_vehicle?.make_model === b.owner_vehicle?.make_model &&
     a.owner_vehicle?.has_photo === b.owner_vehicle?.has_photo &&
