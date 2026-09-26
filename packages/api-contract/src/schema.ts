@@ -897,9 +897,12 @@ export interface components {
              * @description Parked-car reminder; not shown on the public map until published
              * @default false
              */
-            unpublished?: boolean;
+            unpublished: boolean;
         };
-        /** @description Convert an unpublished parked reminder into a public listing. */
+        /**
+         * @description Convert an unpublished parked reminder into a public listing.
+         *     Coordinates stay on the spot; body carries announce fields.
+         */
         PublishSpotRequest: {
             size_class?: string;
             price_cents: number;
@@ -910,9 +913,9 @@ export interface components {
             /** Format: date-time */
             preferred_departure_at?: string | null;
             /** @default true */
-            auto_cancel_no_show?: boolean;
+            auto_cancel_no_show: boolean;
             /** @default false */
-            leaving_now?: boolean;
+            leaving_now: boolean;
         };
         /**
          * @description Partial edit of an available listing. Location, listing lifetime, and

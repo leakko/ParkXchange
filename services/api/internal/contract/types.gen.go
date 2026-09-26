@@ -320,6 +320,9 @@ type CreateSpotRequest struct {
 	PriceCents           int        `json:"price_cents"`
 	SizeClass            string     `json:"size_class"`
 
+	// Unpublished Parked-car reminder; not shown on the public map until published
+	Unpublished *bool `json:"unpublished,omitempty"`
+
 	// VehicleId One of the caller's vehicles; required so claimers know which car to meet
 	VehicleId openapi_types.UUID `json:"vehicle_id"`
 }
@@ -420,6 +423,19 @@ type PublicUserProfile struct {
 	Rating      *float64           `json:"rating,omitempty"`
 	RatingCount int                `json:"rating_count"`
 	Reviews     []PublicReview     `json:"reviews"`
+}
+
+// PublishSpotRequest Convert an unpublished parked reminder into a public listing.
+// Coordinates stay on the spot; body carries announce fields.
+type PublishSpotRequest struct {
+	AddressHint          *string            `json:"address_hint,omitempty"`
+	AutoCancelNoShow     *bool              `json:"auto_cancel_no_show,omitempty"`
+	LeavingNow           *bool              `json:"leaving_now,omitempty"`
+	Notes                *string            `json:"notes,omitempty"`
+	PreferredDepartureAt *time.Time         `json:"preferred_departure_at,omitempty"`
+	PriceCents           int                `json:"price_cents"`
+	SizeClass            *string            `json:"size_class,omitempty"`
+	VehicleId            openapi_types.UUID `json:"vehicle_id"`
 }
 
 // RateReservationRequest defines model for RateReservationRequest.
@@ -868,6 +884,9 @@ type UpdateSpotJSONRequestBody = UpdateSpotRequest
 
 // CreateOfferJSONRequestBody defines body for CreateOffer for application/json ContentType.
 type CreateOfferJSONRequestBody = CreateOfferRequest
+
+// PublishSpotJSONRequestBody defines body for PublishSpot for application/json ContentType.
+type PublishSpotJSONRequestBody = PublishSpotRequest
 
 // CreateVehicleJSONRequestBody defines body for CreateVehicle for application/json ContentType.
 type CreateVehicleJSONRequestBody = CreateVehicleRequest

@@ -543,6 +543,7 @@ export async function announceHere(opts: {
     preferred_departure_at: opts.preferredDepartureAt ?? null,
     auto_cancel_no_show: opts.autoCancelNoShow,
     leaving_now: false,
+    unpublished: false,
     vehicle_id: opts.vehicleId,
     notes: opts.notes,
   });
@@ -569,6 +570,7 @@ export async function announceAt(
     preferred_departure_at: opts.leavingNow ? null : (opts.preferredDepartureAt ?? null),
     auto_cancel_no_show: opts.autoCancelNoShow,
     leaving_now: opts.leavingNow ?? false,
+    unpublished: false,
     vehicle_id: opts.vehicleId,
     notes: opts.notes,
     ...(opts.addressHint?.trim() ? { address_hint: opts.addressHint.trim() } : {}),
