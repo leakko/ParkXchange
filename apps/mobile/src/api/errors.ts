@@ -23,6 +23,7 @@ const codeToKey: Record<string, TranslationKey> = {
   vehicle_in_live_reservation: "account.vehicles.deleteFailed.liveReservation",
   internal_error: "common.error.internal",
   active_spot_limit: "activeSpotLimit.message",
+  unpublished_exists: "unpublishedExists.message",
   offer_time_conflict: "offerTimeConflict.message",
   listing_conflict: "listingConflict.message",
 };
@@ -35,6 +36,9 @@ export function apiErrorTitle(
 ): string {
   if (err instanceof ApiError && err.code === "active_spot_limit") {
     return t("activeSpotLimit.title");
+  }
+  if (err instanceof ApiError && err.code === "unpublished_exists") {
+    return t("unpublishedExists.title");
   }
   if (err instanceof ApiError && err.code === "offer_time_conflict") {
     return t("offerTimeConflict.title");

@@ -198,13 +198,22 @@ func (f *fakeStore) CancelSpot(_ context.Context, spotID, ownerID string) ([]str
 	if !found || spot.OwnerID != ownerID {
 		return nil, domain.ErrConflict
 	}
-	if spot.Status != domain.SpotAvailable && spot.Status != domain.SpotReserved && spot.Status != domain.SpotUnpublished {
+	if spot.Status != domain.SpotAvailable && spot.Status != domain.SpotReserved {
 		return nil, domain.ErrConflict
 	}
 
 	spot.Status = domain.SpotCancelled
 	f.spots[spotID] = spot
 	return f.pendingDrivers, nil
+}
+
+func (f *fakeStore) DeleteUnpublishedSpot(_ context.Context, spotID, ownerID string) error {
+	spot, found := f.spots[spotID]
+	if !found || spot.OwnerID != ownerID || spot.Status != domain.SpotUnpublished {
+		return domain.ErrConflict
+	}
+	delete(f.spots, spotID)
+	return nil
 }
 
 func (f *fakeStore) VehicleOwnedBy(_ context.Context, vehicleID, ownerID string) (bool, error) {
@@ -560,6 +569,30 @@ func TestWithdrawSucceedsForTheOwner(t *testing.T) {
 
 	if store.spots["spot-1"].Status != domain.SpotCancelled {
 		t.Errorf("status = %q, want cancelled", store.spots["spot-1"].Status)
+	}
+}
+
+func TestWithdrawDeletesUnpublishedParkedReminder(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	store.spots["spot-1"] = domain.Spot{
+		ID: "spot-1", OwnerID: "owner-1", Status: domain.SpotUnpublished,
+	}
+
+	service := spots.New(store, []byte("test-location-fuzz-secret-32bytes!!"))
+
+	if err := service.Withdraw(
+		context.Background(), "spot-1", domain.Claims{UserID: "owner-1"},
+	); err != nil {
+		t.Fatalf("Withdraw: %v", err)
+	}
+
+	if _, found := store.spots["spot-1"]; found {
+		t.Fatal("unpublished spot still present after withdraw; want hard delete")
+	}
+	if store.cancelCalls != 0 {
+		t.Fatalf("CancelSpot calls = %d, want 0 for unpublished", store.cancelCalls)
 	}
 }
 

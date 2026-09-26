@@ -1,6 +1,7 @@
 import { fetchMySpots, listOffers, withdrawSpot } from "@/api/client";
 import { notifySpotWithdrawn } from "@/map/spotWithdrawHandoff";
 import { fetchActiveReservations, fetchReservations, type ReservationResponse } from "@/api/client";
+import { StreetAddressMeta } from "@/account/StreetAddressMeta";
 import { accountStyles } from "@/account/theme";
 import { sortSpotsNewestFirst } from "@/account/listOrdering";
 import { useSession } from "@/hooks/useSession";
@@ -216,15 +217,11 @@ export default function MySpotsScreen() {
                   ? `${item.properties.vehicle.plate} · ${item.properties.vehicle.make_model}`
                   : sizeClassLabel(t, item.properties.size_class)}
               </Text>
-              {item.properties.address_hint ? (
-                <Text style={accountStyles.rowMetaTight}>{item.properties.address_hint}</Text>
-              ) : null}
-              <Text style={accountStyles.rowMetaTight}>
-                {t("account.spots.coordinates", {
-                  lat: item.geometry.coordinates[1]?.toFixed(5) ?? "—",
-                  lon: item.geometry.coordinates[0]?.toFixed(5) ?? "—",
-                })}
-              </Text>
+              <StreetAddressMeta
+                lon={item.geometry.coordinates[0]}
+                lat={item.geometry.coordinates[1]}
+                hint={item.properties.address_hint}
+              />
               {canEdit ? (
                 <Text style={accountStyles.rowMetaTight}>
                   {t("account.spots.listedUntil", {

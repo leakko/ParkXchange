@@ -27,7 +27,6 @@ export function HistoryGhostLayers({ data }: Props) {
           id="spots-history-ghost-halo"
           type="circle"
           source="spots-history-ghost"
-          layerIndex={916}
           paint={{
             "circle-color": "#E76F51",
             "circle-radius": 12,
@@ -38,7 +37,6 @@ export function HistoryGhostLayers({ data }: Props) {
           id="spots-history-ghost-points"
           type="circle"
           source="spots-history-ghost"
-          layerIndex={917}
           paint={{
             "circle-color": "#E76F51",
             "circle-radius": 7,
@@ -51,7 +49,6 @@ export function HistoryGhostLayers({ data }: Props) {
           id="spots-history-ghost-icon"
           type="symbol"
           source="spots-history-ghost"
-          layerIndex={918}
           layout={{
             "icon-image": "spot-history-ghost",
             "icon-size": 0.22,

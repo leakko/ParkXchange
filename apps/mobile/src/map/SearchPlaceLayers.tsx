@@ -56,7 +56,6 @@ export function SearchPlaceLayers({ hits, selectedId, onPressHit }: Props) {
         id="search-places-halo"
         type="circle"
         source="search-places"
-        layerIndex={920}
         paint={{
           "circle-color": "#00BBF9",
           "circle-radius": 18,
@@ -68,7 +67,6 @@ export function SearchPlaceLayers({ hits, selectedId, onPressHit }: Props) {
         id="search-places-core"
         type="circle"
         source="search-places"
-        layerIndex={921}
         paint={{
           "circle-color": [
             "case",

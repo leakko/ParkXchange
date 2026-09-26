@@ -255,7 +255,7 @@ func (s *Service) ParkCar(ctx context.Context, in domain.NewSpotInput) (domain.S
 	if err != nil {
 		if errors.Is(err, domain.ErrDuplicate) {
 			return domain.Spot{}, domain.Conflict("unpublished_exists",
-				"you already have a parked car saved — withdraw it first")
+				"You already have a parked car saved — withdraw it first")
 		}
 		return domain.Spot{}, domain.Internal(err)
 	}
@@ -534,12 +534,16 @@ func (s *Service) Mine(ctx context.Context, viewer domain.Claims) ([]VisibleSpot
 	return s.visible(found, viewer), nil
 }
 
-// Withdraw cancels an offer the caller owns.
+// Withdraw cancels a published offer the caller owns, or hard-deletes a
+// never-published parked reminder.
 //
-// The spot is cancelled rather than deleted. Rows here are referenced by
-// reservations and by ledger entries, and a hard delete would either cascade
-// away somebody's payment history or fail on a foreign key. "Cancelled" is
-// also the honest description of what happened.
+// Published rows are cancelled rather than deleted: they are referenced by
+// reservations and ledger entries, and a hard delete would either cascade away
+// somebody's payment history or fail on a foreign key. "Cancelled" is also the
+// honest description of what happened for a listing others may have seen.
+//
+// Unpublished reminders never appeared on the public map and have no offers or
+// reservations, so deleting them is safe and keeps “Mis plazas” clean.
 func (s *Service) Withdraw(ctx context.Context, spotID string, viewer domain.Claims) error {
 	if !viewer.Authenticated() {
 		return domain.Unauthenticated("unauthorized", "an access token is required")
@@ -561,9 +565,18 @@ func (s *Service) Withdraw(ctx context.Context, spotID string, viewer domain.Cla
 		return domain.NotFound("spot_not_found", "that spot does not exist")
 	}
 
-	if spot.Status != domain.SpotAvailable &&
-		spot.Status != domain.SpotReserved &&
-		spot.Status != domain.SpotUnpublished {
+	if spot.Status == domain.SpotUnpublished {
+		if err := s.store.DeleteUnpublishedSpot(ctx, spotID, viewer.UserID); err != nil {
+			if errors.Is(err, domain.ErrConflict) {
+				return domain.Conflict("spot_not_available",
+					"that spot can no longer be withdrawn")
+			}
+			return domain.Internal(err)
+		}
+		return nil
+	}
+
+	if spot.Status != domain.SpotAvailable && spot.Status != domain.SpotReserved {
 		return domain.Conflict("spot_not_available",
 			"that spot can no longer be withdrawn")
 	}

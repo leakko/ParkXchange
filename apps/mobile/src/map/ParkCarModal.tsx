@@ -11,6 +11,8 @@ import {
 import type { VehicleResponse } from "@/api/client";
 import { AuthScroll } from "@/auth/AuthScroll";
 import { useTranslation } from "@/i18n";
+import { resolveAddressLabel } from "@/map/resolveAddressLabel";
+import { useConfirm } from "@/ui/ConfirmModal";
 
 export type ParkCarValues = {
   vehicleId: string;
@@ -26,6 +28,8 @@ type Props = {
   /** Pre-filled coords from GPS / long-press / pick-on-map. */
   initialCoordinates: [number, number] | null;
   initialAddressLabel: string | null;
+  /** True when the seed came from the device GPS (FAB), not a map pick. */
+  initialFromCurrentLocation?: boolean;
   onCancel: () => void;
   onPickOnMap: () => void;
   onAddVehicle: () => void;
@@ -42,32 +46,111 @@ export function ParkCarModal({
   vehicles,
   initialCoordinates,
   initialAddressLabel,
+  initialFromCurrentLocation = false,
   onCancel,
   onPickOnMap,
   onAddVehicle,
   onSubmit,
 }: Props) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const { alert } = useConfirm();
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [vehicleOpen, setVehicleOpen] = useState(false);
   const [coords, setCoords] = useState<[number, number] | null>(null);
+  /** Street label for storage / non-GPS display. */
   const [addressLabel, setAddressLabel] = useState<string | null>(null);
+  const [resolvingLabel, setResolvingLabel] = useState(false);
+  const [fromCurrentLocation, setFromCurrentLocation] = useState(false);
+  const [locating, setLocating] = useState(false);
+
+  const applyCoords = async (
+    next: [number, number],
+    isCurrent: boolean,
+    labelHint: string | null,
+  ) => {
+    setCoords(next);
+    setFromCurrentLocation(isCurrent);
+    setResolvingLabel(true);
+    try {
+      const resolved = await resolveAddressLabel(next[0], next[1], labelHint, locale);
+      setAddressLabel(resolved);
+    } catch {
+      setAddressLabel(labelHint);
+    } finally {
+      setResolvingLabel(false);
+    }
+  };
 
   useEffect(() => {
     if (!visible) {
       return;
     }
-    setCoords(initialCoordinates);
-    setAddressLabel(initialAddressLabel);
     setVehicleId((prev) => {
       if (prev && vehicles.some((v) => v.id === prev)) {
         return prev;
       }
       return vehicles[0]?.id ?? null;
     });
-  }, [visible, initialCoordinates, initialAddressLabel, vehicles]);
+    let cancelled = false;
+    const seed = async () => {
+      if (!initialCoordinates) {
+        setCoords(null);
+        setAddressLabel(initialAddressLabel);
+        setFromCurrentLocation(false);
+        return;
+      }
+      if (cancelled) {
+        return;
+      }
+      await applyCoords(
+        initialCoordinates,
+        initialFromCurrentLocation,
+        initialAddressLabel,
+      );
+    };
+    void seed();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed when modal opens / map pick returns
+  }, [visible, initialCoordinates, initialAddressLabel, initialFromCurrentLocation, vehicles, locale]);
+
+  const useMyLocation = async () => {
+    if (fromCurrentLocation || locating || busy) {
+      return;
+    }
+    setLocating(true);
+    try {
+      const { currentLatLon } = await import("@/push/locationSeed");
+      const here = await currentLatLon();
+      if (!here) {
+        await alert({
+          title: t("map.alert.parkFailed.title"),
+          message: t("exchange.locationPermissionRequired"),
+          confirmLabel: t("common.ok"),
+        });
+        return;
+      }
+      await applyCoords([here.longitude, here.latitude], true, null);
+    } finally {
+      setLocating(false);
+    }
+  };
 
   const selected = vehicles.find((v) => v.id === vehicleId) ?? null;
+
+  const locationDisplay = (() => {
+    if (!coords) {
+      return t("parkCar.locationMissing");
+    }
+    if (fromCurrentLocation) {
+      return t("parkCar.currentLocation");
+    }
+    if (resolvingLabel && !addressLabel?.trim()) {
+      return t("parkCar.locationResolving");
+    }
+    return addressLabel?.trim() || t("parkCar.locationMissing");
+  })();
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onCancel}>
@@ -79,15 +162,31 @@ export function ParkCarModal({
           </View>
 
           <Text style={styles.label}>{t("parkCar.location")}</Text>
-          <Text style={styles.locationValue}>
-            {addressLabel?.trim() ||
-              (coords
-                ? `${coords[1].toFixed(5)}, ${coords[0].toFixed(5)}`
-                : t("parkCar.locationMissing"))}
-          </Text>
-          <Pressable style={styles.secondaryBtn} onPress={onPickOnMap} disabled={busy}>
-            <Text style={styles.secondaryBtnText}>{t("parkCar.pickOnMap")}</Text>
-          </Pressable>
+          <Text style={styles.locationValue}>{locationDisplay}</Text>
+          <View style={styles.rowBtns}>
+            <Pressable
+              style={[styles.chipBtn, { flex: 1 }]}
+              onPress={onPickOnMap}
+              disabled={busy || locating}
+            >
+              <Text style={styles.chipBtnText}>{t("parkCar.pickOnMap")}</Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.chipBtn,
+                { flex: 1 },
+                (fromCurrentLocation || locating || busy) && styles.disabled,
+              ]}
+              onPress={() => void useMyLocation()}
+              disabled={fromCurrentLocation || locating || busy}
+            >
+              {locating ? (
+                <ActivityIndicator color="#F4F7FA" />
+              ) : (
+                <Text style={styles.chipBtnText}>{t("parkCar.useMyLocation")}</Text>
+              )}
+            </Pressable>
+          </View>
 
           <Text style={styles.label}>{t("announce.vehicle")}</Text>
           {vehicles.length === 0 ? (
@@ -102,7 +201,7 @@ export function ParkCarModal({
                 disabled={busy}
               >
                 <Text style={styles.selectText}>
-                    {selected
+                  {selected
                     ? `${selected.plate} · ${selected.make_model}`
                     : t("announce.vehicle")}
                 </Text>
@@ -172,6 +271,17 @@ const styles = StyleSheet.create({
   introText: { color: "#D6E4FF", fontSize: 14, lineHeight: 20 },
   label: { color: "#9BB0C5", fontSize: 13, marginTop: 8 },
   locationValue: { color: "#fff", fontSize: 15 },
+  rowBtns: { flexDirection: "row", gap: 8, marginTop: 4 },
+  chipBtn: {
+    backgroundColor: "#16324F",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
+  },
+  chipBtnText: { color: "#F4F7FA", fontWeight: "600", fontSize: 13, textAlign: "center" },
   select: {
     backgroundColor: "#132A42",
     borderRadius: 10,
@@ -192,12 +302,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   primaryBtnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
-  secondaryBtn: {
-    alignSelf: "flex-start",
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-  secondaryBtnText: { color: "#7EB6FF", fontSize: 14, fontWeight: "600" },
   cancel: { alignItems: "center", paddingVertical: 12 },
   cancelText: { color: "#9BB0C5", fontSize: 15 },
   disabled: { opacity: 0.45 },

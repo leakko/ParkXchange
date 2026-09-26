@@ -31,6 +31,7 @@ import { ExchangeStatusPanel } from "@/map/ExchangeStatusPanel";
 import { OccupyingVehiclePanel } from "@/map/OccupyingVehiclePanel";
 import { OtherDetailsPanel } from "@/map/OtherDetailsPanel";
 import { PeerVehiclePanel } from "@/map/PeerVehiclePanel";
+import { useStreetAddress } from "@/map/useStreetAddress";
 import { DateTimeField } from "@/ui/DateTimeField";
 import { useConfirm } from "@/ui/ConfirmModal";
 import { leavingNowExchangeFromChip } from "@/map/leavingNowOffer";
@@ -110,12 +111,19 @@ export function SpotSheetBody({
   const coords = spot?.geometry.coordinates;
   const exact = !!spot?.properties.exact_location;
   const isActiveForSpot = !!active && !!spot && String(active.spot_id) === String(spot.id);
+  const isUnpublishedMine =
+    !!spot?.properties.is_mine && spot.properties.status === "unpublished" && !isActiveForSpot;
   const vehicle = exact ? spot?.properties.vehicle : undefined;
   const ownerPhone = exact ? spot?.properties.owner_phone : undefined;
   const vehiclePhotoUrl =
     vehicle?.has_photo && spot?.id ? spotVehiclePhotoUrl(String(spot.id)) : null;
   const showInlineSpotVehicle =
     !!vehicle && !!(vehicle.plate || vehicle.make_model) && !(isActiveForSpot && active);
+  const streetAddress = useStreetAddress(
+    coords?.[0] != null ? Number(coords[0]) : null,
+    coords?.[1] != null ? Number(coords[1]) : null,
+    spot?.properties.address_hint,
+  );
 
   const deadlineLabel =
     isActiveForSpot && active
@@ -331,70 +339,72 @@ export function SpotSheetBody({
     return <View />;
   }
 
-  // Peek-first: time + points + announcer rating + primary actions.
-  // Header already shows owner name — don't repeat it here.
-  const headlineTime =
-    isActiveForSpot && active ? (
-      <Text style={styles.freeAt}>
-        {t("spotSheet.exchange.time", {
-          datetime: formatDateTime(active.exchange_at),
-        })}
-      </Text>
-    ) : pendingOffer && !isActiveForSpot ? (
-      <Text style={styles.freeAt}>
-        {t("spotSheet.offer.pending.meta", {
-          points: formatPoints(pendingOffer.amount_cents),
-          datetime: spot.properties.leaving_now
-            ? t("spotSheet.leavingNowDeparture")
-            : formatDateTime(pendingOffer.exchange_at),
-        })}
-      </Text>
-    ) : (
-      <Text style={styles.freeAt}>
-        {spot.properties.leaving_now
+  // Peek-first: time + points + primary actions.
+  // Header already shows “Tu anuncio” / owner name — don't repeat it here.
+  const headlineTime = isUnpublishedMine ? (
+    <Text style={styles.freeAt}>{t("spotSheet.unpublished.headline")}</Text>
+  ) : isActiveForSpot && active ? (
+    <Text style={styles.freeAt}>
+      {t("spotSheet.exchange.time", {
+        datetime: formatDateTime(active.exchange_at),
+      })}
+    </Text>
+  ) : pendingOffer && !isActiveForSpot ? (
+    <Text style={styles.freeAt}>
+      {t("spotSheet.offer.pending.meta", {
+        points: formatPoints(pendingOffer.amount_cents),
+        datetime: spot.properties.leaving_now
           ? t("spotSheet.leavingNowDeparture")
-          : spot.properties.preferred_departure_at
-            ? t("spotSheet.freeAt", {
-                datetime: formatDateTime(spot.properties.preferred_departure_at),
-              })
-            : t("spotSheet.flexibleDeparture")}
-      </Text>
-    );
+          : formatDateTime(pendingOffer.exchange_at),
+      })}
+    </Text>
+  ) : (
+    <Text style={styles.freeAt}>
+      {spot.properties.leaving_now
+        ? t("spotSheet.leavingNowDeparture")
+        : spot.properties.preferred_departure_at
+          ? t("spotSheet.freeAt", {
+              datetime: formatDateTime(spot.properties.preferred_departure_at),
+            })
+          : t("spotSheet.flexibleDeparture")}
+    </Text>
+  );
 
-  const pointsLine =
-    isActiveForSpot && active ? (
-      <Text style={styles.pointsHero}>
-        {formatPoints(active.price_cents)} pts
-        <Text style={styles.meta}>
-          {" · "}
-          {carSizeLabel(t, spot.properties.size_class)}
-        </Text>
+  const pointsLine = isUnpublishedMine ? (
+    <Text style={styles.pointsHero}>
+      <Text style={styles.meta}>
+        {carSizeLabel(t, spot.properties.size_class)}
+        {" · "}
+        {spotStatusLabel(t, spot.properties.status)}
       </Text>
-    ) : pendingOffer && !isActiveForSpot ? null : (
-      <Text style={styles.pointsHero}>
-        {points} pts
-        <Text style={styles.meta}>
-          {" · "}
-          {carSizeLabel(t, spot.properties.size_class)}
-          {" · "}
-          {spotStatusLabel(t, spot.properties.status)}
-        </Text>
+    </Text>
+  ) : isActiveForSpot && active ? (
+    <Text style={styles.pointsHero}>
+      {formatPoints(active.price_cents)} pts
+      <Text style={styles.meta}>
+        {" · "}
+        {carSizeLabel(t, spot.properties.size_class)}
       </Text>
-    );
+    </Text>
+  ) : pendingOffer && !isActiveForSpot ? null : (
+    <Text style={styles.pointsHero}>
+      {points} pts
+      <Text style={styles.meta}>
+        {" · "}
+        {carSizeLabel(t, spot.properties.size_class)}
+        {" · "}
+        {spotStatusLabel(t, spot.properties.status)}
+      </Text>
+    </Text>
+  );
 
   return (
     <>
-      {spot.properties.is_mine ? (
-        <Text style={styles.mineBadge}>{t("spotSheet.yourListing")}</Text>
-      ) : null}
-
       {headlineTime}
       {pointsLine}
 
       <View style={styles.actions}>
-        {spot.properties.is_mine &&
-        spot.properties.status === "unpublished" &&
-        !isActiveForSpot ? (
+        {isUnpublishedMine ? (
           <>
             <View style={styles.publishPromo}>
               <Text style={styles.publishPromoText}>{t("spotSheet.unpublished.promo")}</Text>
@@ -656,7 +666,7 @@ export function SpotSheetBody({
       ) : null}
 
       <OtherDetailsPanel
-        address={spot.properties.address_hint}
+        address={streetAddress}
         ownerContact={ownerPhone}
         comments={spot.properties.notes}
       />
@@ -690,7 +700,6 @@ export function SpotSheetBody({
 }
 
 const styles = StyleSheet.create({
-  mineBadge: { color: "#1B9AAA", fontSize: 13, fontWeight: "600" },
   publishPromo: {
     backgroundColor: "#1A73E822",
     borderColor: "#1A73E8",
@@ -698,7 +707,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
   },
-  publishPromoText: { color: "#1A3A5C", fontSize: 14, lineHeight: 20, fontWeight: "600" },
+  publishPromoText: { color: "#E8F1FF", fontSize: 14, lineHeight: 20, fontWeight: "600" },
   meta: { color: "#9DB4C0", fontSize: 14, fontWeight: "400" },
   pointsHero: {
     color: "#F4F7FA",

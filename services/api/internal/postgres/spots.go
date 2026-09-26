@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -631,8 +632,7 @@ func (db *DB) CancelSpot(ctx context.Context, spotID, ownerID string) ([]string,
 	}
 
 	if status != string(domain.SpotAvailable) &&
-		status != string(domain.SpotReserved) &&
-		status != string(domain.SpotUnpublished) {
+		status != string(domain.SpotReserved) {
 		return nil, domain.ErrConflict
 	}
 
@@ -732,4 +732,44 @@ func (db *DB) CancelSpot(ctx context.Context, spotID, ownerID string) ([]string,
 		return nil, err
 	}
 	return pendingDrivers, nil
+}
+
+// DeleteUnpublishedSpot removes a parked-car reminder that was never published.
+func (db *DB) DeleteUnpublishedSpot(ctx context.Context, spotID, ownerID string) error {
+	tx, err := db.begin(ctx)
+	if err != nil {
+		return translate(err, "begin delete unpublished")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var (
+		lon   float64
+		lat   float64
+		price int
+	)
+	err = tx.QueryRow(ctx, `
+		DELETE FROM spots
+		 WHERE id = $1 AND owner_id = $2 AND status = 'unpublished'
+		RETURNING ST_X(geom), ST_Y(geom), price_cents
+	`, spotID, ownerID).Scan(&lon, &lat, &price)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrConflict
+		}
+		return translate(err, "delete unpublished spot")
+	}
+
+	if err := notifySpot(ctx, tx, domain.SpotEvent{
+		Type:       domain.EventSpotRemoved,
+		SpotID:     spotID,
+		OwnerID:    ownerID,
+		Lon:        lon,
+		Lat:        lat,
+		Status:     domain.SpotCancelled,
+		PriceCents: price,
+	}); err != nil {
+		return translate(err, "notify unpublished spot removed")
+	}
+
+	return translate(tx.Commit(ctx), "commit delete unpublished")
 }

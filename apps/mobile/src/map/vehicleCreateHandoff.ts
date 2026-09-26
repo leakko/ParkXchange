@@ -1,8 +1,8 @@
 /**
- * When the user adds a vehicle from the offer / announce soft-gate, notify
+ * When the user adds a vehicle from offer / announce / park soft-gates, notify
  * listeners so those screens can refresh without depending on navigation focus.
  */
-type Kind = "offer" | "announce";
+type Kind = "offer" | "announce" | "park";
 
 type Listener = (kind: Kind) => void;
 
@@ -10,6 +10,7 @@ const listeners = new Set<Listener>();
 
 let resumeOffer = false;
 let resumeAnnounce = false;
+let resumePark = false;
 
 export function subscribeVehicleCreated(listener: Listener): () => void {
   listeners.add(listener);
@@ -21,8 +22,10 @@ export function subscribeVehicleCreated(listener: Listener): () => void {
 export function notifyVehicleCreated(kind: Kind): void {
   if (kind === "offer") {
     resumeOffer = true;
-  } else {
+  } else if (kind === "announce") {
     resumeAnnounce = true;
+  } else {
+    resumePark = true;
   }
   for (const listener of listeners) {
     listener(kind);
@@ -38,5 +41,11 @@ export function consumeResumeOfferAfterVehicle(): boolean {
 export function consumeResumeAnnounceAfterVehicle(): boolean {
   const next = resumeAnnounce;
   resumeAnnounce = false;
+  return next;
+}
+
+export function consumeResumeParkAfterVehicle(): boolean {
+  const next = resumePark;
+  resumePark = false;
   return next;
 }

@@ -5,6 +5,10 @@ import {
 } from "@maplibre/maplibre-react-native";
 import type { FilterSpecification } from "@maplibre/maplibre-gl-style-spec";
 import type { FeatureCollection } from "geojson";
+import { useMemo } from "react";
+
+import { MapPulseRingLayer } from "@/map/MapPulseRingLayer";
+import { nearestSpotIdAtTouch } from "@/map/nearestSpotAtTouch";
 
 type Props = {
   data: FeatureCollection;
@@ -29,17 +33,22 @@ const agreedFilter: FilterSpecification = [
   true,
 ];
 
+function hasAgreedFeature(data: FeatureCollection): boolean {
+  return data.features.some((f) => Boolean(f.properties?.has_agreement));
+}
+
 /**
- * Own listings: person icon (orange tint via leaving-now circle underlay).
- * Handshake badge when the viewer has an active agreement on the spot.
+ * Own listings: solid teal/orange disc + person icon (fully opaque).
+ * Pulsing ring when the viewer has an active agreement on the spot.
  */
 export function MySpotLayers({ data, onPressFeature }: Props) {
+  const pulseEnabled = useMemo(() => hasAgreedFeature(data), [data]);
+
   return (
     <>
       <Images
         images={{
           "spot-mine-person": require("../../assets/images/spot-mine-person.png"),
-          "spot-handshake-badge": require("../../assets/images/spot-handshake-badge.png"),
         }}
       />
       <GeoJSONSource
@@ -47,27 +56,34 @@ export function MySpotLayers({ data, onPressFeature }: Props) {
         data={data}
         onPress={(event) => {
           event.stopPropagation();
-          const feature = event.nativeEvent.features[0];
-          if (!feature) {
-            return;
-          }
-          const properties = feature.properties as Record<string, unknown> | null;
-          const id = String(properties?.id ?? feature.id ?? "");
+          const native = event.nativeEvent as {
+            lngLat?: [number, number];
+            features: Parameters<typeof nearestSpotIdAtTouch>[1];
+          };
+          const id = nearestSpotIdAtTouch(native.lngLat ?? null, native.features, data);
           if (id) {
             onPressFeature(id);
           }
         }}
       >
+        <MapPulseRingLayer
+          id="spots-mine-pulse"
+          sourceId="spots-mine"
+          color="#1B9AAA"
+          enabled={pulseEnabled}
+          filter={agreedFilter}
+        />
         <Layer
           id="spots-mine-underlay"
           type="circle"
           source="spots-mine"
           filter={regularMineFilter}
-          layerIndex={908}
           paint={{
             "circle-color": "#1B9AAA",
-            "circle-radius": 14,
-            "circle-opacity": 0.35,
+            "circle-radius": 11,
+            "circle-opacity": 1,
+            "circle-stroke-width": 2.5,
+            "circle-stroke-color": "#ffffff",
           }}
         />
         <Layer
@@ -75,35 +91,21 @@ export function MySpotLayers({ data, onPressFeature }: Props) {
           type="circle"
           source="spots-mine"
           filter={leavingNowFilter}
-          layerIndex={909}
           paint={{
             "circle-color": "#E85D04",
-            "circle-radius": 14,
-            "circle-opacity": 0.4,
+            "circle-radius": 11,
+            "circle-opacity": 1,
+            "circle-stroke-width": 2.5,
+            "circle-stroke-color": "#ffffff",
           }}
         />
         <Layer
           id="spots-mine-icon"
           type="symbol"
           source="spots-mine"
-          layerIndex={910}
           layout={{
             "icon-image": "spot-mine-person",
-            "icon-size": 0.4,
-            "icon-allow-overlap": true,
-            "icon-ignore-placement": true,
-          }}
-        />
-        <Layer
-          id="spots-mine-handshake"
-          type="symbol"
-          source="spots-mine"
-          filter={agreedFilter}
-          layerIndex={911}
-          layout={{
-            "icon-image": "spot-handshake-badge",
-            "icon-size": 0.35,
-            "icon-offset": [14, 14],
+            "icon-size": 0.32,
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
           }}

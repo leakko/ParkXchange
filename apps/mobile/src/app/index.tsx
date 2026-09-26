@@ -89,6 +89,7 @@ import { stageSpotForSheet, beginSpotSheetPresentation } from "@/map/spotSheetHa
 import { subscribeSpotWithdrawn } from "@/map/spotWithdrawHandoff";
 import {
   consumeResumeAnnounceAfterVehicle,
+  consumeResumeParkAfterVehicle,
   subscribeVehicleCreated,
 } from "@/map/vehicleCreateHandoff";
 import { defaultMapFilter } from "@/map/mapFilter";
@@ -173,6 +174,7 @@ export default function MapScreen() {
   const [parkVehicles, setParkVehicles] = useState<VehicleResponse[]>([]);
   const [parkCoords, setParkCoords] = useState<[number, number] | null>(null);
   const [parkLabel, setParkLabel] = useState<string | null>(null);
+  const [parkFromCurrentLocation, setParkFromCurrentLocation] = useState(false);
   const [parkPickMode, setParkPickMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchHits, setSearchHits] = useState<AddressSuggestion[]>([]);
@@ -512,6 +514,8 @@ export default function MapScreen() {
           has_agreement: boolean;
           exact_location: boolean;
           leaving_now: boolean;
+          /** No preferred time → grey P on the map (matches filter “Resto”). */
+          flexible: boolean;
         };
         geometry: { type: "Point"; coordinates: [number, number] };
       }
@@ -527,6 +531,7 @@ export default function MapScreen() {
       if (active && String(active.spot_id) === id) {
         continue;
       }
+      const leavingNow = Boolean(feature.properties.leaving_now);
       byId.set(id, {
         type: "Feature",
         properties: {
@@ -539,7 +544,8 @@ export default function MapScreen() {
             active && String(active.spot_id) === id && (isOwner || isDriver),
           ),
           exact_location: Boolean(feature.properties.exact_location),
-          leaving_now: Boolean(feature.properties.leaving_now),
+          leaving_now: leavingNow,
+          flexible: !leavingNow && !feature.properties.preferred_departure_at,
         },
         geometry: {
           type: "Point",
@@ -561,6 +567,7 @@ export default function MapScreen() {
       if (active && String(active.spot_id) === id && isDriver && !isOwner) {
         continue;
       }
+      const leavingNow = Boolean(feature.properties.leaving_now);
       byId.set(id, {
         type: "Feature",
         properties: {
@@ -573,7 +580,8 @@ export default function MapScreen() {
             active && String(active.spot_id) === id && (isOwner || isDriver),
           ),
           exact_location: Boolean(feature.properties.exact_location),
-          leaving_now: Boolean(feature.properties.leaving_now),
+          leaving_now: leavingNow,
+          flexible: !leavingNow && !feature.properties.preferred_departure_at,
         },
         geometry: {
           type: "Point",
@@ -676,6 +684,9 @@ export default function MapScreen() {
             has_my_offer: false,
             exact_location: Boolean(activeSpot.properties.exact_location),
             leaving_now: Boolean(activeSpot.properties.leaving_now),
+            flexible:
+              !activeSpot.properties.leaving_now &&
+              !activeSpot.properties.preferred_departure_at,
           },
           geometry: {
             type: "Point" as const,
@@ -896,7 +907,8 @@ export default function MapScreen() {
         });
         if (parkPickMode) {
           setParkCoords([lon, lat]);
-          setParkLabel(label);
+          setParkLabel(null);
+          setParkFromCurrentLocation(false);
           setParkPickMode(false);
           setParkOpen(true);
           return;
@@ -1265,6 +1277,19 @@ export default function MapScreen() {
       try {
         const list = await listVehicles();
         if (list.length === 0) {
+          let nextCoords = coords;
+          let fromCurrent = false;
+          if (!nextCoords) {
+            const { currentLatLon } = await import("@/push/locationSeed");
+            const here = await currentLatLon();
+            if (here) {
+              nextCoords = [here.longitude, here.latitude];
+              fromCurrent = true;
+            }
+          }
+          setParkCoords(nextCoords);
+          setParkLabel(label);
+          setParkFromCurrentLocation(fromCurrent);
           const add = await confirm({
             title: t("announce.needVehicle.title"),
             message: t("announce.needVehicle.message"),
@@ -1272,22 +1297,25 @@ export default function MapScreen() {
             confirmLabel: t("announce.needVehicle.add"),
           });
           if (add) {
-            router.push("/account/vehicles/new?from=announce" as Href);
+            router.push("/account/vehicles/new?from=park" as Href);
           }
           return;
         }
         let nextCoords = coords;
         let nextLabel = label;
+        let fromCurrent = false;
         if (!nextCoords) {
           const { currentLatLon } = await import("@/push/locationSeed");
           const here = await currentLatLon();
           if (here) {
             nextCoords = [here.longitude, here.latitude];
+            fromCurrent = true;
           }
         }
         setParkVehicles(list);
         setParkCoords(nextCoords);
         setParkLabel(nextLabel);
+        setParkFromCurrentLocation(fromCurrent);
         setParkPickMode(false);
         setParkOpen(true);
       } catch (err) {
@@ -1315,6 +1343,32 @@ export default function MapScreen() {
       void openAnnounce(null, null);
     });
   }, [openAnnounce]);
+
+  // After “add car” from + Mi coche, reopen the park form (keep map pick / GPS).
+  useEffect(() => {
+    return subscribeVehicleCreated((kind) => {
+      if (kind !== "park") {
+        return;
+      }
+      if (!consumeResumeParkAfterVehicle()) {
+        return;
+      }
+      void (async () => {
+        try {
+          const list = await listVehicles();
+          setParkVehicles(list);
+          setParkPickMode(false);
+          setParkOpen(true);
+        } catch (err) {
+          await alert({
+            title: t("map.alert.parkFailed.title"),
+            message: apiErrorMessage(err, t),
+            confirmLabel: t("common.ok"),
+          });
+        }
+      })();
+    });
+  }, [alert, t]);
 
   // Deep-link from reservation history “re-announce” → open form prefilled.
   useEffect(() => {
@@ -1401,47 +1455,68 @@ export default function MapScreen() {
           confirmLabel: t("map.alert.parkHere.confirm"),
         });
         if (ok) {
-          await openParkCar(
-            [lon, lat],
-            t("announce.location.coords", {
-              lat: lat.toFixed(5),
-              lon: lon.toFixed(5),
-            }),
-          );
+          await openParkCar([lon, lat], null);
         }
       })();
     },
     [confirm, openParkCar, t],
   );
 
-  const centerOnMySpot = useCallback(() => {
-    const features = spotData.mine.features;
-    if (features.length === 0) {
+  const centerOnRelevantSpot = useCallback(() => {
+    const mine = mySpotFeatures.filter((f) => isLiveMapSpotStatus(f.properties.status));
+    if (mine.length > 0) {
+      const unpublished = mine.find((f) => f.properties.status === "unpublished");
+      const pick =
+        unpublished ??
+        [...mine].sort((a, b) => {
+          const aLeave = a.properties.leaving_now ? 0 : 1;
+          const bLeave = b.properties.leaving_now ? 0 : 1;
+          if (aLeave !== bLeave) {
+            return aLeave - bLeave;
+          }
+          const aAt = a.properties.preferred_departure_at
+            ? Date.parse(a.properties.preferred_departure_at)
+            : Number.POSITIVE_INFINITY;
+          const bAt = b.properties.preferred_departure_at
+            ? Date.parse(b.properties.preferred_departure_at)
+            : Number.POSITIVE_INFINITY;
+          return aAt - bAt;
+        })[0];
+      if (!pick) {
+        return;
+      }
+      const lon = Number(pick.geometry.coordinates[0]);
+      const lat = Number(pick.geometry.coordinates[1]);
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+        return;
+      }
+      dispatchFollow({ type: "claim_camera" });
+      cameraRef.current?.easeTo({
+        center: [lon, lat],
+        zoom: FOCUS_SPOT_ZOOM,
+        duration: 500,
+      });
       return;
     }
-    const unpublished = features.find((f) => f.properties.status === "unpublished");
-    const pick =
-      unpublished ??
-      [...features].sort((a, b) => {
-        // Prefer leaving_now, then earliest preferred if present on selected live spots.
-        const aLeave = a.properties.leaving_now ? 0 : 1;
-        const bLeave = b.properties.leaving_now ? 0 : 1;
-        if (aLeave !== bLeave) {
-          return aLeave - bLeave;
-        }
-        return 0;
-      })[0];
-    if (!pick) {
-      return;
+    // Driver: accepted reservation with the nearest exchange time.
+    if (isDriver && activeSpot) {
+      const lon = Number(activeSpot.geometry.coordinates[0]);
+      const lat = Number(activeSpot.geometry.coordinates[1]);
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+        return;
+      }
+      dispatchFollow({ type: "claim_camera" });
+      cameraRef.current?.easeTo({
+        center: [lon, lat],
+        zoom: FOCUS_SPOT_ZOOM,
+        duration: 500,
+      });
     }
-    const [lon, lat] = pick.geometry.coordinates;
-    dispatchFollow({ type: "claim_camera" });
-    cameraRef.current?.easeTo({
-      center: [lon, lat],
-      zoom: FOCUS_SPOT_ZOOM,
-      duration: 500,
-    });
-  }, [spotData.mine.features]);
+  }, [mySpotFeatures, isDriver, activeSpot]);
+
+  const showCenterSpotFab =
+    mySpotFeatures.some((f) => isLiveMapSpotStatus(f.properties.status)) ||
+    (!!isDriver && !!activeSpot);
 
   return (
     <View style={styles.fill}>
@@ -1469,19 +1544,19 @@ export default function MapScreen() {
               zoom: homeZoom,
             }}
           />
-          {puckReady ? <NativeUserLocation key={location.puckEpoch} mode="default" /> : null}
-          {searchHits.length > 0 ? (
-            <SearchPlaceLayers
-              hits={searchHits}
-              selectedId={selectedSearchId}
-              onPressHit={onPressSearchHit}
+          {/*
+            No layerIndex on overlays: on Android, MLRN inserts them below the
+            native location component. High layerIndex was putting P icons above
+            the puck. NativeUserLocation last so iOS also stacks it on top.
+          */}
+          {selected &&
+          !selected.properties.exact_location &&
+          selected.geometry.coordinates[0] != null &&
+          selected.geometry.coordinates[1] != null ? (
+            <UncertaintyCircle
+              lon={selected.geometry.coordinates[0]}
+              lat={selected.geometry.coordinates[1]}
             />
-          ) : null}
-          {(announceOpen || announcePickMode) && announceCoords ? (
-            <AnnounceDraftLayers coords={announceCoords} />
-          ) : null}
-          {(parkOpen || parkPickMode) && parkCoords ? (
-            <AnnounceDraftLayers coords={parkCoords} />
           ) : null}
           {spotsArmed ? (
             <SpotLayers data={spotData.others} onPressFeature={onPressFeature} />
@@ -1498,15 +1573,20 @@ export default function MapScreen() {
           {historyGhostData.features.length > 0 ? (
             <HistoryGhostLayers data={historyGhostData} />
           ) : null}
-          {selected &&
-          !selected.properties.exact_location &&
-          selected.geometry.coordinates[0] != null &&
-          selected.geometry.coordinates[1] != null ? (
-            <UncertaintyCircle
-              lon={selected.geometry.coordinates[0]}
-              lat={selected.geometry.coordinates[1]}
+          {searchHits.length > 0 ? (
+            <SearchPlaceLayers
+              hits={searchHits}
+              selectedId={selectedSearchId}
+              onPressHit={onPressSearchHit}
             />
           ) : null}
+          {(announceOpen || announcePickMode) && announceCoords ? (
+            <AnnounceDraftLayers coords={announceCoords} />
+          ) : null}
+          {(parkOpen || parkPickMode) && parkCoords ? (
+            <AnnounceDraftLayers coords={parkCoords} />
+          ) : null}
+          {puckReady ? <NativeUserLocation key={location.puckEpoch} mode="default" /> : null}
         </MapView>
       )}
 
@@ -1824,8 +1904,36 @@ export default function MapScreen() {
         </View>
       ) : null}
 
+      {showCenterSpotFab ? (
+        <Pressable
+          style={[styles.locateFab, styles.centerSpotFab, { bottom: 256 + insets.bottom }]}
+          onPress={centerOnRelevantSpot}
+          accessibilityRole="button"
+          accessibilityLabel={t("map.fab.centerOnSpot")}
+        >
+          <Text style={styles.centerSpotP}>P</Text>
+          <View style={styles.centerSpotLocate}>
+            <Ionicons name="locate" size={12} color="#fff" />
+          </View>
+        </Pressable>
+      ) : null}
+
       <Pressable
-        style={[styles.filterFab, { bottom: 276 + insets.bottom }]}
+        style={[
+          styles.locateFab,
+          { bottom: 204 + insets.bottom },
+          !follow.locationGranted ? styles.fabDisabled : null,
+        ]}
+        disabled={!follow.locationGranted}
+        onPress={onRecenter}
+        accessibilityRole="button"
+        accessibilityLabel={t("map.fab.locateMe")}
+      >
+        <Ionicons name="locate" size={24} color="#fff" />
+      </Pressable>
+
+      <Pressable
+        style={[styles.filterFab, { bottom: 152 + insets.bottom }]}
         onPress={() => {
           stageMapFilter(mapFilter);
           router.push("/filter" as Href);
@@ -1839,7 +1947,7 @@ export default function MapScreen() {
       </Pressable>
 
       <Pressable
-        style={[styles.accountFab, { bottom: 212 + insets.bottom }]}
+        style={[styles.accountFab, { bottom: 100 + insets.bottom }]}
         onPress={() => {
           if (!signedIn) {
             requireSignIn("/account");
@@ -1852,34 +1960,6 @@ export default function MapScreen() {
       >
         <Ionicons name="person" size={22} color="#fff" />
       </Pressable>
-
-      <Pressable
-        style={[
-          styles.locateFab,
-          { bottom: 148 + insets.bottom },
-          !follow.locationGranted ? styles.fabDisabled : null,
-        ]}
-        disabled={!follow.locationGranted}
-        onPress={onRecenter}
-        accessibilityRole="button"
-        accessibilityLabel={t("map.fab.locateMe")}
-      >
-        <Ionicons name="locate" size={24} color="#fff" />
-      </Pressable>
-
-      {spotData.mine.features.length > 0 ? (
-        <Pressable
-          style={[styles.locateFab, styles.centerSpotFab, { bottom: 100 + insets.bottom }]}
-          onPress={centerOnMySpot}
-          accessibilityRole="button"
-          accessibilityLabel={t("map.fab.centerOnSpot")}
-        >
-          <Text style={styles.centerSpotP}>P</Text>
-          <View style={styles.centerSpotLocate}>
-            <Ionicons name="locate" size={12} color="#fff" />
-          </View>
-        </Pressable>
-      ) : null}
 
       <Pressable
         style={[styles.fab, { bottom: 36 + insets.bottom }]}
@@ -1901,6 +1981,7 @@ export default function MapScreen() {
         vehicles={parkVehicles}
         initialCoordinates={parkCoords}
         initialAddressLabel={parkLabel}
+        initialFromCurrentLocation={parkFromCurrentLocation}
         onCancel={() => {
           setParkOpen(false);
           setParkPickMode(false);
@@ -1912,7 +1993,7 @@ export default function MapScreen() {
         }}
         onAddVehicle={() => {
           setParkOpen(false);
-          router.push("/account/vehicles/new?from=announce" as Href);
+          router.push("/account/vehicles/new?from=park" as Href);
         }}
         onSubmit={async (values: ParkCarValues) => {
           setParking(true);
@@ -1933,7 +2014,7 @@ export default function MapScreen() {
             });
           } catch (err) {
             await alert({
-              title: t("map.alert.parkFailed.title"),
+              title: apiErrorTitle(err, t, "map.alert.parkFailed.title"),
               message: apiErrorMessage(err, t),
               confirmLabel: t("common.ok"),
             });

@@ -1,6 +1,8 @@
 import { GeoJSONSource, Layer } from "@maplibre/maplibre-react-native";
 import type { FeatureCollection } from "geojson";
 
+import { nearestSpotIdAtTouch } from "@/map/nearestSpotAtTouch";
+
 type Props = {
   data: FeatureCollection;
   onPressFeature: (id: string) => void;
@@ -16,12 +18,11 @@ export function OfferedSpotLayers({ data, onPressFeature }: Props) {
       data={data}
       onPress={(event) => {
         event.stopPropagation();
-        const feature = event.nativeEvent.features[0];
-        if (!feature) {
-          return;
-        }
-        const properties = feature.properties as Record<string, unknown> | null;
-        const id = String(properties?.id ?? feature.id ?? "");
+        const native = event.nativeEvent as {
+          lngLat?: [number, number];
+          features: Parameters<typeof nearestSpotIdAtTouch>[1];
+        };
+        const id = nearestSpotIdAtTouch(native.lngLat ?? null, native.features, data);
         if (id) {
           onPressFeature(id);
         }
@@ -31,7 +32,6 @@ export function OfferedSpotLayers({ data, onPressFeature }: Props) {
         id="spots-offered-points"
         type="circle"
         source="spots-offered"
-        layerIndex={907}
         paint={{
           "circle-color": "#F4A261",
           "circle-radius": 10,

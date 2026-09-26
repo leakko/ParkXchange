@@ -75,7 +75,12 @@ type Store interface {
 	// (release the driver, debit the owner) in the same write. Pending offers
 	// on the spot are rejected and their driver IDs returned for push.
 	// ErrConflict when the spot has moved past that.
+	// Unpublished parked reminders must use DeleteUnpublishedSpot instead.
 	CancelSpot(ctx context.Context, spotID, ownerID string) (pendingDriverIDs []string, err error)
+
+	// DeleteUnpublishedSpot hard-deletes a never-published parked reminder.
+	// ErrConflict when the row is not unpublished or not owned by ownerID.
+	DeleteUnpublishedSpot(ctx context.Context, spotID, ownerID string) error
 
 	// UpdateAvailableSpot applies a partial edit to an available offer the
 	// owner still holds. ErrConflict when the status is no longer available;

@@ -8,6 +8,7 @@ import {
   canReannounceFromReservation,
   reservationAddressLabel,
 } from "@/account/reservationReannounce";
+import { StreetAddressMeta } from "@/account/StreetAddressMeta";
 import { accountStyles } from "@/account/theme";
 import { sortReservationsNewestFirst } from "@/account/listOrdering";
 import {
@@ -377,9 +378,17 @@ export default function MyReservationsScreen() {
               {live ? " · " : ""}
               {live ? t("account.reservations.openMap") : ""}
             </Text>
-            <Text style={accountStyles.rowMetaTight} numberOfLines={2}>
-              {address}
-            </Text>
+            {summary && Number.isFinite(summary.lon) && Number.isFinite(summary.lat) ? (
+              <StreetAddressMeta
+                lon={summary.lon}
+                lat={summary.lat}
+                hint={summary.address_hint}
+              />
+            ) : (
+              <Text style={accountStyles.rowMetaTight} numberOfLines={2}>
+                {address}
+              </Text>
+            )}
             <Text style={accountStyles.rowMetaTight}>
               {t("account.reservations.exchangeAt", {
                 datetime: formatDateTime(res.exchange_at),

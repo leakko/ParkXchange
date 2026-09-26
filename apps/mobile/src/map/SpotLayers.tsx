@@ -6,6 +6,8 @@ import {
 import type { FilterSpecification } from "@maplibre/maplibre-gl-style-spec";
 import type { FeatureCollection } from "geojson";
 
+import { nearestSpotIdAtTouch } from "@/map/nearestSpotAtTouch";
+
 type Props = {
   data: FeatureCollection;
   onPressFeature: (id: string) => void;
@@ -13,21 +15,34 @@ type Props = {
 
 const unclustered: FilterSpecification = ["!", ["has", "point_count"]];
 
-const regularFilter: FilterSpecification = [
-  "all",
-  unclustered,
-  ["!=", ["to-boolean", ["get", "leaving_now"]], true],
-];
-
 const leavingNowFilter: FilterSpecification = [
   "all",
   unclustered,
   ["==", ["to-boolean", ["get", "leaving_now"]], true],
 ];
 
+/** Preferred departure (timed) — blue P, matches “Salida próxima”. */
+const soonFilter: FilterSpecification = [
+  "all",
+  unclustered,
+  ["!=", ["to-boolean", ["get", "leaving_now"]], true],
+  ["!=", ["to-boolean", ["get", "flexible"]], true],
+];
+
+/** Flexible / other — grey P, matches filter “Resto”. */
+const flexibleFilter: FilterSpecification = [
+  "all",
+  unclustered,
+  ["!=", ["to-boolean", ["get", "leaving_now"]], true],
+  ["==", ["to-boolean", ["get", "flexible"]], true],
+];
+
+/** Match own-spot visual footprint (~22–24 px). */
+const PARKING_ICON_SIZE = 0.28;
+
 /**
- * Clustered discovery markers: parking-P symbols (orange when leaving-now).
- * Uncertainty radius is drawn separately on selection — not as soft blobs.
+ * Clustered discovery markers: Maps-style parking-P symbols.
+ * Uncertainty radius is drawn separately on selection.
  */
 export function SpotLayers({ data, onPressFeature }: Props) {
   return (
@@ -36,6 +51,7 @@ export function SpotLayers({ data, onPressFeature }: Props) {
         images={{
           "spot-parking-p": require("../../assets/images/spot-parking-p.png"),
           "spot-parking-p-leaving": require("../../assets/images/spot-parking-p-leaving.png"),
+          "spot-parking-p-other": require("../../assets/images/spot-parking-p-other.png"),
         }}
       />
       <GeoJSONSource
@@ -46,15 +62,11 @@ export function SpotLayers({ data, onPressFeature }: Props) {
         clusterMaxZoom={14}
         onPress={(event) => {
           event.stopPropagation();
-          const feature = event.nativeEvent.features[0];
-          if (!feature) {
-            return;
-          }
-          const properties = feature.properties as Record<string, unknown> | null;
-          if (properties?.cluster) {
-            return;
-          }
-          const id = String(properties?.id ?? feature.id ?? "");
+          const native = event.nativeEvent as {
+            lngLat?: [number, number];
+            features: Parameters<typeof nearestSpotIdAtTouch>[1];
+          };
+          const id = nearestSpotIdAtTouch(native.lngLat ?? null, native.features, data);
           if (id) {
             onPressFeature(id);
           }
@@ -65,10 +77,9 @@ export function SpotLayers({ data, onPressFeature }: Props) {
           type="circle"
           source="spots"
           filter={["has", "point_count"]}
-          layerIndex={901}
           paint={{
             "circle-color": "#1A73E8",
-            "circle-radius": ["step", ["get", "point_count"], 16, 25, 22, 100, 28],
+            "circle-radius": ["step", ["get", "point_count"], 14, 25, 18, 100, 22],
             "circle-stroke-width": 2,
             "circle-stroke-color": "#ffffff",
           }}
@@ -78,24 +89,34 @@ export function SpotLayers({ data, onPressFeature }: Props) {
           type="symbol"
           source="spots"
           filter={["has", "point_count"]}
-          layerIndex={902}
           layout={{
             "text-font": ["Noto Sans Bold"],
             "text-field": ["to-string", ["get", "point_count"]],
-            "text-size": 12,
+            "text-size": 11,
             "text-allow-overlap": true,
           }}
           paint={{ "text-color": "#ffffff" }}
         />
         <Layer
-          id="spots-parking-p"
+          id="spots-parking-p-soon"
           type="symbol"
           source="spots"
-          filter={regularFilter}
-          layerIndex={906}
+          filter={soonFilter}
           layout={{
             "icon-image": "spot-parking-p",
-            "icon-size": 0.45,
+            "icon-size": PARKING_ICON_SIZE,
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
+          }}
+        />
+        <Layer
+          id="spots-parking-p-other"
+          type="symbol"
+          source="spots"
+          filter={flexibleFilter}
+          layout={{
+            "icon-image": "spot-parking-p-other",
+            "icon-size": PARKING_ICON_SIZE,
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
           }}
@@ -105,10 +126,9 @@ export function SpotLayers({ data, onPressFeature }: Props) {
           type="symbol"
           source="spots"
           filter={leavingNowFilter}
-          layerIndex={907}
           layout={{
             "icon-image": "spot-parking-p-leaving",
-            "icon-size": 0.45,
+            "icon-size": PARKING_ICON_SIZE,
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
           }}

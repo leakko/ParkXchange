@@ -32,7 +32,7 @@ export default function NewVehicleScreen() {
   const params = useLocalSearchParams<{ from?: string }>();
   const gateStarted = useRef(false);
   const from = Array.isArray(params.from) ? params.from[0] : params.from;
-  const fromAnnounce = from === "announce" || from === "offer";
+  const fromGate = from === "announce" || from === "offer" || from === "park";
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -88,6 +88,8 @@ export default function NewVehicleScreen() {
         notifyVehicleCreated("offer");
       } else if (from === "announce") {
         notifyVehicleCreated("announce");
+      } else if (from === "park") {
+        notifyVehicleCreated("park");
       }
       if (photoFailed) {
         await alert({
@@ -115,7 +117,7 @@ export default function NewVehicleScreen() {
 
   return (
     <AuthScroll>
-      {fromAnnounce ? (
+      {fromGate ? (
         <Text style={[accountStyles.meta, { marginBottom: 8 }]}>
           {t("account.vehicles.create.announceHint")}
         </Text>

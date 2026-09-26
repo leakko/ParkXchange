@@ -453,11 +453,18 @@ export default function SpotDetailScreen() {
             }}
             onWithdraw={(s) => {
               void (async () => {
+                const parkedOnly = s.properties.status === "unpublished";
                 const ok = await confirm({
-                  title: t("map.alert.withdrawListing.title"),
-                  message: t("map.alert.withdrawListing.message"),
+                  title: parkedOnly
+                    ? t("map.alert.withdrawParked.title")
+                    : t("map.alert.withdrawListing.title"),
+                  message: parkedOnly
+                    ? t("map.alert.withdrawParked.message")
+                    : t("map.alert.withdrawListing.message"),
                   cancelLabel: t("common.cancel"),
-                  confirmLabel: t("map.alert.withdraw.confirm"),
+                  confirmLabel: parkedOnly
+                    ? t("map.alert.withdrawParked.confirm")
+                    : t("map.alert.withdraw.confirm"),
                   destructive: true,
                 });
                 if (!ok) {

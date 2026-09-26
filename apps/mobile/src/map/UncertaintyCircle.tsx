@@ -43,7 +43,6 @@ export function UncertaintyCircle({ lon, lat }: Props) {
         id="spot-uncertainty-fill"
         type="fill"
         source="spot-uncertainty"
-        layerIndex={890}
         paint={{
           "fill-color": PARKING_BLUE,
           "fill-opacity": 0.22,
@@ -53,7 +52,6 @@ export function UncertaintyCircle({ lon, lat }: Props) {
         id="spot-uncertainty-outline"
         type="line"
         source="spot-uncertainty"
-        layerIndex={891}
         paint={{
           "line-color": PARKING_BLUE,
           "line-width": 1.5,

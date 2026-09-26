@@ -38,7 +38,6 @@ export function AnnounceDraftLayers({ coords }: Props) {
           id="announce-draft-halo"
           type="circle"
           source="announce-draft"
-          layerIndex={930}
           paint={{
             "circle-color": "#FFE66D",
             "circle-radius": 18,
@@ -50,7 +49,6 @@ export function AnnounceDraftLayers({ coords }: Props) {
           id="announce-draft-core"
           type="circle"
           source="announce-draft"
-          layerIndex={931}
           paint={{
             "circle-color": "#F4A261",
             "circle-radius": 12,
@@ -62,7 +60,6 @@ export function AnnounceDraftLayers({ coords }: Props) {
           id="announce-draft-icon"
           type="symbol"
           source="announce-draft"
-          layerIndex={932}
           layout={{
             "icon-image": "announce-draft-pencil",
             "icon-size": 0.22,
